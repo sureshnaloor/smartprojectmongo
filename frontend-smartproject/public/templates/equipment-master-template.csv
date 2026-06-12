@@ -1,0 +1,6 @@
+equipmentNumber,equipmentName,equipmentType,description,manufacturer,model,capacity,unit,costPerHour,status,remarks
+EQ001,Excavator CAT 320,Heavy Equipment,20-ton wheel excavator,Caterpillar,320,20,pieces,250.00,Active,Fully operational
+EQ002,Concrete Mixer,Mixing Equipment,Electric concrete mixer 500L,Bosch,CBS 500,500,liters,45.00,Active,Regular maintenance done
+EQ003,Scaffolding Set,Temporary Structure,Steel scaffolding system,Local,Standard,100,meters,30.00,Active,Certified for safety
+EQ004,Dump Truck,Transport,6-wheel dump truck,Volvo,FM 12,15,tons,80.00,Active,Insurance up to date
+EQ005,Power Generator,Power Supply,Diesel generator 100kVA,Cummins,C100,100,kVA,150.00,Active,Regular service done

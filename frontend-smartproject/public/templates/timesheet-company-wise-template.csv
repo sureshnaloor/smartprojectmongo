@@ -1,0 +1,3 @@
+date,status,enteredBy,remarks,projectId,wpId,employeeId,rentalManpowerId,equipmentId,rentalEquipmentId,toolId,resourceType
+2026-04-01,worked,planner1,Worked on civil prep,1,12,3,,,,,manpower
+2026-04-01,idle_bench,planner1,No assignment today,,,,4,,,,rental_manpower

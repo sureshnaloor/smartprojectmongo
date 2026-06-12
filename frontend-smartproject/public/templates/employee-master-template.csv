@@ -1,0 +1,6 @@
+employeeNumber,empFirstName,empMiddleName,empLastName,empNationalId,empNationality,empDob,empGender,empPosition,empTitle,empTrade,empGrade,empCostPerHour,entryDate,exitDate
+EMP001,John,,Smith,1234567890,American,1990-05-15,M,Project Manager,Senior Manager,Management,Grade A,150.00,2024-01-01,
+EMP002,Sarah,Marie,Johnson,0987654321,British,1992-08-22,F,Site Engineer,Engineer,Civil,Grade B,120.00,2024-02-15,
+EMP003,Michael,James,Williams,5555666777,Canadian,1988-03-10,M,Safety Officer,Officer,Safety,Grade C,90.00,2024-03-01,
+EMP004,Emma,Elizabeth,Davis,4444555666,Australian,1995-11-30,F,Supervisor,Supervisor,Construction,Grade B,110.00,2023-10-10,
+EMP005,Robert,,Brown,3333444555,Irish,1985-07-18,M,Technician,Technician,Mechanical,Grade C,85.00,2024-01-20,2024-12-31

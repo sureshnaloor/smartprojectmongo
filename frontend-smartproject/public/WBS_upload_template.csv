@@ -1,0 +1,14 @@
+wbsCode,wbsName,wbsType,wbsDescription,budget
+1,Engineering & Design,SUMMARY,Top-level phase,50000
+1.1,Design,WBS,Design sub-phase,20000
+1.1.1,Detailed Design,WBS,Detailed design only WBS,15000
+1.1.1.1,Drawings,WorkPackage,Preliminary budget,8000
+1.1.1.2,Specifications,WorkPackage,Preliminary budget,7000
+1.2,Procurement,WBS,Procurement sub-phase,30000
+1.2.1,Equipment,WBS,Equipment only WBS,30000
+1.2.1.1,Boilers,WorkPackage,Preliminary budget,12000
+1.2.1.2,Pumps,WorkPackage,Preliminary budget,18000
+2,Construction,SUMMARY,Construction phase,40000
+2.1,Civil Works,WBS,Civil only WBS,40000
+2.1.1,Foundation,WorkPackage,Preliminary budget,25000
+2.1.2,Structure,WorkPackage,Preliminary budget,15000

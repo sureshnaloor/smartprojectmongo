@@ -1,0 +1,9 @@
+serviceCode,serviceDescription,uom,serviceType,serviceGroup,baseRate
+SVC001,Third-party inspection and certification,EA,Inspection,Quality,150.00
+SVC002,Design and engineering consultancy,HR,Consultancy,Engineering,120.00
+SVC003,Soil testing and geotechnical survey,EA,Testing,Survey,450.00
+SVC004,Site security and guarding,HR,Security,Site Services,25.00
+SVC005,Crane hire and lifting,HR,Equipment Hire,Lifting,85.00
+SVC006,Scaffolding supply and erection,M2,Scaffolding,Site Services,18.00
+SVC007,Waste removal and disposal,EA,Waste,Environmental,200.00
+SVC008,Legal and contract administration,HR,Legal,Admin,95.00

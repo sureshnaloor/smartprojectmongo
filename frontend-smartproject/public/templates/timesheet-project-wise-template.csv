@@ -1,0 +1,3 @@
+date,status,enteredBy,remarks,wpId,employeeId,rentalManpowerId,equipmentId,rentalEquipmentId,toolId,resourceType
+2026-04-01,worked,planner1,WP execution day,12,3,,,,,manpower
+2026-04-01,un_utilized,planner1,Planned but not utilized,12,,,7,,,equipment

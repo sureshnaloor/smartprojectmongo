@@ -1,0 +1,6 @@
+vendorCode,vendorName,vendorAddress,vendorDistrict,vendorCity,vendorCountry,vendorZipCode,vendorPoBox,vendorTaxNumber,vendorCommercialRegistrationNumber,vendorEmail,vendorTelephone,vendorFax
+VND001,ABC Construction Supplies,"123 Industrial Way",Downtown,Houston,USA,77001,PO Box 1001,TAX-US-001,CR-US-001,info@abcsupplies.com,+1-713-555-0101,+1-713-555-0102
+VND002,Global Equipment Rentals,"456 Commerce Street",Central,Singapore,Singapore,018968,PO Box 2002,TAX-SG-002,CR-SG-002,contact@globalequip.sg,+65-6234-5678,+65-6234-5679
+VND003,BuildRight Materials,"789 Trade Road",East London,London,United Kingdom,E1 6AN,PO Box 3003,TAX-UK-003,CR-UK-003,sales@buildright.co.uk,+44-20-7123-4567,+44-20-7123-4568
+VND004,Premium Steel Works,"321 Industrial Park",Scarborough,Toronto,Canada,M1H 3A1,PO Box 4004,TAX-CA-004,CR-CA-004,orders@premiumsteel.ca,+1-416-789-0123,+1-416-789-0124
+VND005,Local Hardware Depot,"654 Main Street",South Mumbai,Mumbai,India,400010,PO Box 5005,TAX-IN-005,CR-IN-005,support@localhardware.in,+91-22-4567-8901,+91-22-4567-8902

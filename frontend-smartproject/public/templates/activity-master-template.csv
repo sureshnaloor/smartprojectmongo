@@ -1,0 +1,9 @@
+name,description,unitOfMeasure,unitRate,remarks
+Excavation,Site excavation and earth moving,cubic meter,15.50,Includes backfill and compaction
+Concrete Foundation,Concrete pour and finishing,cubic meter,280.00,Includes formwork and curing
+Brick Masonry,Brick laying with mortar,square meter,45.00,Standard quality 9 inch brick wall
+Steel Fabrication,Steel structure fabrication,kg,8.50,As per design specifications
+Roofing Installation,Roof covering installation,square meter,125.00,Includes underlayment and fasteners
+Electrical Wiring,Complete electrical installation,point,80.00,Outlets switches and breakers
+Plumbing Works,Pipe fitting and installation,point,120.00,PVC and metal piping included
+Painting Finish,Interior exterior painting,square meter,12.00,Two coats premium quality paint

@@ -1,0 +1,9 @@
+materialCode,materialDescription,uom,materialType,materialGroup,materialClass,baseRate
+MAT001,Portland Cement Grade 53,bags,Binding Material,Cement,common,12.50
+MAT002,Steel Reinforcement Bar 12mm,kg,Steel,Rebar,common,2.80
+MAT003,Brick Red Clay Standard,numbers,Masonry,Brick,common,0.45
+MAT004,Sand River Fine Sand,cubic meter,Aggregate,Sand,common,35.00
+MAT005,Aggregate 20mm Stone Chips,cubic meter,Aggregate,Coarse Aggregate,common,28.00
+MAT006,Plywood Commercial Grade,sheets,Wood Products,Plywood,common,22.00
+MAT007,PVC Electrical Conduit 20mm,meters,Electrical,Conduit,common,3.50
+MAT008,Aluminum Window Frame Standard,kg,Metal,Aluminum,common,5.20

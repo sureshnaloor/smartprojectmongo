@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Details - ConstructPro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --steel-blue: #475569;
+            --charcoal-gray: #374151;
+            --warm-white: #F9FAFB;
+            --amber: #F59E0B;
+            --sage-green: #10B981;
+            --rust-orange: #EA580C;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --error: #EF4444;
+            --info: #3B82F6;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%);
+            min-height: 100vh;
+        }
+        
+        .nav-link {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--amber);
+            transition: width 0.3s ease;
+        }
+        
+        .nav-link:hover::after,
+        .nav-link.active::after {
+            width: 100%;
+        }
+        
+        .wbs-tree {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .wbs-item {
+            border-left: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .wbs-item:hover {
+            border-left-color: var(--amber);
+            background-color: rgba(249, 250, 251, 0.8);
+        }
+        
+        .wbs-level-0 { padding-left: 0; }
+        .wbs-level-1 { padding-left: 1.5rem; }
+        .wbs-level-2 { padding-left: 3rem; }
+        .wbs-level-3 { padding-left: 4.5rem; }
+        
+        .expand-icon {
+            transition: transform 0.3s ease;
+        }
+        
+        .expanded .expand-icon {
+            transform: rotate(90deg);
+        }
+        
+        .budget-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(71, 85, 105, 0.1);
+        }
+        
+        .network-node {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .network-node:hover {
+            transform: scale(1.1);
+        }
+        
+        .task-status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-not-started { background-color: #9CA3AF; }
+        .status-in-progress { background-color: var(--amber); }
+        .status-completed { background-color: var(--sage-green); }
+        .status-blocked { background-color: var(--error); }
+        
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+        
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.8s ease;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .dependency-line {
+            stroke: var(--steel-blue);
+            stroke-width: 2;
+            stroke-dasharray: 5,5;
+            animation: dash 1s linear infinite;
+        }
+        
+        @keyframes dash {
+            to { stroke-dashoffset: -10; }
+        }
+        
+        .critical-path {
+            stroke: var(--rust-orange);
+            stroke-width: 3;
+            stroke-dasharray: none;
+        }
+        
+        .gantt-bar {
+            transition: all 0.3s ease;
+        }
+        
+        .gantt-bar:hover {
+            opacity: 0.8;
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="bg-white/90 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-8">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center">
+                            <span class="text-white font-bold text-sm">CP</span>
+                        </div>
+                        <span class="text-xl font-bold text-gray-900" style="font-family: 'Poppins', sans-serif;">ConstructPro</span>
+                    </div>
+                    <div class="hidden md:flex space-x-8">
+                        <a href="index.html" class="nav-link text-gray-600 hover:text-gray-900 font-medium">Dashboard</a>
+                        <a href="project.html" class="nav-link active text-gray-900 font-medium">Projects</a>
+                        <a href="#" class="nav-link text-gray-600 hover:text-gray-900 font-medium">Reports</a>
+                        <a href="#" class="nav-link text-gray-600 hover:text-gray-900 font-medium">Settings</a>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button class="p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6l-6-6v6z"></path>
+                        </svg>
+                    </button>
+                    <div class="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full"></div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Project Header -->
+    <section class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                <div>
+                    <div class="flex items-center space-x-4 mb-4">
+                        <button onclick="goBack()" class="p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                            </svg>
+                        </button>
+                        <h1 id="projectTitle" class="text-3xl font-bold text-gray-900" style="font-family: 'Poppins', sans-serif;">
+                            Highway Extension Project
+                        </h1>
+                        <span id="projectStatus" class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                            Active
+                        </span>
+                    </div>
+                    <div class="flex flex-wrap gap-4 text-sm text-gray-600">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                            <span id="projectDates">Apr 15, 2024 - Apr 15, 2025</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                            <span id="projectLocation">Downtown District</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                            </svg>
+                            <span id="projectManager">Sarah Johnson</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-6">
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-gray-900" id="overallProgress">65%</div>
+                        <div class="text-sm text-gray-600">Complete</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-gray-900" id="totalBudget">$2.5M</div>
+                        <div class="text-sm text-gray-600">Budget</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-gray-900" id="tasksCompleted">34/47</div>
+                        <div class="text-sm text-gray-600">Tasks</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Left Column: WBS Hierarchy -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- WBS Tree -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-gray-900" style="font-family: 'Poppins', sans-serif;">
+                            Work Breakdown Structure
+                        </h2>
+                        <div class="flex space-x-2">
+                            <button id="expandAll" class="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors">
+                                Expand All
+                            </button>
+                            <button id="collapseAll" class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                                Collapse All
+                            </button>
+                            <button id="addWBS" class="px-3 py-1 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors">
+                                Add WBS
+                            </button>
+                        </div>
+                    </div>
+                    <div id="wbsTree" class="wbs-tree">
+                        <!-- WBS items will be dynamically loaded here -->
+                    </div>
+                </div>
+
+                <!-- Network Diagram -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-gray-900" style="font-family: 'Poppins', sans-serif;">
+                            Activity Network Diagram
+                        </h2>
+                        <div class="flex items-center space-x-4 text-sm">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-4 h-0.5 bg-blue-600"></div>
+                                <span>Normal</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-4 h-0.5 bg-orange-600"></div>
+                                <span>Critical Path</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="networkDiagram" style="height: 400px;"></div>
+                </div>
+
+                <!-- Gantt Chart -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-gray-900" style="font-family: 'Poppins', sans-serif;">
+                            Activity Timeline
+                        </h2>
+                        <div class="flex space-x-2">
+                            <button class="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors">
+                                Week
+                            </button>
+                            <button class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                                Month
+                            </button>
+                            <button class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                                Quarter
+                            </button>
+                        </div>
+                    </div>
+                    <div id="ganttChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <!-- Right Column: Budget & Details -->
+            <div class="space-y-6">
+                <!-- Budget Overview -->
+                <div class="budget-card rounded-xl p-6">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4" style="font-family: 'Poppins', sans-serif;">Budget Overview</h3>
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Allocated</span>
+                            <span class="font-semibold text-gray-900" id="budgetAllocated">$2,500,000</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Spent</span>
+                            <span class="font-semibold text-gray-900" id="budgetSpent">$1,800,000</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Remaining</span>
+                            <span class="font-semibold text-green-600" id="budgetRemaining">$700,000</span>
+                        </div>
+                        <div class="pt-2 border-t border-gray-200">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-sm text-gray-600">Utilization</span>
+                                <span class="text-sm font-semibold text-gray-900" id="budgetUtilization">72%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-3">
+                                <div class="bg-gradient-to-r from-blue-500 to-green-500 h-3 rounded-full transition-all duration-1000" 
+                                     id="budgetProgressBar" style="width: 72%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="editBudget" class="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-lg font-medium transition-colors">
+                        Edit Budget Allocation
+                    </button>
+                </div>
+
+                <!-- Project Statistics -->
+                <div class="budget-card rounded-xl p-6">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4" style="font-family: 'Poppins', sans-serif;">Project Statistics</h3>
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Total WBS</span>
+                            <span class="font-semibold text-gray-900" id="totalWBS">4</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Work Packages</span>
+                            <span class="font-semibold text-gray-900" id="totalWP">12</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Activities</span>
+                            <span class="font-semibold text-gray-900" id="totalActivities">28</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Tasks</span>
+                            <span class="font-semibold text-gray-900" id="totalTasks">47</span>
+                        </div>
+                        <div class="pt-2 border-t border-gray-200">
+                            <div class="text-sm text-gray-600 mb-2">Task Status Distribution</div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center">
+                                        <span class="task-status status-completed"></span>
+                                    <span class="text-sm">Completed</span>
+                                    </div>
+                                    <span class="text-sm font-medium" id="tasksCompletedCount">34</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center">
+                                        <span class="task-status status-in-progress"></span>
+                                        <span class="text-sm">In Progress</span>
+                                    </div>
+                                    <span class="text-sm font-medium" id="tasksInProgressCount">8</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center">
+                                        <span class="task-status status-not-started"></span>
+                                        <span class="text-sm">Not Started</span>
+                                    </div>
+                                    <span class="text-sm font-medium" id="tasksNotStartedCount">5</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="budget-card rounded-xl p-6">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4" style="font-family: 'Poppins', sans-serif;">Quick Actions</h3>
+                    <div class="space-y-3">
+                        <button id="addTask" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition-colors">
+                            Add New Task
+                        </button>
+                        <button id="addDependency" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition-colors">
+                            Add Dependency
+                        </button>
+                        <button id="generateReport" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg font-medium transition-colors">
+                            Generate Report
+                        </button>
+                        <button id="exportData" class="w-full bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg font-medium transition-colors">
+                            Export Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Budget Edit Modal -->
+    <div id="budgetModal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-900" style="font-family: 'Poppins', sans-serif;">Edit Budget Allocation</h3>
+                <button id="closeBudgetModal" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Total Budget</label>
+                    <input type="number" id="totalBudgetInput" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value="2500000">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Spent to Date</label>
+                    <input type="number" id="spentBudgetInput" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value="1800000">
+                </div>
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button id="cancelBudgetEdit" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">Cancel</button>
+                    <button id="saveBudgetEdit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Task Modal -->
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-900" style="font-family: 'Poppins', sans-serif;">Add New Task</h3>
+                <button id="closeTaskModal" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <form id="taskForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Task Name</label>
+                    <input type="text" id="taskName" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <textarea id="taskDescription" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Assignee</label>
+                    <input type="text" id="taskAssignee" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                        <input type="date" id="taskStartDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                        <input type="date" id="taskEndDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" id="cancelTask" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">Add Task</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+    <script src="project.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+employeeNumber,empFirstName,empMiddleName,empLastName,empNationalId,empNationality,empDob,empGender,empPosition,empTitle,empTrade,empGrade,empCostPerHour,vendorCode,entryDate,exitDate
+RENT001,John,,Doe,RD12345678,Indian,1995-01-01,M,Laborer,Helper,Civil,Grade D,60.00,VEND001,2024-01-01,
+RENT002,Jane,,Smith,RD87654321,Indian,1998-05-20,F,Helper,Helper,Civil,Grade D,55.00,VEND002,2024-02-10,
