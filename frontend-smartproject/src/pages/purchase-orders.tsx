@@ -27,6 +27,7 @@ import {
   PurchaseOrderViewDialog,
   type PoViewMode,
 } from "@/components/purchase-order-view";
+import { RESOURCE_HOURLY_UOM, isHourlyPoItemType } from "@/lib/resource-uom";
 
 interface PurchaseOrder {
   id: number;
@@ -119,7 +120,7 @@ interface ResourceMaster {
 }
 
 interface PurchaseOrderItemInput {
-  itemType: "material" | "service" | "rental_equipment" | "rental_employee" | "";
+  itemType: "material" | "service" | "rental_equipment" | "rental_employee" | "tools" | "";
   itemDescription: string;
   quantity: string;
   unitOfMeasure: string;
@@ -138,7 +139,7 @@ export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [location] = useLocation();
 
-  let filterItemType: "material" | "service" | "rental_equipment" | "rental_employee" | null = null;
+  let filterItemType: "material" | "service" | "rental_equipment" | "rental_employee" | "tools" | null = null;
   if (location.startsWith("/material-master")) {
     filterItemType = "material";
   } else if (location.startsWith("/service-master")) {
@@ -147,6 +148,8 @@ export default function PurchaseOrdersPage() {
     filterItemType = "rental_equipment";
   } else if (location.startsWith("/employee-master/rental-po")) {
     filterItemType = "rental_employee";
+  } else if (location.startsWith("/tool-master/purchase-orders")) {
+    filterItemType = "tools";
   }
 
   const [creationMode, setCreationMode] = useState<"manual" | "from_pr">("manual");
@@ -164,12 +167,15 @@ export default function PurchaseOrdersPage() {
     paymentMode: "",
   });
 
+  const defaultItemUom = (itemType: string) =>
+    isHourlyPoItemType(itemType) ? RESOURCE_HOURLY_UOM : "";
+
   const [items, setItems] = useState<PurchaseOrderItemInput[]>([
     {
       itemType: filterItemType ?? "",
       itemDescription: "",
       quantity: "",
-      unitOfMeasure: "",
+      unitOfMeasure: defaultItemUom(filterItemType ?? ""),
       unitPrice: "",
     },
   ]);
@@ -215,6 +221,17 @@ export default function PurchaseOrdersPage() {
     queryFn: async () => {
       const res = await fetch("/api/service-masters");
       if (!res.ok) throw new Error("Failed to load services");
+      return res.json();
+    },
+  });
+
+  const { data: tools = [] } = useQuery<
+    Array<{ id: number; toolNumber: string; name: string; unitOfMeasure: string; unitRate: string }>
+  >({
+    queryKey: ["/api/tool-masters"],
+    queryFn: async () => {
+      const res = await fetch("/api/tool-masters");
+      if (!res.ok) throw new Error("Failed to load tools");
       return res.json();
     },
   });
@@ -279,7 +296,9 @@ export default function PurchaseOrdersPage() {
         ? "material"
         : filterItemType === "rental_equipment"
           ? "rental_equipment"
-          : null;
+          : filterItemType === "tools"
+            ? "tools"
+            : null;
 
   const { data: prSearchResults = [] } = useQuery<PrSearchResult[]>({
     queryKey: ["/api/purchase-requisitions/search", prSearch, requisitionType],
@@ -341,7 +360,7 @@ export default function PurchaseOrdersPage() {
 
   const itemTypeOptions = filterItemType
     ? [filterItemType]
-    : ["material", "service", "rental_equipment", "rental_employee"];
+    : ["material", "service", "rental_equipment", "rental_employee", "tools"];
 
   const loadOrderForEdit = (po: PurchaseOrder) => {
     setSelectedOrderId(po.id);
@@ -366,12 +385,13 @@ export default function PurchaseOrdersPage() {
       paymentTerms: "",
       paymentMode: "",
     });
+    const itemType = filterItemType ?? "";
     setItems([
       {
-        itemType: filterItemType ?? "",
+        itemType,
         itemDescription: "",
         quantity: "",
-        unitOfMeasure: "",
+        unitOfMeasure: defaultItemUom(itemType),
         unitPrice: "",
         longDescription: "",
       },
@@ -400,11 +420,12 @@ export default function PurchaseOrdersPage() {
 
       if (line.projectId) loadWorkPackagesForProject(line.projectId);
 
+      const itemType = (filterItemType ?? "") as PurchaseOrderItemInput["itemType"];
       return {
-        itemType: (filterItemType ?? "") as PurchaseOrderItemInput["itemType"],
+        itemType,
         itemDescription: line.itemDescription,
         quantity: String(line.quantity ?? ""),
-        unitOfMeasure,
+        unitOfMeasure: isHourlyPoItemType(itemType) ? RESOURCE_HOURLY_UOM : unitOfMeasure,
         unitPrice,
         estimatedDeliveryDate: line.requiredDate ?? undefined,
         projectId: line.projectId != null ? String(line.projectId) : undefined,
@@ -493,13 +514,14 @@ export default function PurchaseOrdersPage() {
   }, [selectedOrderId]);
 
   const addEmptyItemRow = () => {
+    const itemType = filterItemType ?? "";
     setItems((prev) => [
       ...prev,
       {
-        itemType: filterItemType ?? "",
+        itemType,
         itemDescription: "",
         quantity: "",
-        unitOfMeasure: "",
+        unitOfMeasure: defaultItemUom(itemType),
         unitPrice: "",
       },
     ]);
@@ -508,7 +530,11 @@ export default function PurchaseOrdersPage() {
   const updateItem = (index: number, patch: Partial<PurchaseOrderItemInput>) => {
     setItems((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], ...patch };
+      const merged = { ...next[index], ...patch };
+      if (patch.itemType && isHourlyPoItemType(patch.itemType)) {
+        merged.unitOfMeasure = RESOURCE_HOURLY_UOM;
+      }
+      next[index] = merged;
       return next;
     });
   };
@@ -1140,6 +1166,9 @@ export default function PurchaseOrdersPage() {
                         {itemTypeOptions.includes("rental_employee") && (
                           <option value="rental_employee">Rental employee</option>
                         )}
+                        {itemTypeOptions.includes("tools") && (
+                          <option value="tools">Tools</option>
+                        )}
                       </select>
                     </div>
                     <div>
@@ -1155,20 +1184,28 @@ export default function PurchaseOrdersPage() {
                     </div>
                     <div>
                       <Label className="text-xs">UOM</Label>
-                      <select
-                        className="w-full border rounded px-2 py-2 text-sm"
-                        value={item.unitOfMeasure}
-                        onChange={(e) =>
-                          updateItem(idx, { unitOfMeasure: e.target.value })
-                        }
-                      >
-                        <option value="">Select UOM</option>
-                        {uoms.map((u) => (
-                          <option key={u.id} value={u.name}>
-                            {u.name}
-                          </option>
-                        ))}
-                      </select>
+                      {isHourlyPoItemType(item.itemType) ? (
+                        <Input
+                          readOnly
+                          className="text-sm bg-zinc-50"
+                          value={RESOURCE_HOURLY_UOM}
+                        />
+                      ) : (
+                        <select
+                          className="w-full border rounded px-2 py-2 text-sm"
+                          value={item.unitOfMeasure}
+                          onChange={(e) =>
+                            updateItem(idx, { unitOfMeasure: e.target.value })
+                          }
+                        >
+                          <option value="">Select UOM</option>
+                          {uoms.map((u) => (
+                            <option key={u.id} value={u.name}>
+                              {u.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
 
@@ -1225,7 +1262,9 @@ export default function PurchaseOrdersPage() {
                             ? "Rental Equipment"
                             : item.itemType === "rental_employee"
                               ? "Rental Employee (Manpower)"
-                              : "Description"}
+                              : item.itemType === "tools"
+                                ? "Tool"
+                                : "Description"}
                     </Label>
                     {item.itemType === "material" && materials.length > 0 ? (
                       <select
@@ -1296,7 +1335,7 @@ export default function PurchaseOrdersPage() {
                           );
                           updateItem(idx, {
                             itemDescription: val,
-                            unitOfMeasure: res?.unitOfMeasure ?? item.unitOfMeasure,
+                            unitOfMeasure: RESOURCE_HOURLY_UOM,
                             unitPrice:
                               res?.unitRate !== undefined && res?.unitRate !== null
                                 ? String(res.unitRate)
@@ -1312,6 +1351,30 @@ export default function PurchaseOrdersPage() {
                           </option>
                         ))}
                       </select>
+                    ) : item.itemType === "tools" && tools.length > 0 ? (
+                      <select
+                        className="w-full border rounded px-2 py-2 text-sm"
+                        value={item.itemDescription}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const tool = tools.find((t) => t.name === val);
+                          updateItem(idx, {
+                            itemDescription: val,
+                            unitOfMeasure: RESOURCE_HOURLY_UOM,
+                            unitPrice:
+                              tool?.unitRate !== undefined
+                                ? String(tool.unitRate)
+                                : item.unitPrice,
+                          });
+                        }}
+                      >
+                        <option value="">Select tool</option>
+                        {tools.map((t) => (
+                          <option key={t.id} value={t.name}>
+                            {t.toolNumber} — {t.name}
+                          </option>
+                        ))}
+                      </select>
                     ) : item.itemType === "rental_employee" && rentalManpowerResources.length > 0 ? (
                       <select
                         className="w-full border rounded px-2 py-2 text-sm"
@@ -1323,7 +1386,7 @@ export default function PurchaseOrdersPage() {
                           );
                           updateItem(idx, {
                             itemDescription: val,
-                            unitOfMeasure: res?.unitOfMeasure ?? item.unitOfMeasure,
+                            unitOfMeasure: RESOURCE_HOURLY_UOM,
                             unitPrice:
                               res?.unitRate !== undefined && res?.unitRate !== null
                                 ? String(res.unitRate)

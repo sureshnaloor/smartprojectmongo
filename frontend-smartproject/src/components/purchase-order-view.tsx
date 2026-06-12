@@ -91,6 +91,8 @@ function itemTypeLabel(type: string): string {
       return "Rental Equipment";
     case "rental_employee":
       return "Rental Employee";
+    case "tools":
+      return "Tools";
     default:
       return type || "—";
   }

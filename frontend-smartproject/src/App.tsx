@@ -52,6 +52,13 @@ import EquipmentMasterManufacturers from "@/pages/equipment-master-manufacturers
 import EquipmentMasterTypes from "@/pages/equipment-master-types";
 import EquipmentMasterRentalPr from "@/pages/equipment-master-rental-pr";
 import ToolMaster from "@/pages/tool-master";
+import ToolMasterLayout from "@/layouts/tool-master-layout";
+import ToolMasterManufacturers from "@/pages/tool-master-manufacturers";
+import ToolMasterModels from "@/pages/tool-master-models";
+import ToolMasterTypes from "@/pages/tool-master-types";
+import ToolMasterPr from "@/pages/tool-master-pr";
+import GlobalMastersLayout from "@/layouts/global-masters-layout";
+import GlobalMastersDefaults from "@/pages/global-masters-defaults";
 import RiskRegister from "@/pages/risk-register";
 import ProjectDailyProgress from "@/pages/project-daily-progress";
 import ResourcePlan from "@/pages/resource-plan";
@@ -530,6 +537,18 @@ function Router() {
         )}
       </Route>
 
+      {/* Global Masters */}
+      <Route path="/global-masters/defaults">
+        <GlobalMastersLayout>
+          <GlobalMastersDefaults />
+        </GlobalMastersLayout>
+      </Route>
+      <Route path="/global-masters">
+        <GlobalMastersLayout>
+          <GlobalMastersDefaults />
+        </GlobalMastersLayout>
+      </Route>
+
       {/* Activity Master */}
       <Route path="/activity-master/uom">
         <ActivityMasterLayout>
@@ -707,10 +726,23 @@ function Router() {
           <EquipmentMaster />
         </EquipmentMasterLayout>
       </Route>
+      <Route path="/tool-master/purchase-requisitions">
+        <ToolMasterLayout>
+          <ToolMasterPr />
+        </ToolMasterLayout>
+      </Route>
+      <Route path="/tool-master/purchase-orders">
+        <ToolMasterLayout>
+          <PurchaseOrdersPage />
+        </ToolMasterLayout>
+      </Route>
+      <Route path="/tool-master/manufacturers" component={ToolMasterManufacturers} />
+      <Route path="/tool-master/models" component={ToolMasterModels} />
+      <Route path="/tool-master/tool-types" component={ToolMasterTypes} />
       <Route path="/tool-master">
-        <MasterLayout>
+        <ToolMasterLayout>
           <ToolMaster />
-        </MasterLayout>
+        </ToolMasterLayout>
       </Route>
 
       {/* New Pages Ported from Vanilla JS */}

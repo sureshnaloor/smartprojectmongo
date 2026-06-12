@@ -26,6 +26,10 @@ const GLOBAL_TOOLS: { label: string; href: string }[] = [
   { label: "Tool Master", href: "/tool-master" },
 ];
 
+const GLOBAL_MASTERS: { label: string; href: string }[] = [
+  { label: "Regional & currency defaults", href: "/global-masters/defaults" },
+];
+
 const ALLOCATION: { label: string; href: string }[] = [
   { label: "Materials", href: "/allocation/materials" },
   { label: "Manpower", href: "/allocation/manpower" },
@@ -68,6 +72,22 @@ export function AppWorkbenchNav({ className }: { className?: string }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-[min(70vh,24rem)] overflow-y-auto">
           {GLOBAL_TOOLS.map(({ label, href }) => (
+            <DropdownMenuItem key={href} asChild>
+              <NewTabLink href={href} className="cursor-pointer">
+                {label}
+              </NewTabLink>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger className={triggerBase}>
+          Global masters
+          <ChevronDown className="h-3 w-3 opacity-70" aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {GLOBAL_MASTERS.map(({ label, href }) => (
             <DropdownMenuItem key={href} asChild>
               <NewTabLink href={href} className="cursor-pointer">
                 {label}
@@ -136,6 +156,18 @@ export function AppWorkbenchNavMobile() {
       <p className={mobileSectionTitle}>Global tools</p>
       <div className="flex flex-col gap-0.5">
         {GLOBAL_TOOLS.map(({ label, href }) => (
+          <NewTabLink
+            key={href}
+            href={href}
+            className="block py-2 px-2 text-sm text-slate-200 hover:bg-slate-800 rounded-md"
+          >
+            {label}
+          </NewTabLink>
+        ))}
+      </div>
+      <p className={mobileSectionTitle}>Global masters</p>
+      <div className="flex flex-col gap-0.5">
+        {GLOBAL_MASTERS.map(({ label, href }) => (
           <NewTabLink
             key={href}
             href={href}

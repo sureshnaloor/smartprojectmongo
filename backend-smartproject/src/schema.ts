@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { projectCurrencySchema } from "./currencies";
 
 // Helper functions for date parsing (copied from original schema.ts)
 const parseDateInput = (val: Date | string | number): Date | null => {
@@ -76,7 +77,7 @@ export const insertProjectSchema = z.object({
   name: z.string(),
   description: z.string().optional().nullable(),
   budget: z.string().or(z.number()).transform(val => val.toString()),
-  currency: z.enum(['USD', 'EUR', 'SAR']).default('USD'),
+  currency: projectCurrencySchema,
   projectType: z.enum(['Highway', 'Infrastructure', 'Power', 'Commercial', 'Petrochem', 'Oil&Gas']).optional().nullable(),
   status: z.enum(['concept', 'planning', 'active', 'in progress', 'aborted', 'on-hold', 'completed']).optional().nullable(),
   startDate: z.date().or(z.string()).transform(val => {
@@ -100,7 +101,7 @@ export const extendedInsertProjectSchema = insertProjectSchema.extend({
   budget: z.string().or(z.number()).transform(val => val.toString()),
   startDate: z.coerce.date().transform(val => val.toISOString().split('T')[0]),
   endDate: z.coerce.date().transform(val => val.toISOString().split('T')[0]),
-  currency: z.enum(['USD', 'EUR', 'SAR']).default('USD').describe('Project currency'),
+  currency: projectCurrencySchema.describe('Project currency'),
 });
 
 // --- WBS Items ---
@@ -734,7 +735,7 @@ export const insertPurchaseRequisitionSchema = z.object({
     if (typeof val === 'string') return new Date(val).toISOString().split('T')[0];
     return val.toISOString().split('T')[0];
   }),
-  requisitionType: z.enum(['material', 'service', 'rental_equipment']),
+  requisitionType: z.enum(['material', 'service', 'rental_equipment', 'tools']),
   requestedBy: z.string().optional().nullable(),
   remarks: z.string().optional().nullable(),
   status: z.enum(['open', 'closed']).optional().default('open'),
@@ -932,16 +933,33 @@ export type InsertEquipmentResourceMapping = z.infer<typeof insertEquipmentResou
 export type EquipmentResourceMapping = InsertEquipmentResourceMapping & { id: number; createdAt: Date; updatedAt: Date };
 
 // --- Tools ---
+export const insertToolManufacturerSchema = z.object({ name: z.string(), description: z.string().optional().nullable() });
+export type InsertToolManufacturer = z.infer<typeof insertToolManufacturerSchema>;
+export type ToolManufacturer = InsertToolManufacturer & { id: number; createdAt: Date; updatedAt: Date };
+
+export const insertToolTypeSchema = z.object({ name: z.string(), description: z.string().optional().nullable() });
+export type InsertToolType = z.infer<typeof insertToolTypeSchema>;
+export type ToolType = InsertToolType & { id: number; createdAt: Date; updatedAt: Date };
+
+export const insertToolModelSchema = z.object({
+  name: z.string(),
+  manufacturer: z.string(),
+  description: z.string().optional().nullable(),
+});
+export type InsertToolModel = z.infer<typeof insertToolModelSchema>;
+export type ToolModel = InsertToolModel & { id: number; createdAt: Date; updatedAt: Date };
+
 export const insertToolMasterSchema = z.object({
   toolNumber: z.string(),
   name: z.string(),
+  toolType: z.string(),
   description: z.string().optional().nullable(),
   brand: z.string().optional().nullable(),
   model: z.string().optional().nullable(),
-  unitOfMeasure: z.string(),
+  unitOfMeasure: z.string().optional().default("H"),
   accessories: z.string().optional().nullable(),
   unitRate: z.string().or(z.number()).transform(val => val.toString()),
-});
+}).transform((data) => ({ ...data, unitOfMeasure: "H" }));
 export type InsertToolMaster = z.infer<typeof insertToolMasterSchema>;
 export type ToolMaster = InsertToolMaster & { id: number; createdAt: Date; updatedAt: Date };
 
@@ -1010,6 +1028,20 @@ export type Country = InsertCountry & { id: number; createdAt: Date; updatedAt: 
 export const insertCitySchema = z.object({ name: z.string(), countryId: z.number() });
 export type InsertCity = z.infer<typeof insertCitySchema>;
 export type City = InsertCity & { id: number; createdAt: Date; updatedAt: Date };
+
+// --- Global defaults (singleton: base currency, default country) ---
+export const updateGlobalDefaultsSchema = z.object({
+  defaultCountryId: z.number().nullable().optional(),
+  defaultCurrencyCode: projectCurrencySchema,
+});
+export type UpdateGlobalDefaults = z.infer<typeof updateGlobalDefaultsSchema>;
+export type GlobalDefaults = {
+  id: number;
+  defaultCountryId: number | null;
+  defaultCurrencyCode: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 // --- Employee master details ---
 export const insertNationalitySchema = z.object({ name: z.string(), description: z.string().optional().nullable() });
@@ -1120,6 +1152,9 @@ export const equipmentMaster = 'equipment_master';
 export const rentalEquipment = 'rental_equipment';
 export const rentalEquipmentResourceMappings = 'rental_equipment_resource_mappings';
 export const equipmentResourceMappings = 'equipment_resource_mappings';
+export const toolManufacturers = 'tool_manufacturers';
+export const toolTypes = 'tool_types';
+export const toolModels = 'tool_models';
 export const toolMaster = 'tool_master';
 export const toolResourceMappings = 'tool_resource_mappings';
 export const resourceTimesheets = 'resource_timesheets';
@@ -1129,6 +1164,7 @@ export const materialTypes = 'material_types';
 export const materialGroups = 'material_groups';
 export const countries = 'countries';
 export const cities = 'cities';
+export const globalDefaults = 'global_defaults';
 export const nationalities = 'nationalities';
 export const employeeTitles = 'employee_titles';
 export const employeePositions = 'employee_positions';

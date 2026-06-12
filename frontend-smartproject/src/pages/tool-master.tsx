@@ -21,11 +21,12 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Upload, Download, Hammer } from "lucide-react";
 import { ToolResourceMapper } from "@/components/project/tool-resource-mapper";
-
+import { RESOURCE_HOURLY_UOM } from "@/lib/resource-uom";
 interface Tool {
   id: number;
   toolNumber: string;
   name: string;
+  toolType: string;
   description?: string | null;
   brand?: string | null;
   model?: string | null;
@@ -36,9 +37,27 @@ interface Tool {
   updatedAt: string;
 }
 
+interface MasterItem {
+  id: number;
+  name: string;
+}
+
+interface ToolModelItem {
+  id: number;
+  name: string;
+  manufacturer: string;
+}
+
+async function parseApiError(res: Response, fallback: string): Promise<string> {
+  const body = await res.json().catch(() => null);
+  return typeof (body as { message?: unknown })?.message === "string"
+    ? (body as { message: string }).message
+    : fallback;
+}
+
 async function getTools(): Promise<Tool[]> {
   const response = await fetch("/api/tool-masters");
-  if (!response.ok) throw new Error("Failed to fetch tools");
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to fetch tools"));
   return response.json();
 }
 
@@ -48,7 +67,7 @@ async function createTool(data: Omit<Tool, "id" | "createdAt" | "updatedAt">): P
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error("Failed to create tool");
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to create tool"));
   return response.json();
 }
 
@@ -61,7 +80,7 @@ async function updateTool(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error("Failed to update tool");
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to update tool"));
   return response.json();
 }
 
@@ -70,7 +89,7 @@ async function deleteTool(id: number): Promise<void> {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
   });
-  if (!response.ok) throw new Error("Failed to delete tool");
+  if (!response.ok) throw new Error(await parseApiError(response, "Failed to delete tool"));
 }
 
 async function bulkUploadTools(csvData: any[]): Promise<Tool[]> {
@@ -96,24 +115,55 @@ export default function ToolMasterPage() {
   const [formData, setFormData] = useState({
     toolNumber: "",
     name: "",
+    toolType: "",
     description: "",
     brand: "",
     model: "",
-    unitOfMeasure: "",
     accessories: "",
     unitRate: "",
   });
 
   const { data: tools = [], isLoading } = useQuery({
-    queryKey: ["tool-master"],
+    queryKey: ["/api/tool-masters"],
     queryFn: getTools,
   });
+
+  const { data: toolTypes = [] } = useQuery({
+    queryKey: ["/api/tool-types"],
+    queryFn: async () => {
+      const res = await fetch("/api/tool-types");
+      if (!res.ok) throw new Error("Failed to load tool types");
+      return res.json() as Promise<MasterItem[]>;
+    },
+  });
+
+  const { data: manufacturers = [] } = useQuery({
+    queryKey: ["/api/tool-manufacturers"],
+    queryFn: async () => {
+      const res = await fetch("/api/tool-manufacturers");
+      if (!res.ok) throw new Error("Failed to load manufacturers");
+      return res.json() as Promise<MasterItem[]>;
+    },
+  });
+
+  const { data: toolModels = [] } = useQuery({
+    queryKey: ["/api/tool-models"],
+    queryFn: async () => {
+      const res = await fetch("/api/tool-models");
+      if (!res.ok) throw new Error("Failed to load models");
+      return res.json() as Promise<ToolModelItem[]>;
+    },
+  });
+
+  const modelsForBrand = formData.brand
+    ? toolModels.filter((m) => m.manufacturer.toLowerCase() === formData.brand.toLowerCase())
+    : [];
 
   const createMutation = useMutation({
     mutationFn: createTool,
     onSuccess: () => {
       toast({ title: "Tool created successfully" });
-      queryClient.invalidateQueries({ queryKey: ["tool-master"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tool-masters"] });
       resetForm();
       setIsDialogOpen(false);
     },
@@ -126,12 +176,12 @@ export default function ToolMasterPage() {
     mutationFn: ({ id, data }: { id: number; data: any }) => updateTool(id, data),
     onSuccess: () => {
       toast({ title: "Tool updated successfully" });
-      queryClient.invalidateQueries({ queryKey: ["tool-master"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tool-masters"] });
       resetForm();
       setIsDialogOpen(false);
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Could not save tool", description: error.message, variant: "destructive" });
     },
   });
 
@@ -139,7 +189,7 @@ export default function ToolMasterPage() {
     mutationFn: deleteTool,
     onSuccess: () => {
       toast({ title: "Tool deleted successfully" });
-      queryClient.invalidateQueries({ queryKey: ["tool-master"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tool-masters"] });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -150,7 +200,7 @@ export default function ToolMasterPage() {
     mutationFn: bulkUploadTools,
     onSuccess: (rows) => {
       toast({ title: `${rows.length} tool(s) uploaded successfully` });
-      queryClient.invalidateQueries({ queryKey: ["tool-master"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tool-masters"] });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -161,10 +211,10 @@ export default function ToolMasterPage() {
     setFormData({
       toolNumber: "",
       name: "",
+      toolType: "",
       description: "",
       brand: "",
       model: "",
-      unitOfMeasure: "",
       accessories: "",
       unitRate: "",
     });
@@ -175,6 +225,7 @@ export default function ToolMasterPage() {
     e.preventDefault();
     const payload = {
       ...formData,
+      unitOfMeasure: RESOURCE_HOURLY_UOM,
       description: formData.description || undefined,
       brand: formData.brand || undefined,
       model: formData.model || undefined,
@@ -189,10 +240,10 @@ export default function ToolMasterPage() {
     setFormData({
       toolNumber: tool.toolNumber,
       name: tool.name,
+      toolType: tool.toolType || "",
       description: tool.description || "",
       brand: tool.brand || "",
       model: tool.model || "",
-      unitOfMeasure: tool.unitOfMeasure || "",
       accessories: tool.accessories || "",
       unitRate: tool.unitRate,
     });
@@ -214,7 +265,7 @@ export default function ToolMasterPage() {
         const headers = lines[0]
           .split(",")
           .map((h) => h.trim().replace(/^\uFEFF/, ""));
-        const required = ["toolNumber", "name", "unitOfMeasure", "unitRate"];
+        const required = ["toolNumber", "name", "toolType", "unitRate"];
         const missing = required.filter((h) => !headers.includes(h));
         if (missing.length > 0) {
           toast({ title: `CSV missing: ${missing.join(", ")}`, variant: "destructive" });
@@ -227,10 +278,11 @@ export default function ToolMasterPage() {
           return {
             toolNumber: row.toolNumber || row.toolCode || "",
             name: row.name,
+            toolType: row.toolType,
             description: row.description || undefined,
             brand: row.brand || undefined,
             model: row.model || undefined,
-            unitOfMeasure: row.unitOfMeasure,
+            unitOfMeasure: RESOURCE_HOURLY_UOM,
             accessories: row.accessories || undefined,
             unitRate: row.unitRate,
           };
@@ -245,22 +297,14 @@ export default function ToolMasterPage() {
   };
 
   const filtered = tools.filter((t) =>
-    [t.toolNumber, t.name, t.brand ?? "", t.model ?? ""]
+    [t.toolNumber, t.name, t.toolType ?? "", t.brand ?? "", t.model ?? ""]
       .join(" ")
       .toLowerCase()
       .includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="p-8 min-h-screen bg-zinc-50">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-            Tool Master
-          </h1>
-          <p className="text-muted-foreground mt-1">Manage tools and map each tool to a tools resource</p>
-        </div>
-
+      <div className="p-6">
         <div className="bg-white rounded-lg shadow p-4 mb-6">
           <div className="flex items-center gap-4 flex-wrap">
             <Input
@@ -291,25 +335,60 @@ export default function ToolMasterPage() {
                       <Input required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Brand</Label>
-                      <Input value={formData.brand} onChange={(e) => setFormData({ ...formData, brand: e.target.value })} />
-                    </div>
-                    <div>
-                      <Label>Model</Label>
-                      <Input value={formData.model} onChange={(e) => setFormData({ ...formData, model: e.target.value })} />
-                    </div>
+                  <div>
+                    <Label>Tool Type *</Label>
+                    <select
+                      className="w-full border rounded px-2 py-2 text-sm"
+                      required
+                      value={formData.toolType}
+                      onChange={(e) => setFormData({ ...formData, toolType: e.target.value })}
+                    >
+                      <option value="">Select type</option>
+                      {toolTypes.map((t) => (
+                        <option key={t.id} value={t.name}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>Unit of Measure *</Label>
-                      <Input placeholder="each / set" required value={formData.unitOfMeasure} onChange={(e) => setFormData({ ...formData, unitOfMeasure: e.target.value })} />
+                      <Label>Manufacturer</Label>
+                      <select
+                        className="w-full border rounded px-2 py-2 text-sm"
+                        value={formData.brand}
+                        onChange={(e) =>
+                          setFormData({ ...formData, brand: e.target.value, model: "" })
+                        }
+                      >
+                        <option value="">—</option>
+                        {manufacturers.map((m) => (
+                          <option key={m.id} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div>
-                      <Label>Unit Rate *</Label>
-                      <Input type="number" required step="0.01" value={formData.unitRate} onChange={(e) => setFormData({ ...formData, unitRate: e.target.value })} />
+                      <Label>Model</Label>
+                      <select
+                        className="w-full border rounded px-2 py-2 text-sm"
+                        value={formData.model}
+                        disabled={!formData.brand}
+                        onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                      >
+                        <option value="">—</option>
+                        {modelsForBrand.map((m) => (
+                          <option key={m.id} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
+                  </div>
+                  <div>
+                    <Label>Hourly Rate ({RESOURCE_HOURLY_UOM}) *</Label>
+                    <Input type="number" required step="0.01" value={formData.unitRate} onChange={(e) => setFormData({ ...formData, unitRate: e.target.value })} />
                   </div>
                   <div>
                     <Label>Accessories</Label>
@@ -355,10 +434,10 @@ export default function ToolMasterPage() {
               <TableRow>
                 <TableHead>Tool #</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Brand</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Manufacturer</TableHead>
                 <TableHead>Model</TableHead>
-                <TableHead>UOM</TableHead>
-                <TableHead>Unit Rate</TableHead>
+                <TableHead>Hourly Rate</TableHead>
                 <TableHead>Accessories</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -373,10 +452,10 @@ export default function ToolMasterPage() {
                   <TableRow key={tool.id}>
                     <TableCell className="font-mono text-xs">{tool.toolNumber}</TableCell>
                     <TableCell className="font-medium">{tool.name}</TableCell>
+                    <TableCell>{tool.toolType || "—"}</TableCell>
                     <TableCell>{tool.brand || "—"}</TableCell>
                     <TableCell>{tool.model || "—"}</TableCell>
-                    <TableCell>{tool.unitOfMeasure}</TableCell>
-                    <TableCell>{tool.unitRate}</TableCell>
+                    <TableCell>{tool.unitRate} / {RESOURCE_HOURLY_UOM}</TableCell>
                     <TableCell>{tool.accessories || "—"}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -406,9 +485,8 @@ export default function ToolMasterPage() {
         </div>
         <p className="mt-4 text-xs text-muted-foreground flex items-center gap-1.5">
           <Hammer className="h-3.5 w-3.5" />
-          Map each tool to a global tools resource so it can appear in allocation with project/WP assignment calendar.
+          Set up Manufacturer, Models, and Tool Type tabs first, then map each tool to a global tools resource.
         </p>
       </div>
-    </div>
   );
 }

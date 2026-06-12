@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { formatHourlyRate } from "@/lib/resource-uom";
 import { useMapSuccessAutoClose } from "@/hooks/use-map-success-auto-close";
 import { Button } from "@/components/ui/button";
 import {
@@ -272,8 +273,8 @@ export function EmployeeResourceMapper({
                       </p>
                     )}
                     <p>
-                      <span className="font-medium">Unit Rate:</span>{" "}
-                      {currentMappedResource.unitRate} / {currentMappedResource.unitOfMeasure}
+                      <span className="font-medium">Hourly Rate:</span>{" "}
+                      {formatHourlyRate(currentMappedResource.unitRate)}
                     </p>
                   </div>
                 </div>
@@ -339,8 +340,8 @@ export function EmployeeResourceMapper({
                         )}
                         <div className="flex flex-wrap gap-4 mt-3 text-sm">
                           <span className="text-gray-600">
-                            <span className="font-medium">Rate:</span>{" "}
-                            {resource.unitRate} / {resource.unitOfMeasure}
+                            <span className="font-medium">Hourly Rate:</span>{" "}
+                            {formatHourlyRate(resource.unitRate)}
                           </span>
                         </div>
                       </div>

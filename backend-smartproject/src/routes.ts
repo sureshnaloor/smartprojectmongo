@@ -118,6 +118,9 @@ import {
   insertEquipmentResourceMappingSchema,
   insertRentalEquipmentResourceMappingSchema,
   insertToolMasterSchema,
+  insertToolManufacturerSchema,
+  insertToolTypeSchema,
+  insertToolModelSchema,
   insertToolResourceMappingSchema,
   insertResourceTimesheetSchema,
   insertRentalManpowerSchema,
@@ -158,6 +161,7 @@ import {
   cities,
   insertCountrySchema,
   insertCitySchema,
+  updateGlobalDefaultsSchema,
   nationalities,
   employeeTitles,
   employeePositions,
@@ -3999,7 +4003,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         items?: Record<string, unknown>[];
         prNumber: string;
         prDate: string;
-        requisitionType: "material" | "service" | "rental_equipment";
+        requisitionType: "material" | "service" | "rental_equipment" | "tools";
         requestedBy?: string | null;
         remarks?: string | null;
       };
@@ -7202,13 +7206,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   /** Tools mapped to tools resources + WP assignments. */
   app.get("/api/allocation/tools", async (_req: Request, res: Response) => {
     try {
-      const tools = await db.collection(toolMaster).find().toArray().orderBy(toolMaster.toolNumber);
+      const tools = await storage.getToolMasters();
       const mappings = await db.collection(toolResourceMappings).find().toArray();
       const mappingByToolId = new Map(mappings.map((m) => [m.toolId, m]));
       const mappedResourceIds = [...new Set(mappings.map((m) => m.resourceId))];
       const resourceRows =
         mappedResourceIds.length > 0
-          ? await db.collection(resources).find().toArray().where(inArray(resources.id, mappedResourceIds))
+          ? await db.collection(resources).find({ id: { $in: mappedResourceIds } }).toArray()
           : [];
       const resourceById = new Map(resourceRows.map((r) => [r.id, r]));
       const assignmentsByResourceId = await loadWpAssignmentsByGlobalResourceIds(mappedResourceIds, "tools");
@@ -7718,6 +7722,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).end();
     } catch (err) {
       if (err instanceof Error && err.message.startsWith("Cannot delete service group")) {
+        return res.status(400).json({ message: err.message });
+      }
+      handleError(err, res);
+    }
+  });
+
+  // ========================================
+  // GLOBAL DEFAULTS (singleton: base currency, default country)
+  // ========================================
+
+  app.get("/api/global-defaults", async (_req: Request, res: Response) => {
+    try {
+      const defaults = await storage.getGlobalDefaults();
+      let defaultCountry: { id: number; name: string; code: string | null } | null = null;
+      if (defaults.defaultCountryId != null) {
+        const country = await storage.getCountry(defaults.defaultCountryId);
+        if (country) {
+          defaultCountry = {
+            id: country.id,
+            name: country.name,
+            code: country.code ?? null,
+          };
+        }
+      }
+      res.json({ ...defaults, defaultCountry });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.patch("/api/global-defaults", async (req: Request, res: Response) => {
+    try {
+      const data = updateGlobalDefaultsSchema.parse(req.body);
+      const updated = await storage.updateGlobalDefaults(data);
+      let defaultCountry: { id: number; name: string; code: string | null } | null = null;
+      if (updated.defaultCountryId != null) {
+        const country = await storage.getCountry(updated.defaultCountryId);
+        if (country) {
+          defaultCountry = {
+            id: country.id,
+            name: country.name,
+            code: country.code ?? null,
+          };
+        }
+      }
+      res.json({ ...updated, defaultCountry });
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("not found")) {
         return res.status(400).json({ message: err.message });
       }
       handleError(err, res);
@@ -8882,12 +8934,173 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== TOOL MANUFACTURERS =====
+  app.get("/api/tool-manufacturers", async (_req: Request, res: Response) => {
+    try {
+      res.json(await storage.getToolManufacturers());
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/tool-manufacturers/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const row = await storage.getToolManufacturer(id);
+      if (!row) return res.status(404).json({ message: "Not found" });
+      res.json(row);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.post("/api/tool-manufacturers", async (req: Request, res: Response) => {
+    try {
+      const data = insertToolManufacturerSchema.parse(req.body);
+      res.status(201).json(await storage.createToolManufacturer(data));
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.patch("/api/tool-manufacturers/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const data = insertToolManufacturerSchema.partial().parse(req.body);
+      const updated = await storage.updateToolManufacturer(id, data);
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.delete("/api/tool-manufacturers/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      await storage.deleteToolManufacturer(id);
+      res.status(204).end();
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // ===== TOOL TYPES =====
+  app.get("/api/tool-types", async (_req: Request, res: Response) => {
+    try {
+      res.json(await storage.getToolTypes());
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/tool-types/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const row = await storage.getToolType(id);
+      if (!row) return res.status(404).json({ message: "Not found" });
+      res.json(row);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.post("/api/tool-types", async (req: Request, res: Response) => {
+    try {
+      const data = insertToolTypeSchema.parse(req.body);
+      res.status(201).json(await storage.createToolType(data));
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.patch("/api/tool-types/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const data = insertToolTypeSchema.partial().parse(req.body);
+      const updated = await storage.updateToolType(id, data);
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.delete("/api/tool-types/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      await storage.deleteToolType(id);
+      res.status(204).end();
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // ===== TOOL MODELS =====
+  app.get("/api/tool-models", async (_req: Request, res: Response) => {
+    try {
+      res.json(await storage.getToolModels());
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/tool-models/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const row = await storage.getToolModel(id);
+      if (!row) return res.status(404).json({ message: "Not found" });
+      res.json(row);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.post("/api/tool-models", async (req: Request, res: Response) => {
+    try {
+      const data = insertToolModelSchema.parse(req.body);
+      res.status(201).json(await storage.createToolModel(data));
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.patch("/api/tool-models/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const data = insertToolModelSchema.partial().parse(req.body);
+      const updated = await storage.updateToolModel(id, data);
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.delete("/api/tool-models/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      await storage.deleteToolModel(id);
+      res.status(204).end();
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
   // ===== TOOL MASTER ENDPOINTS =====
 
   app.get("/api/tool-masters", async (_req: Request, res: Response) => {
     try {
-      const tools = await db.collection(toolMaster).find().toArray().orderBy(toolMaster.toolNumber);
-      res.json(tools);
+      res.json(await storage.getToolMasters());
     } catch (err) {
       handleError(err, res);
     }
@@ -8897,7 +9110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid tool ID" });
-      const [row] = await db.collection(toolMaster).findOne({ id: id });
+      const row = await storage.getToolMaster(id);
       if (!row) return res.status(404).json({ message: "Tool not found" });
       res.json(row);
     } catch (err) {
@@ -8908,8 +9121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/tool-masters", async (req: Request, res: Response) => {
     try {
       const data = insertToolMasterSchema.parse(req.body);
-      const [created] = await db.collection(toolMaster).insertOne(data as any);
-      res.status(201).json(created);
+      res.status(201).json(await storage.createToolMaster(data));
     } catch (err) {
       handleError(err, res);
     }
@@ -8920,11 +9132,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid tool ID" });
       const data = insertToolMasterSchema.partial().parse(req.body);
-      const [updated] = await db
-        .update(toolMaster)
-        .set({ ...data, updatedAt: new Date() } as any)
-        .where(eq(toolMaster.id, id))
-        .returning();
+      const updated = await storage.updateToolMaster(id, data);
       if (!updated) return res.status(404).json({ message: "Tool not found" });
       res.json(updated);
     } catch (err) {
@@ -8936,8 +9144,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid tool ID" });
-      const result = await db.delete(toolMaster).where(eq(toolMaster.id, id)).returning();
-      if (result.length === 0) return res.status(404).json({ message: "Tool not found" });
+      const existing = await storage.getToolMaster(id);
+      if (!existing) return res.status(404).json({ message: "Tool not found" });
+      await storage.deleteToolMaster(id);
       res.status(204).end();
     } catch (err) {
       handleError(err, res);
@@ -8954,7 +9163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "csvData must contain at least one row" });
       }
 
-      const parsedRows: any[] = [];
+      const parsedRows: Awaited<ReturnType<typeof insertToolMasterSchema.parse>>[] = [];
       const seenNumbers = new Set<string>();
 
       for (let i = 0; i < csvData.length; i++) {
@@ -8993,17 +9202,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         parsedRows.push(parsed.data);
       }
 
-      const existing = await db
-        .select({ toolNumber: toolMaster.toolNumber })
-        .from(toolMaster)
-        .where(inArray(toolMaster.toolNumber, [...seenNumbers]));
+      const existingList = await storage.getToolMasters();
+      const existing = existingList.filter((t) =>
+        [...seenNumbers].some((n) => n.toLowerCase() === t.toolNumber.toLowerCase())
+      );
       if (existing.length > 0) {
         return res.status(400).json({
           message: `toolNumber already exists: ${existing.map((e) => e.toolNumber).join(", ")}`,
         });
       }
 
-      const created = await db.collection(toolMaster).insertOne(parsedRows as any);
+      const created = await storage.bulkCreateToolMasters(parsedRows);
       res.status(201).json(created);
     } catch (err) {
       handleError(err, res);
@@ -9654,16 +9863,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid tool ID" });
       }
 
-      const mapping = await db
-        .select()
-        .from(toolResourceMappings)
-        .where(eq(toolResourceMappings.toolId, toolId));
-
-      if (mapping.length === 0) {
-        return res.json(null);
-      }
-
-      res.json(mapping[0]);
+      const mapping = await storage.getToolResourceMapping(toolId);
+      res.json(mapping ?? null);
     } catch (err) {
       handleError(err, res);
     }
@@ -9682,56 +9883,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         resourceId: req.body.resourceId,
       });
 
-      // Check if tool exists
-      const tool = await db
-        .select()
-        .from(toolMaster)
-        .where(eq(toolMaster.id, toolId));
-
-      if (tool.length === 0) {
-        return res.status(404).json({ message: "Tool not found" });
-      }
-
-      // Check if resource exists
-      const resource = await db
-        .select()
-        .from(resources)
-        .where(eq(resources.id, (mappingData as any).resourceId));
-
-      if (resource.length === 0) {
-        return res.status(404).json({ message: "Resource not found" });
-      }
-
-      // Check if resource is of type tools
-      if (resource[0].type !== "tools") {
-        return res.status(400).json({ message: "Resource must be of type 'tools'" });
-      }
-
-      // Check if mapping already exists for this tool
-      const existingMapping = await db
-        .select()
-        .from(toolResourceMappings)
-        .where(eq(toolResourceMappings.toolId, toolId));
-
-      if (existingMapping.length > 0) {
-        // Update existing mapping
-        const updatedMapping = await db
-          .update(toolResourceMappings)
-          .set({
-            resourceId: (mappingData as any).resourceId,
-            updatedAt: new Date(),
-          })
-          .where(eq(toolResourceMappings.toolId, toolId))
-          .returning();
-        return res.json(updatedMapping[0]);
-      }
-
-      // Create new mapping
-      const newMapping = await db
-        .insert(toolResourceMappings)
-        .values(mappingData as any)
-        .returning();
-      res.status(201).json(newMapping[0]);
+      const existing = await storage.getToolResourceMapping(toolId);
+      const mapping = await storage.upsertToolResourceMapping(toolId, mappingData.resourceId);
+      res.status(existing ? 200 : 201).json(mapping);
     } catch (err) {
       handleError(err, res);
     }
@@ -9745,16 +9899,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid tool ID" });
       }
 
-      const result = await db
-        .delete(toolResourceMappings)
-        .where(eq(toolResourceMappings.toolId, toolId))
-        .returning();
-
-      if (result.length === 0) {
+      const deleted = await storage.deleteToolResourceMapping(toolId);
+      if (!deleted) {
         return res.status(404).json({ message: "Mapping not found" });
       }
-
-      res.json({ message: "Mapping deleted successfully", deletedMapping: result[0] });
+      res.json({ message: "Mapping deleted successfully", deletedMapping: deleted });
     } catch (err) {
       handleError(err, res);
     }

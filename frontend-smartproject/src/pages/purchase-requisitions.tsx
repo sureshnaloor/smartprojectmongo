@@ -28,7 +28,7 @@ interface PurchaseRequisition {
   id: number;
   prNumber: string;
   prDate: string;
-  requisitionType: "material" | "service" | "rental_equipment";
+  requisitionType: "material" | "service" | "rental_equipment" | "tools";
   requestedBy: string | null;
   remarks: string | null;
   status: "open" | "closed";
@@ -64,6 +64,13 @@ interface RentalEquipmentMaster {
   vendorId?: number;
 }
 
+interface ToolMasterItem {
+  id: number;
+  toolNumber: string;
+  name: string;
+  toolType: string;
+}
+
 interface ProjectSummary {
   id: number;
   name: string;
@@ -89,7 +96,7 @@ interface RequisitionItemInput {
 }
 
 interface PurchaseRequisitionsPageProps {
-  requisitionType?: "material" | "service" | "rental_equipment";
+  requisitionType?: "material" | "service" | "rental_equipment" | "tools";
   pageTitle?: string;
   listTitle?: string;
   emptyHint?: string;
@@ -98,7 +105,7 @@ interface PurchaseRequisitionsPageProps {
 function resolveRequisitionType(
   location: string,
   override?: PurchaseRequisitionsPageProps["requisitionType"]
-): "material" | "service" | "rental_equipment" {
+): "material" | "service" | "rental_equipment" | "tools" {
   if (override) return override;
   if (location.startsWith("/service-master")) return "service";
   if (
@@ -106,6 +113,12 @@ function resolveRequisitionType(
     location.startsWith("/equipment-master/purchase-requisitions")
   ) {
     return "rental_equipment";
+  }
+  if (
+    location.startsWith("/tool-master/purchase-requisitions") ||
+    location.startsWith("/tool-master/rental-pr")
+  ) {
+    return "tools";
   }
   return "material";
 }
@@ -195,6 +208,16 @@ export default function PurchaseRequisitionsPage({
     enabled: requisitionType === "rental_equipment",
   });
 
+  const { data: toolMasters = [] } = useQuery<ToolMasterItem[]>({
+    queryKey: ["/api/tool-masters"],
+    queryFn: async () => {
+      const res = await fetch("/api/tool-masters");
+      if (!res.ok) throw new Error("Failed to load tools");
+      return res.json();
+    },
+    enabled: requisitionType === "tools",
+  });
+
   const { data: projects = [] } = useQuery<ProjectSummary[]>({
     queryKey: ["/api/projects"],
     queryFn: async () => {
@@ -254,7 +277,9 @@ export default function PurchaseRequisitionsPage({
       ? materials
       : requisitionType === "service"
         ? services
-        : rentalEquipment;
+        : requisitionType === "rental_equipment"
+          ? rentalEquipment
+          : toolMasters;
 
   const startNewPr = () => {
     setSelectedPrId(null);
@@ -367,8 +392,16 @@ export default function PurchaseRequisitionsPage({
         itemCode: code,
         itemDescription: svc?.serviceDescription ?? "",
       });
-    } else {
+    } else if (requisitionType === "rental_equipment") {
       onRentalEquipmentCodeChange(index, code);
+    } else {
+      const tool = toolMasters.find(
+        (t) => t.toolNumber.toLowerCase() === code.toLowerCase()
+      );
+      updateItem(index, {
+        itemCode: code,
+        itemDescription: tool?.name ?? "",
+      });
     }
   };
 
@@ -503,7 +536,9 @@ export default function PurchaseRequisitionsPage({
       ? "Material Code"
       : requisitionType === "service"
         ? "Service Code"
-        : "Rental Equipment Number";
+        : requisitionType === "rental_equipment"
+          ? "Rental Equipment Number"
+          : "Tool Number";
 
   const heading =
     pageTitle ??
@@ -511,7 +546,9 @@ export default function PurchaseRequisitionsPage({
       ? "Material Purchase Requisitions"
       : requisitionType === "service"
         ? "Service Purchase Requisitions"
-        : "Rental Equipment Purchase Requisitions");
+        : requisitionType === "rental_equipment"
+          ? "Rental Equipment Purchase Requisitions"
+          : "Tool Purchase Requisitions");
 
   const listHeading = listTitle ?? heading;
 
@@ -519,7 +556,9 @@ export default function PurchaseRequisitionsPage({
     emptyHint ??
     (requisitionType === "rental_equipment"
       ? "No rental equipment requisitions yet. Add rental equipment in the master first, then create a PR."
-      : "No requisitions yet.");
+      : requisitionType === "tools"
+        ? "No tool requisitions yet. Add tools in Tool Master first, then create a PR."
+        : "No requisitions yet.");
 
   return (
     <div className="flex flex-col gap-4 p-6 h-full min-h-0">
@@ -702,9 +741,12 @@ export default function PurchaseRequisitionsPage({
                         onChange={(e) => onItemCodeChange(idx, e.target.value)}
                       >
                         <option value="">Select code</option>
-                        {masters.length === 0 && requisitionType === "rental_equipment" ? (
+                        {masters.length === 0 &&
+                        (requisitionType === "rental_equipment" || requisitionType === "tools") ? (
                           <option value="" disabled>
-                            No rental equipment — add records in Rental Equipment tab first
+                            {requisitionType === "tools"
+                              ? "No tools — add records in Tool Master first"
+                              : "No rental equipment — add records in Rental Equipment tab first"}
                           </option>
                         ) : (
                           masters.map((m) => {
@@ -713,13 +755,17 @@ export default function PurchaseRequisitionsPage({
                                 ? (m as MaterialMaster).materialCode
                                 : requisitionType === "service"
                                   ? (m as ServiceMaster).serviceCode
-                                  : (m as RentalEquipmentMaster).equipmentNumber;
+                                  : requisitionType === "rental_equipment"
+                                    ? (m as RentalEquipmentMaster).equipmentNumber
+                                    : (m as ToolMasterItem).toolNumber;
                             const desc =
                               requisitionType === "material"
                                 ? (m as MaterialMaster).materialDescription
                                 : requisitionType === "service"
                                   ? (m as ServiceMaster).serviceDescription
-                                  : (m as RentalEquipmentMaster).equipmentName;
+                                  : requisitionType === "rental_equipment"
+                                    ? (m as RentalEquipmentMaster).equipmentName
+                                    : (m as ToolMasterItem).name;
                             const vendorCode =
                               requisitionType === "rental_equipment"
                                 ? vendorById.get((m as RentalEquipmentMaster).vendorId ?? -1)?.vendorCode

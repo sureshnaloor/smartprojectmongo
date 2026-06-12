@@ -1,9 +1,9 @@
-name,description,type,unitOfMeasure,unitRate,remarks
-Skilled Labor Force,Professional construction workers,manpower,hours,85.00,Available for long-term contracts
-Heavy Equipment Operator,Trained equipment operators,manpower,hours,95.00,Certified with safety training
-Mobile Crane Service,20-ton mobile crane for lifting,equipment,days,1200.00,Available on call
-Temporary Workforce,Unskilled labor for general work,rental_manpower,hours,35.00,Peak season staffing
-Generator Rental,Diesel generators 100-500 kVA,rental_equipment,days,350.00,Complete with fuel and maintenance
-Concrete Pumping Service,Concrete pump truck rental,rental_equipment,days,450.00,Includes operator and delivery
-Safety Equipment Package,Helmets scaffolding harnesses,tools,months,500.00,Regular inspection and certification
-Power Tools Set,Drills saws nail guns,tools,weeks,250.00,All tools insured and maintained
+name,description,type,unitRate,remarks
+Skilled Labor Force,Professional construction workers,manpower,85.00,Available for long-term contracts
+Heavy Equipment Operator,Trained equipment operators,manpower,95.00,Certified with safety training
+Mobile Crane Service,20-ton mobile crane for lifting,equipment,120.00,Available on call
+Temporary Workforce,Unskilled labor for general work,rental_manpower,35.00,Peak season staffing
+Generator Rental,Diesel generators 100-500 kVA,rental_equipment,350.00,Complete with fuel and maintenance
+Concrete Pumping Service,Concrete pump truck rental,rental_equipment,450.00,Includes operator and delivery
+Safety Equipment Package,Helmets scaffolding harnesses,tools,12.50,Regular inspection and certification
+Power Tools Set,Drills saws nail guns,tools,8.00,All tools insured and maintained

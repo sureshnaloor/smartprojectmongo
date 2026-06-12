@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { normalizeHourlyResourceUom } from "./resource-uom";
 import {
   type Project,
   type InsertProject,
@@ -65,6 +66,8 @@ import {
   type InsertCountry,
   type City,
   type InsertCity,
+  type GlobalDefaults,
+  type UpdateGlobalDefaults,
   type VendorMaster,
   type InsertVendorMaster,
   type ServiceType,
@@ -110,6 +113,15 @@ import {
   type InsertRentalEquipment,
   type EquipmentResourceMapping,
   type RentalEquipmentResourceMapping,
+  type ToolManufacturer,
+  type InsertToolManufacturer,
+  type ToolType,
+  type InsertToolType,
+  type ToolModel,
+  type InsertToolModel,
+  type ToolMaster,
+  type InsertToolMaster,
+  type ToolResourceMapping,
   type InsertCollaborationMessage,
   type InsertCollabNotification,
   type CollabNotification,
@@ -118,7 +130,10 @@ import {
   projectCollaborationThreads,
   projectCollaborationMessages,
   collabNotifications,
+  globalDefaults,
 } from "./schema";
+
+const GLOBAL_DEFAULTS_ID = 1;
 
 export class DatabaseStorage {
   private async getNextId(collectionName: string): Promise<number> {
@@ -643,6 +658,44 @@ export class DatabaseStorage {
       throw new Error(`Cannot delete country "${country.name}" — it is used by a vendor`);
     }
     await db.collection("countries").deleteOne({ id });
+  }
+
+  async getGlobalDefaults(): Promise<GlobalDefaults> {
+    const existing = (await db
+      .collection(globalDefaults)
+      .findOne({ id: GLOBAL_DEFAULTS_ID })) as GlobalDefaults | null;
+    if (existing) return existing;
+
+    const defaults: GlobalDefaults = {
+      id: GLOBAL_DEFAULTS_ID,
+      defaultCountryId: null,
+      defaultCurrencyCode: "USD",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await db.collection(globalDefaults).insertOne(defaults);
+    return defaults;
+  }
+
+  async updateGlobalDefaults(data: UpdateGlobalDefaults): Promise<GlobalDefaults> {
+    if (data.defaultCountryId != null) {
+      const country = await this.getCountry(data.defaultCountryId);
+      if (!country) {
+        throw new Error("Selected default country was not found");
+      }
+    }
+    await this.getGlobalDefaults();
+    await db.collection(globalDefaults).updateOne(
+      { id: GLOBAL_DEFAULTS_ID },
+      {
+        $set: {
+          ...data,
+          defaultCountryId: data.defaultCountryId ?? null,
+          updatedAt: new Date(),
+        },
+      }
+    );
+    return this.getGlobalDefaults();
   }
 
   async getCities(countryId?: number): Promise<Array<City & { countryName?: string }>> {
@@ -1957,6 +2010,296 @@ export class DatabaseStorage {
     return existing;
   }
 
+  async getToolManufacturers(): Promise<ToolManufacturer[]> {
+    return this.listNamedRecords<ToolManufacturer>("tool_manufacturers");
+  }
+
+  async getToolManufacturer(id: number): Promise<ToolManufacturer | undefined> {
+    return this.getNamedRecord<ToolManufacturer>("tool_manufacturers", id);
+  }
+
+  async getToolManufacturerByName(name: string): Promise<ToolManufacturer | undefined> {
+    return this.getNamedRecordByName<ToolManufacturer>("tool_manufacturers", name);
+  }
+
+  async createToolManufacturer(data: InsertToolManufacturer): Promise<ToolManufacturer> {
+    return this.createNamedRecord<ToolManufacturer>("tool_manufacturers", data);
+  }
+
+  async updateToolManufacturer(
+    id: number,
+    data: Partial<InsertToolManufacturer>
+  ): Promise<ToolManufacturer | undefined> {
+    return this.updateNamedRecord<ToolManufacturer>("tool_manufacturers", id, data);
+  }
+
+  async deleteToolManufacturer(id: number): Promise<void> {
+    const item = await this.getToolManufacturer(id);
+    if (!item) return;
+    const namePattern = new RegExp(`^${item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    const inUse =
+      (await db.collection("tool_master").findOne({ brand: namePattern })) ||
+      (await db.collection("tool_models").findOne({ manufacturer: namePattern }));
+    if (inUse) {
+      throw new Error(`Cannot delete manufacturer "${item.name}" — it is used by tools or models`);
+    }
+    await this.deleteNamedRecord("tool_manufacturers", id);
+  }
+
+  async getToolTypes(): Promise<ToolType[]> {
+    return this.listNamedRecords<ToolType>("tool_types");
+  }
+
+  async getToolType(id: number): Promise<ToolType | undefined> {
+    return this.getNamedRecord<ToolType>("tool_types", id);
+  }
+
+  async getToolTypeByName(name: string): Promise<ToolType | undefined> {
+    return this.getNamedRecordByName<ToolType>("tool_types", name);
+  }
+
+  async createToolType(data: InsertToolType): Promise<ToolType> {
+    return this.createNamedRecord<ToolType>("tool_types", data);
+  }
+
+  async updateToolType(id: number, data: Partial<InsertToolType>): Promise<ToolType | undefined> {
+    return this.updateNamedRecord<ToolType>("tool_types", id, data);
+  }
+
+  async deleteToolType(id: number): Promise<void> {
+    const item = await this.getToolType(id);
+    if (!item) return;
+    const namePattern = new RegExp(`^${item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    const inUse = await db.collection("tool_master").findOne({ toolType: namePattern });
+    if (inUse) {
+      throw new Error(`Cannot delete tool type "${item.name}" — it is used by a tool`);
+    }
+    await this.deleteNamedRecord("tool_types", id);
+  }
+
+  async getToolModels(): Promise<ToolModel[]> {
+    const docs = await db.collection("tool_models").find().sort({ manufacturer: 1, name: 1 }).toArray();
+    const result: ToolModel[] = [];
+    for (const doc of docs) {
+      const id = await this.ensureNumericId("tool_models", doc as Record<string, unknown>);
+      result.push({ ...(doc as ToolModel), id });
+    }
+    return result;
+  }
+
+  async getToolModel(id: number): Promise<ToolModel | undefined> {
+    return (await db.collection("tool_models").findOne({ id })) as ToolModel | undefined;
+  }
+
+  async getToolModelByNameAndManufacturer(
+    name: string,
+    manufacturer: string
+  ): Promise<ToolModel | undefined> {
+    const trimmedName = name.trim();
+    const trimmedMfr = manufacturer.trim();
+    if (!trimmedName || !trimmedMfr) return undefined;
+    const all = await this.getToolModels();
+    return all.find(
+      (m) =>
+        m.name.toLowerCase() === trimmedName.toLowerCase() &&
+        m.manufacturer.toLowerCase() === trimmedMfr.toLowerCase()
+    );
+  }
+
+  async createToolModel(data: InsertToolModel): Promise<ToolModel> {
+    const mfr = await this.getToolManufacturerByName(data.manufacturer);
+    if (!mfr) {
+      throw new Error(`Manufacturer "${data.manufacturer}" is not in the tool manufacturer master`);
+    }
+    const existing = await this.getToolModelByNameAndManufacturer(data.name, data.manufacturer);
+    if (existing) {
+      throw new Error(`Model "${data.name}" already exists for manufacturer "${data.manufacturer}"`);
+    }
+    const id = await this.getNextId("tool_models");
+    const item = { ...data, id, createdAt: new Date(), updatedAt: new Date() };
+    await db.collection("tool_models").insertOne(item);
+    return item as ToolModel;
+  }
+
+  async updateToolModel(
+    id: number,
+    data: Partial<InsertToolModel>
+  ): Promise<ToolModel | undefined> {
+    const existing = await this.getToolModel(id);
+    if (!existing) return undefined;
+    const manufacturer = data.manufacturer ?? existing.manufacturer;
+    const name = data.name ?? existing.name;
+    if (data.manufacturer) {
+      const mfr = await this.getToolManufacturerByName(data.manufacturer);
+      if (!mfr) {
+        throw new Error(`Manufacturer "${data.manufacturer}" is not in the tool manufacturer master`);
+      }
+    }
+    if (data.name || data.manufacturer) {
+      const dup = await this.getToolModelByNameAndManufacturer(name, manufacturer);
+      if (dup && dup.id !== id) {
+        throw new Error(`Model "${name}" already exists for manufacturer "${manufacturer}"`);
+      }
+    }
+    await db.collection("tool_models").updateOne({ id }, { $set: { ...data, updatedAt: new Date() } });
+    return this.getToolModel(id);
+  }
+
+  async deleteToolModel(id: number): Promise<void> {
+    const item = await this.getToolModel(id);
+    if (!item) return;
+    const namePattern = new RegExp(`^${item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    const mfrPattern = new RegExp(`^${item.manufacturer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    const inUse = await db.collection("tool_master").findOne({ model: namePattern, brand: mfrPattern });
+    if (inUse) {
+      throw new Error(`Cannot delete model "${item.name}" — it is used by a tool`);
+    }
+    await db.collection("tool_models").deleteOne({ id });
+  }
+
+  async validateToolMasterRefs(data: {
+    toolType?: string;
+    brand?: string | null;
+    model?: string | null;
+  }): Promise<void> {
+    if (data.toolType) {
+      const toolType = await this.getToolTypeByName(data.toolType);
+      if (!toolType) {
+        throw new Error(`Tool type "${data.toolType}" is not in the tool type master`);
+      }
+    }
+    if (data.brand) {
+      const mfr = await this.getToolManufacturerByName(data.brand);
+      if (!mfr) {
+        throw new Error(`Manufacturer "${data.brand}" is not in the tool manufacturer master`);
+      }
+    }
+    if (data.model) {
+      if (!data.brand) {
+        throw new Error("Manufacturer (brand) is required when a model is specified");
+      }
+      const model = await this.getToolModelByNameAndManufacturer(data.model, data.brand);
+      if (!model) {
+        throw new Error(`Model "${data.model}" is not in the tool model master for manufacturer "${data.brand}"`);
+      }
+    }
+  }
+
+  async getToolMasters(): Promise<ToolMaster[]> {
+    const docs = await db.collection("tool_master").find().sort({ toolNumber: 1 }).toArray();
+    const result: ToolMaster[] = [];
+    for (const doc of docs) {
+      const id = await this.ensureNumericId("tool_master", doc as Record<string, unknown>);
+      result.push({ ...(doc as ToolMaster), id, toolType: (doc as ToolMaster).toolType ?? "" });
+    }
+    return result;
+  }
+
+  async getToolMaster(id: number): Promise<ToolMaster | undefined> {
+    return (await db.collection("tool_master").findOne({ id })) as ToolMaster | undefined;
+  }
+
+  async getToolMasterByNumber(toolNumber: string): Promise<ToolMaster | undefined> {
+    const trimmed = toolNumber.trim();
+    if (!trimmed) return undefined;
+    const all = await this.getToolMasters();
+    return all.find((t) => t.toolNumber.toLowerCase() === trimmed.toLowerCase());
+  }
+
+  async createToolMaster(data: InsertToolMaster): Promise<ToolMaster> {
+    const dup = await this.getToolMasterByNumber(data.toolNumber);
+    if (dup) {
+      throw new Error(`Tool number "${data.toolNumber}" already exists`);
+    }
+    const normalized = { ...data, unitOfMeasure: "H" as const };
+    await this.validateToolMasterRefs(normalized);
+    const id = await this.getNextId("tool_master");
+    const item = { ...normalized, id, createdAt: new Date(), updatedAt: new Date() };
+    await db.collection("tool_master").insertOne(item);
+    return item as ToolMaster;
+  }
+
+  async updateToolMaster(id: number, data: Partial<InsertToolMaster>): Promise<ToolMaster | undefined> {
+    const existing = await this.getToolMaster(id);
+    if (!existing) return undefined;
+    if (data.toolNumber) {
+      const dup = await this.getToolMasterByNumber(data.toolNumber);
+      if (dup && dup.id !== id) {
+        throw new Error(`Tool number "${data.toolNumber}" already exists`);
+      }
+    }
+    const merged = { ...existing, ...data, unitOfMeasure: "H" as const };
+    await this.validateToolMasterRefs(merged);
+    await db.collection("tool_master").updateOne(
+      { id },
+      { $set: { ...data, unitOfMeasure: "H", updatedAt: new Date() } }
+    );
+    return this.getToolMaster(id);
+  }
+
+  async deleteToolMaster(id: number): Promise<void> {
+    const mapping = await db.collection("tool_resource_mappings").findOne({ toolId: id });
+    if (mapping) {
+      throw new Error("Cannot delete tool — remove the resource mapping first");
+    }
+    await db.collection("tool_master").deleteOne({ id });
+  }
+
+  async bulkCreateToolMasters(rows: InsertToolMaster[]): Promise<ToolMaster[]> {
+    const created: ToolMaster[] = [];
+    for (const row of rows) {
+      created.push(await this.createToolMaster(row));
+    }
+    return created;
+  }
+
+  async getToolResourceMapping(toolId: number): Promise<ToolResourceMapping | undefined> {
+    return (await db
+      .collection("tool_resource_mappings")
+      .findOne({ toolId })) as ToolResourceMapping | undefined;
+  }
+
+  async upsertToolResourceMapping(toolId: number, resourceId: number): Promise<ToolResourceMapping> {
+    const tool = await this.getToolMaster(toolId);
+    if (!tool) {
+      throw new Error("Tool not found");
+    }
+    const resource = await this.getResource(resourceId);
+    if (!resource) {
+      throw new Error("Resource not found");
+    }
+    if (resource.type !== "tools") {
+      throw new Error("Resource must be of type 'tools'");
+    }
+
+    const existing = await this.getToolResourceMapping(toolId);
+    if (existing) {
+      await db.collection("tool_resource_mappings").updateOne(
+        { toolId },
+        { $set: { resourceId, updatedAt: new Date() } }
+      );
+      return (await this.getToolResourceMapping(toolId)) as ToolResourceMapping;
+    }
+
+    const id = await this.getNextId("tool_resource_mappings");
+    const mapping = {
+      id,
+      toolId,
+      resourceId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await db.collection("tool_resource_mappings").insertOne(mapping);
+    return mapping as ToolResourceMapping;
+  }
+
+  async deleteToolResourceMapping(toolId: number): Promise<ToolResourceMapping | undefined> {
+    const existing = await this.getToolResourceMapping(toolId);
+    if (!existing) return undefined;
+    await db.collection("tool_resource_mappings").deleteOne({ toolId });
+    return existing;
+  }
+
   async getPurchaseRequisitions(requisitionType?: string): Promise<PurchaseRequisition[]> {
     const filter = requisitionType ? { requisitionType } : {};
     return (await db
@@ -2016,6 +2359,11 @@ export class DatabaseStorage {
         const eq = await this.getRentalEquipmentByNumber(code);
         if (!eq) {
           throw new Error(`Equipment number "${code}" is not in the rental equipment master`);
+        }
+      } else if (requisitionType === "tools") {
+        const tool = await this.getToolMasterByNumber(code);
+        if (!tool) {
+          throw new Error(`Tool number "${code}" is not in the tool master`);
         }
       }
     }
@@ -2342,14 +2690,17 @@ export class DatabaseStorage {
   }
 
   async createResource(data: InsertResource): Promise<Resource> {
+    const normalized = normalizeHourlyResourceUom(data);
     const id = await this.getNextId("resources");
-    const item = { ...data, id, createdAt: new Date(), updatedAt: new Date() };
+    const item = { ...normalized, id, createdAt: new Date(), updatedAt: new Date() };
     await db.collection("resources").insertOne(item);
     return item as any;
   }
 
   async updateResource(id: number, data: Partial<InsertResource>): Promise<Resource | undefined> {
-    await db.collection("resources").updateOne({ id }, { $set: { ...data, updatedAt: new Date() } });
+    const existing = await this.getResource(id);
+    const normalized = normalizeHourlyResourceUom(data, existing?.type);
+    await db.collection("resources").updateOne({ id }, { $set: { ...normalized, updatedAt: new Date() } });
     return this.getResource(id);
   }
 

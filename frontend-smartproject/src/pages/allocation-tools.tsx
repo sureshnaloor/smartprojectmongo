@@ -24,6 +24,7 @@ import {
   resolveAssignmentTag,
 } from "@/components/allocation/allocation-tagging";
 import { ResourceUtilizationPanel } from "@/components/allocation/resource-utilization-panel";
+import { RESOURCE_HOURLY_UOM } from "@/lib/resource-uom";
 
 interface ToolResource {
   id: number;
@@ -153,8 +154,7 @@ export default function AllocationTools() {
                       <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600 min-w-[180px]">
                         Tool name
                       </TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600">UOM</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600">Rate</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600">Hourly Rate</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600">
                         Resource
                       </TableHead>
@@ -199,8 +199,7 @@ export default function AllocationTools() {
                             </TableCell>
                             <TableCell className="font-mono text-xs text-zinc-800">{t.toolNumber}</TableCell>
                             <TableCell className="text-xs font-medium text-zinc-800">{t.name}</TableCell>
-                            <TableCell className="text-xs text-zinc-600">{t.unitOfMeasure}</TableCell>
-                            <TableCell className="text-xs tabular-nums text-zinc-700">{t.unitRate}</TableCell>
+                            <TableCell className="text-xs tabular-nums text-zinc-700">{t.unitRate} / {RESOURCE_HOURLY_UOM}</TableCell>
                             <TableCell className="text-xs text-zinc-700">{row.resource?.name ?? "—"}</TableCell>
                             <TableCell className="text-center text-xs tabular-nums text-zinc-600">
                               {row.assignments.length}
@@ -326,8 +325,7 @@ export default function AllocationTools() {
                       <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600 min-w-[180px]">
                         Name
                       </TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600">UOM</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600">Rate</TableHead>
+                      <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600">Hourly Rate</TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600 text-right">
                         Map to resource
                       </TableHead>
@@ -338,8 +336,7 @@ export default function AllocationTools() {
                       <TableRow key={t.id}>
                         <TableCell className="font-mono text-xs text-zinc-800">{t.toolNumber}</TableCell>
                         <TableCell className="text-xs font-medium text-zinc-800">{t.name}</TableCell>
-                        <TableCell className="text-xs text-zinc-600">{t.unitOfMeasure}</TableCell>
-                        <TableCell className="text-xs tabular-nums text-zinc-700">{t.unitRate}</TableCell>
+                        <TableCell className="text-xs tabular-nums text-zinc-700">{t.unitRate} / {RESOURCE_HOURLY_UOM}</TableCell>
                         <TableCell className="text-right">
                           <ToolResourceMapper
                             toolId={t.id}

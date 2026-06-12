@@ -1,12 +1,16 @@
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { insertProjectSchema, InsertProject } from "@/types";
 import { useToast } from "@/hooks/use-toast";
-import { calculateDuration, isValidDate } from "@/lib/utils";
 import { z } from "zod";
+import {
+  COMMON_CURRENCY_CODES,
+  CurrencyCode,
+  getCurrencyLabel,
+  resolveCurrencyCode,
+} from "@/lib/currencies";
 
 import {
   Dialog,
@@ -45,7 +49,7 @@ const formSchema = z.object({
   name: z.string().min(3, "Project name must be at least 3 characters"),
   description: z.string().optional(),
   budget: z.coerce.number().positive("Budget must be a positive number"),
-  currency: z.enum(["USD", "EUR", "SAR"]).default("USD"),
+  currency: z.enum(COMMON_CURRENCY_CODES),
   projectType: z.enum(["Highway", "Infrastructure", "Power", "Commercial", "Petrochem", "Oil&Gas"]).optional(),
   status: z.enum(["concept", "planning", "active", "in progress", "aborted", "on-hold", "completed"]).optional(),
   startDate: z.date(),
@@ -60,25 +64,61 @@ interface AddProjectModalProps {
   onSuccess?: (projectId: number) => void;
 }
 
+async function fetchGlobalDefaults(): Promise<{ defaultCurrencyCode: string }> {
+  const res = await fetch("/api/global-defaults");
+  if (!res.ok) throw new Error("Failed to load global defaults");
+  return res.json();
+}
+
 export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [showDuration, setShowDuration] = useState(false);
+  const prevOpenRef = useRef(false);
+  const globalDefaultCurrencyRef = useRef<CurrencyCode>("USD");
+
+  const { data: globalDefaults } = useQuery({
+    queryKey: ["/api/global-defaults"],
+    queryFn: fetchGlobalDefaults,
+    staleTime: 60_000,
+  });
+
+  const globalDefaultCurrency = resolveCurrencyCode(globalDefaults?.defaultCurrencyCode);
+  globalDefaultCurrencyRef.current = globalDefaultCurrency;
+
+  const buildDefaultValues = (currency: CurrencyCode): ProjectFormData => ({
+    name: "",
+    description: "",
+    budget: 0,
+    startDate: new Date(),
+    endDate: new Date(new Date().setMonth(new Date().getMonth() + 6)),
+    currency,
+    projectType: undefined,
+    status: "concept",
+  });
 
   // Form definition with frontend schema
   const form = useForm<ProjectFormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      budget: 0,
-      startDate: new Date(),
-      endDate: new Date(new Date().setMonth(new Date().getMonth() + 6)),
-      currency: "USD",
-      projectType: undefined,
-      status: "concept",
-    },
+    defaultValues: buildDefaultValues("USD"),
   });
+
+  useEffect(() => {
+    const justOpened = isOpen && !prevOpenRef.current;
+    prevOpenRef.current = isOpen;
+    if (!justOpened) return;
+    form.reset(buildDefaultValues(globalDefaultCurrencyRef.current));
+  }, [isOpen, form]);
+
+  useEffect(() => {
+    if (!isOpen || !globalDefaults) return;
+    const resolved = resolveCurrencyCode(globalDefaults.defaultCurrencyCode);
+    globalDefaultCurrencyRef.current = resolved;
+    if (form.getValues("currency") === resolved) return;
+    const current = form.getValues("currency");
+    if (current === "USD" && resolved !== "USD") {
+      form.setValue("currency", resolved);
+    }
+  }, [isOpen, globalDefaults, form]);
 
   // Get form values
   const { startDate, endDate } = form.watch();
@@ -111,15 +151,16 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
       const response = await apiRequest("POST", "/api/projects", apiData);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       toast({
         title: "Project Created",
         description: "The project has been created successfully.",
         variant: "default",
       });
-      form.reset();
+      form.reset(buildDefaultValues(globalDefaultCurrencyRef.current));
       onClose();
+      if (created?.id != null) onSuccess?.(created.id);
     },
     onError: (error) => {
       toast({
@@ -191,8 +232,17 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                   <FormItem>
                     <FormLabel>Currency</FormLabel>
                     <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
+                      value={field.value}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        const globalDefault = globalDefaultCurrencyRef.current;
+                        if (value !== globalDefault) {
+                          toast({
+                            title: "Currency differs from global default",
+                            description: `System default is ${globalDefault}. Change project currency only when required by contract or business need. Once set, currency cannot be changed after WBS items are added.`,
+                          });
+                        }
+                      }}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -200,13 +250,16 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="USD">USD ($)</SelectItem>
-                        <SelectItem value="EUR">EUR (€)</SelectItem>
-                        <SelectItem value="SAR">SAR (﷼)</SelectItem>
+                        {COMMON_CURRENCY_CODES.map((code) => (
+                          <SelectItem key={code} value={code}>
+                            {getCurrencyLabel(code)}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      Once set, currency cannot be changed after WBS items are added.
+                      Pre-filled from global default ({globalDefaultCurrency}). Once set,
+                      currency cannot be changed after WBS items are added.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

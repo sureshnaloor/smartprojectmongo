@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, Trash2, Upload, Download, Users, HardDrive } from "lucide-react";
+import { RESOURCE_HOURLY_UOM } from "@/lib/resource-uom";
 
 const wavedPatternStyle = `
   @keyframes wave {
@@ -140,7 +141,6 @@ export default function ResourceMaster() {
     type: "",
     name: "",
     description: "",
-    unitOfMeasure: "",
     unitRate: "",
     remarks: "",
   });
@@ -244,8 +244,8 @@ export default function ResourceMaster() {
             type: values[headers.indexOf("type")],
             name: values[headers.indexOf("name")],
             description: values[headers.indexOf("description")] || "",
-            unitOfMeasure: values[headers.indexOf("unitOfMeasure")],
-            unitRate: values[headers.indexOf("unitRate")] || "0",
+            unitOfMeasure: RESOURCE_HOURLY_UOM,
+            unitRate: values[headers.indexOf("unitRate")] || values[headers.indexOf("hourlyRate")] || "0",
             remarks: values[headers.indexOf("remarks")] || "",
           };
         });
@@ -265,7 +265,7 @@ export default function ResourceMaster() {
       type: formData.type as ResourceType,
       name: formData.name,
       description: formData.description || undefined,
-      unitOfMeasure: formData.unitOfMeasure,
+      unitOfMeasure: RESOURCE_HOURLY_UOM,
       unitRate: formData.unitRate,
       remarks: formData.remarks || undefined,
     };
@@ -283,7 +283,6 @@ export default function ResourceMaster() {
       type: resource.type,
       name: resource.name,
       description: resource.description || "",
-      unitOfMeasure: resource.unitOfMeasure,
       unitRate: String(resource.unitRate),
       remarks: resource.remarks || "",
     });
@@ -303,7 +302,6 @@ export default function ResourceMaster() {
       type: "",
       name: "",
       description: "",
-      unitOfMeasure: "",
       unitRate: "",
       remarks: "",
     });
@@ -386,18 +384,9 @@ export default function ResourceMaster() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="unitOfMeasure" className="font-semibold text-gray-700">Unit of Measure</Label>
-                    <Input
-                      id="unitOfMeasure"
-                      value={formData.unitOfMeasure}
-                      onChange={(e) =>
-                        setFormData({ ...formData, unitOfMeasure: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="unitRate" className="font-semibold text-teal-700">Unit Rate</Label>
+                    <Label htmlFor="unitRate" className="font-semibold text-teal-700">
+                      Hourly Rate ({RESOURCE_HOURLY_UOM})
+                    </Label>
                     <Input
                       id="unitRate"
                       type="number"
@@ -483,8 +472,7 @@ export default function ResourceMaster() {
                     <TableHead className="font-bold text-gray-900">Type</TableHead>
                     <TableHead className="font-bold text-gray-900">Name</TableHead>
                     <TableHead className="font-bold text-gray-900">Description</TableHead>
-                    <TableHead className="font-bold text-gray-900">Unit of Measure</TableHead>
-                    <TableHead className="font-bold text-gray-900">Unit Rate</TableHead>
+                    <TableHead className="font-bold text-gray-900">Hourly Rate</TableHead>
                     <TableHead className="font-bold text-gray-900">Remarks</TableHead>
                     <TableHead className="font-bold text-gray-900">Actions</TableHead>
                   </TableRow>
@@ -504,8 +492,7 @@ export default function ResourceMaster() {
                       </TableCell>
                       <TableCell className="font-medium">{resource.name}</TableCell>
                       <TableCell>{resource.description}</TableCell>
-                      <TableCell>{resource.unitOfMeasure}</TableCell>
-                      <TableCell>{resource.unitRate}</TableCell>
+                      <TableCell>{resource.unitRate} / {RESOURCE_HOURLY_UOM}</TableCell>
                       <TableCell>{resource.remarks}</TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <div className="flex space-x-2">

@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { FinalizeWbsButton } from "@/components/project/finalize-wbs-button";
 import { WorkPackageActivitiesPanel } from "@/components/project/work-package-activities-panel";
 import { cn } from "@/lib/utils";
+import { RESOURCE_HOURLY_UOM } from "@/lib/resource-uom";
 
 interface WorkPackage {
   id: number;
@@ -512,10 +513,10 @@ export default function ProjectWbsWorkPackages() {
                               Type
                             </TableHead>
                             <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-                              UOM
+                              Rate UOM
                             </TableHead>
                             <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
-                              Unit rate
+                              Hourly rate
                             </TableHead>
                             <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
                               Qty
@@ -535,7 +536,7 @@ export default function ProjectWbsWorkPackages() {
                                 {r.type}
                               </TableCell>
                               <TableCell className="text-zinc-600">
-                                {r.unitOfMeasure ?? r.unit_of_measure}
+                                {RESOURCE_HOURLY_UOM}
                               </TableCell>
                               <TableCell className="text-right font-mono text-zinc-800">
                                 {formatCurrency(getResourceUnitRate(r))}
