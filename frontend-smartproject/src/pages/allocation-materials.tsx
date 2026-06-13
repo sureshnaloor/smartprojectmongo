@@ -30,7 +30,10 @@ interface MaterialAllocationRow {
   wpId: number;
   wpCode: string;
   wpName: string;
+  projectActivityId: number | null;
+  activityName: string | null;
   quantity: number;
+  estimatedValue?: number;
 }
 
 interface PoLineDetail {
@@ -135,7 +138,7 @@ export default function AllocationMaterials() {
               <h1 className="text-lg font-extrabold tracking-tight">Materials allocation</h1>
               <p className="text-xs text-zinc-500 mt-0.5 max-w-2xl">
                 Every material from the global master, with total quantity required across all work packages and a
-                breakdown by project and work package.
+                breakdown by project, work package, and activity.
               </p>
             </div>
           </div>
@@ -197,7 +200,7 @@ export default function AllocationMaterials() {
                         Total qty required
                       </TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600 text-center">
-                        WPs
+                        Lines
                       </TableHead>
                       <TableHead className="text-[10px] uppercase tracking-wider font-bold text-zinc-600 text-center w-[72px]">
                         PO
@@ -263,7 +266,7 @@ export default function AllocationMaterials() {
                               <TableCell colSpan={7} className="p-0 border-t border-zinc-100">
                                 <div className="px-4 py-3 pl-12">
                                   <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">
-                                    Work package breakdown
+                                    Project / work package / activity breakdown
                                   </p>
                                   <Table>
                                     <TableHeader>
@@ -271,6 +274,7 @@ export default function AllocationMaterials() {
                                         <TableHead className="text-[10px] h-8">Project</TableHead>
                                         <TableHead className="text-[10px] h-8">WP code</TableHead>
                                         <TableHead className="text-[10px] h-8">Work package</TableHead>
+                                        <TableHead className="text-[10px] h-8">Activity</TableHead>
                                         <TableHead className="text-right text-[10px] h-8">Quantity</TableHead>
                                       </TableRow>
                                     </TableHeader>
@@ -284,6 +288,9 @@ export default function AllocationMaterials() {
                                             {a.wpCode}
                                           </TableCell>
                                           <TableCell className="text-xs py-1.5 text-zinc-700">{a.wpName}</TableCell>
+                                          <TableCell className="text-xs py-1.5 text-zinc-600">
+                                            {a.activityName ?? "—"}
+                                          </TableCell>
                                           <TableCell className="text-xs py-1.5 text-right font-medium tabular-nums">
                                             {formatQty(a.quantity)}
                                           </TableCell>

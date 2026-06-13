@@ -38,10 +38,10 @@ type KanbanPriority = (typeof KANBAN_PRIORITY_OPTIONS)[number]["value"];
 type PriorityFieldValue = KanbanPriority | typeof NONE_PRIORITY;
 
 const COLUMNS = [
-  { id: "wish" as const, title: "Wish" },
-  { id: "ready" as const, title: "Ready" },
-  { id: "doing" as const, title: "Doing" },
-  { id: "done" as const, title: "Done" },
+  { id: "wish" as const, title: "Wish", hint: "Ideas & backlog" },
+  { id: "ready" as const, title: "Ready", hint: "Queued to start" },
+  { id: "doing" as const, title: "Doing", hint: "In progress" },
+  { id: "done" as const, title: "Done", hint: "Complete — archive" },
 ];
 
 // 3D column styles: light bg + shadow/depth per lane (outer frame)
@@ -97,15 +97,27 @@ function kanbanPriorityLabel(value: string | null | undefined): string {
   return o?.label ?? "";
 }
 
-function kanbanPriorityTapeClasses(value: string | null | undefined): string {
-  if (value == null || value === "") return "font-normal text-slate-500";
+function kanbanPriorityStripe(value: string | null | undefined): string {
+  if (value == null || value === "") return "bg-slate-300";
   switch (value) {
     case "immediate_urgent":
-      return "font-semibold text-red-700";
+      return "bg-red-500";
     case "before_end_of_today":
-      return "font-semibold text-amber-800";
+      return "bg-amber-500";
     default:
-      return "font-medium text-slate-700";
+      return "bg-emerald-500";
+  }
+}
+
+function kanbanPriorityBadgeClasses(value: string | null | undefined): string {
+  if (value == null || value === "") return "bg-slate-100 text-slate-600 border-slate-200";
+  switch (value) {
+    case "immediate_urgent":
+      return "bg-red-50 text-red-800 border-red-200";
+    case "before_end_of_today":
+      return "bg-amber-50 text-amber-900 border-amber-200";
+    default:
+      return "bg-emerald-50 text-emerald-800 border-emerald-200";
   }
 }
 
@@ -342,10 +354,17 @@ export default function KanbanPage() {
     );
   }
 
+  const totalCards = lanes.reduce((n, lane) => n + lane.cards.length, 0);
+
   return (
-    <div className="p-4 md:p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Kanban</h1>
+    <div className="p-4 md:p-6 bg-gradient-to-b from-slate-50/80 to-white min-h-full">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Kanban</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {totalCards} active card{totalCards === 1 ? "" : "s"} · drag to move · activity link optional
+          </p>
+        </div>
         <Button
           onClick={() => {
             resetAddForm();
@@ -359,32 +378,50 @@ export default function KanbanPage() {
       </div>
 
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-5">
           {lanes.map((lane) => (
             <Droppable key={lane.id} droppableId={lane.id}>
               {(provided, snapshot) => (
                 <div
                   ref={provided.innerRef}
                   {...provided.droppableProps}
-                  className={`min-h-[320px] flex flex-col rounded-xl overflow-hidden border-2 transition-all duration-200 ${LANE_STYLES[lane.id]} ${
+                  className={`min-h-[360px] flex flex-col rounded-2xl overflow-hidden border-2 transition-all duration-200 ${LANE_STYLES[lane.id]} ${
                     snapshot.isDraggingOver
-                      ? "scale-[1.02] shadow-[0_6px_0_0_currentColor,0_12px_24px_-4px_rgba(0,0,0,0.12)] ring-2 ring-teal-400/50"
+                      ? "scale-[1.01] shadow-[0_6px_0_0_currentColor,0_12px_24px_-4px_rgba(0,0,0,0.12)] ring-2 ring-teal-400/50"
                       : ""
                   }`}
                 >
                   <div
-                    className={`shrink-0 bg-white px-4 py-3 border-b-[3px] ${LANE_HEADER_BORDER[lane.id]}`}
+                    className={`shrink-0 bg-white/95 backdrop-blur-sm px-4 py-3 border-b-[3px] ${LANE_HEADER_BORDER[lane.id]}`}
                   >
-                    <p
-                      className={`font-extrabold uppercase tracking-[0.18em] text-xs sm:text-sm ${LANE_TITLE_CLASS[lane.id]}`}
-                    >
-                      {lane.title}
+                    <div className="flex items-center justify-between gap-2">
+                      <p
+                        className={`font-extrabold uppercase tracking-[0.16em] text-xs sm:text-sm ${LANE_TITLE_CLASS[lane.id]}`}
+                      >
+                        {lane.title}
+                      </p>
+                      <span
+                        className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-[11px] font-bold tabular-nums ${LANE_TITLE_CLASS[lane.id]} bg-white/90 ring-1 ring-black/5`}
+                      >
+                        {lane.cards.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {COLUMNS.find((c) => c.id === lane.id)?.hint}
                     </p>
                   </div>
 
                   {/* Colored gutter (lane bg) + inset white tray for cards */}
                   <div className="flex-1 flex flex-col min-h-0 p-3 md:p-4 pt-3">
-                    <div className="flex-1 min-h-[220px] rounded-lg bg-white p-3 md:p-4 shadow-[inset_0_1px_2px_rgba(15,23,42,.04)] ring-1 ring-black/[0.06] overflow-y-auto overflow-x-hidden">
+                    <div className="flex-1 min-h-[240px] rounded-xl bg-white/90 p-3 md:p-3.5 shadow-[inset_0_1px_2px_rgba(15,23,42,.04)] ring-1 ring-black/[0.06] overflow-y-auto overflow-x-hidden">
+                    {lane.cards.length === 0 && !snapshot.isDraggingOver && (
+                      <div className="flex h-full min-h-[180px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 text-center">
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Drop cards here
+                          {lane.id === "wish" ? " or use Add card" : ""}
+                        </p>
+                      </div>
+                    )}
                     {lane.cards.map((card, index) => {
                       const colorClass = TASK_CARD_COLORS[index % TASK_CARD_COLORS.length];
                       const stickyShape = STICKY_NOTE_SHAPES[index % STICKY_NOTE_SHAPES.length];
@@ -410,49 +447,39 @@ export default function KanbanPage() {
                             }`}
                           >
                             <div
-                              className={`relative ${tiltClass} motion-reduce:rotate-0`}
+                              className={`relative group ${tiltClass} motion-reduce:rotate-0 ${
+                                snapshot.isDragging ? "" : "hover:-translate-y-0.5 transition-transform duration-200"
+                              }`}
                             >
-                              {/* Sticky-note tape strip shows priority */}
                               <div
-                                className="pointer-events-none absolute left-[7%] right-[7%] top-3 z-[1] flex min-h-[1.35rem] items-center justify-center rounded-[2px] bg-gradient-to-b from-white/[0.97] via-white/[0.72] to-white/[0.38] px-1 shadow-[inset_0_1px_0_rgba(255,255,255,1),0_1px_2px_rgba(15,23,42,0.1)] ring-1 ring-black/[0.1]"
-                                title={
-                                  card.priority != null && String(card.priority) !== ""
-                                    ? kanbanPriorityLabel(card.priority)
-                                    : ""
-                                }
-                              >
-                                <span
-                                  className={`line-clamp-2 text-center text-[10px] leading-snug ${kanbanPriorityTapeClasses(card.priority)}`}
-                                >
-                                  {card.priority != null && String(card.priority) !== ""
-                                    ? kanbanPriorityLabel(card.priority)
-                                    : "No priority"}
-                                </span>
-                              </div>
-                              <div
-                                className={`relative border-2 border-b-[3px] px-4 pt-[2rem] pb-3 ${stickyShape} ${colorClass} ${
+                                className={`relative flex overflow-hidden border-2 border-b-[3px] ${stickyShape} ${colorClass} ${
                                   snapshot.isDragging
                                     ? `${draggingShadow} ring-2 ring-teal-400/60 ring-offset-1 ring-offset-white/95`
-                                    : restingShadow
+                                    : `${restingShadow} group-hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.75),0_6px_14px_-4px_rgba(15,23,42,0.14)]`
                                 }`}
                               >
+                                <div
+                                  className={`w-1.5 shrink-0 ${kanbanPriorityStripe(card.priority)}`}
+                                  title={kanbanPriorityLabel(card.priority) || "No priority"}
+                                />
+                                <div className="flex-1 min-w-0 px-3 py-3">
                                 <div className="flex items-start gap-2">
                                   <div
                                     {...provided.dragHandleProps}
-                                    className="mt-0.5 text-muted-foreground cursor-grab active:cursor-grabbing"
+                                    className="mt-0.5 text-muted-foreground/70 cursor-grab active:cursor-grabbing hover:text-muted-foreground"
                                   >
                                     <GripVertical className="h-4 w-4" />
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-start justify-between gap-2">
-                                      <p className="font-medium text-sm text-gray-900 truncate min-w-0">
+                                      <p className="font-semibold text-sm text-gray-900 leading-snug line-clamp-2 min-w-0">
                                         {card.title}
                                       </p>
                                       <Button
                                         type="button"
                                         variant="ghost"
                                         size="icon"
-                                        className="h-7 w-7 shrink-0 -mr-2 -mt-0.5 text-muted-foreground hover:text-gray-900"
+                                        className="h-7 w-7 shrink-0 -mr-1 -mt-0.5 text-muted-foreground hover:text-gray-900 opacity-70 group-hover:opacity-100"
                                         aria-label={`Edit ${card.title}`}
                                         disabled={snapshot.isDragging}
                                         onMouseDown={(e) => {
@@ -466,28 +493,31 @@ export default function KanbanPage() {
                                         <Pencil className="h-3.5 w-3.5" />
                                       </Button>
                                     </div>
+                                    <span
+                                      className={`inline-flex mt-2 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${kanbanPriorityBadgeClasses(card.priority)}`}
+                                    >
+                                      {card.priority != null && String(card.priority) !== ""
+                                        ? kanbanPriorityLabel(card.priority)
+                                        : "No priority"}
+                                    </span>
                                     {card.description && (
-                                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                      <p className="text-xs text-muted-foreground mt-2 line-clamp-3 leading-relaxed">
                                         {card.description}
                                       </p>
                                     )}
                                     {(card.wbsLabel ?? card.activityLabel) ? (
-                                      <div className="mt-2 space-y-1 rounded-md border border-black/[0.1] bg-white/70 px-2 py-1.5 text-[10px] text-gray-800">
+                                      <div className="mt-2.5 flex flex-wrap gap-1.5">
                                         {card.wbsLabel ? (
-                                          <p className="leading-snug">
-                                            <span className="font-semibold uppercase tracking-wide text-gray-600">
-                                              WBS
-                                            </span>{" "}
-                                            <span className="text-gray-900">{card.wbsLabel}</span>
-                                          </p>
+                                          <span className="inline-flex max-w-full items-center rounded-md bg-white/80 border border-black/10 px-2 py-0.5 text-[10px] text-gray-800 truncate">
+                                            <span className="font-semibold text-gray-500 mr-1">WBS</span>
+                                            {card.wbsLabel}
+                                          </span>
                                         ) : null}
                                         {card.activityLabel ? (
-                                          <p className="leading-snug">
-                                            <span className="font-semibold uppercase tracking-wide text-gray-600">
-                                              Activity
-                                            </span>{" "}
-                                            <span className="text-gray-900">{card.activityLabel}</span>
-                                          </p>
+                                          <span className="inline-flex max-w-full items-center rounded-md bg-white/80 border border-black/10 px-2 py-0.5 text-[10px] text-gray-800 truncate">
+                                            <span className="font-semibold text-gray-500 mr-1">Act</span>
+                                            {card.activityLabel}
+                                          </span>
                                         ) : null}
                                       </div>
                                     ) : null}
@@ -506,6 +536,7 @@ export default function KanbanPage() {
                                       </Button>
                                     )}
                                   </div>
+                                </div>
                                 </div>
                               </div>
                             </div>

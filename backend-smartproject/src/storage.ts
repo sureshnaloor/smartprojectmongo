@@ -68,6 +68,10 @@ import {
   type InsertCity,
   type GlobalDefaults,
   type UpdateGlobalDefaults,
+  type DefaultCalendar,
+  type UpdateDefaultCalendar,
+  type CalendarHoliday,
+  type InsertCalendarHoliday,
   type VendorMaster,
   type InsertVendorMaster,
   type ServiceType,
@@ -125,12 +129,20 @@ import {
   type InsertCollaborationMessage,
   type InsertCollabNotification,
   type CollabNotification,
+  type WorkPackageMaterial,
+  type InsertWorkPackageMaterial,
+  type WorkPackageService,
+  type InsertWorkPackageService,
+  type PlannedCostWorkpackage,
+  type InsertPlannedCostWorkpackage,
   collaborationThreads,
   collaborationMessages,
   projectCollaborationThreads,
   projectCollaborationMessages,
   collabNotifications,
   globalDefaults,
+  defaultCalendar,
+  calendarHolidays,
 } from "./schema";
 
 const GLOBAL_DEFAULTS_ID = 1;
@@ -670,6 +682,10 @@ export class DatabaseStorage {
       id: GLOBAL_DEFAULTS_ID,
       defaultCountryId: null,
       defaultCurrencyCode: "USD",
+      companyName: null,
+      companyAddress: null,
+      companyLogoFileName: null,
+      companyLogoB2FileId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -685,17 +701,141 @@ export class DatabaseStorage {
       }
     }
     await this.getGlobalDefaults();
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (data.defaultCountryId !== undefined) {
+      patch.defaultCountryId = data.defaultCountryId ?? null;
+    }
+    if (data.defaultCurrencyCode !== undefined) {
+      patch.defaultCurrencyCode = data.defaultCurrencyCode;
+    }
+    if (data.companyName !== undefined) {
+      patch.companyName = data.companyName?.trim() || null;
+    }
+    if (data.companyAddress !== undefined) {
+      patch.companyAddress = data.companyAddress?.trim() || null;
+    }
+    await db.collection(globalDefaults).updateOne({ id: GLOBAL_DEFAULTS_ID }, { $set: patch });
+    return this.getGlobalDefaults();
+  }
+
+  async updateGlobalDefaultsLogo(fileName: string, b2FileId: string): Promise<GlobalDefaults> {
+    await this.getGlobalDefaults();
     await db.collection(globalDefaults).updateOne(
       { id: GLOBAL_DEFAULTS_ID },
       {
         $set: {
-          ...data,
-          defaultCountryId: data.defaultCountryId ?? null,
+          companyLogoFileName: fileName,
+          companyLogoB2FileId: b2FileId,
           updatedAt: new Date(),
         },
       }
     );
     return this.getGlobalDefaults();
+  }
+
+  async clearGlobalDefaultsLogo(): Promise<GlobalDefaults> {
+    await this.getGlobalDefaults();
+    await db.collection(globalDefaults).updateOne(
+      { id: GLOBAL_DEFAULTS_ID },
+      {
+        $set: {
+          companyLogoFileName: null,
+          companyLogoB2FileId: null,
+          updatedAt: new Date(),
+        },
+      }
+    );
+    return this.getGlobalDefaults();
+  }
+
+  async getDefaultCalendar(): Promise<DefaultCalendar> {
+    const existing = (await db
+      .collection(defaultCalendar)
+      .findOne({ id: GLOBAL_DEFAULTS_ID })) as DefaultCalendar | null;
+    if (existing) return existing;
+
+    const item: DefaultCalendar = {
+      id: GLOBAL_DEFAULTS_ID,
+      weekendPattern: "sat_sun",
+      customWeekendDays: [],
+      standardHoursPerDay: 8,
+      partialDays: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await db.collection(defaultCalendar).insertOne(item);
+    return item;
+  }
+
+  async updateDefaultCalendar(data: UpdateDefaultCalendar): Promise<DefaultCalendar> {
+    await this.getDefaultCalendar();
+    const patch: Record<string, unknown> = { ...data, updatedAt: new Date() };
+    if (data.partialDays) {
+      patch.partialDays = data.partialDays.map((p) => ({
+        date: p.date.slice(0, 10),
+        hours: p.hours,
+        note: p.note ?? null,
+      }));
+    }
+    await db.collection(defaultCalendar).updateOne({ id: GLOBAL_DEFAULTS_ID }, { $set: patch });
+    return this.getDefaultCalendar();
+  }
+
+  async getCalendarHolidays(year?: number): Promise<CalendarHoliday[]> {
+    const filter = year != null ? { year } : {};
+    return (await db
+      .collection(calendarHolidays)
+      .find(filter)
+      .sort({ date: 1 })
+      .toArray()) as CalendarHoliday[];
+  }
+
+  async getCalendarHolidaysInRange(start: string, end: string): Promise<CalendarHoliday[]> {
+    const startIso = start.slice(0, 10);
+    const endIso = end.slice(0, 10);
+    return (await db
+      .collection(calendarHolidays)
+      .find({ date: { $gte: startIso, $lte: endIso } })
+      .sort({ date: 1 })
+      .toArray()) as CalendarHoliday[];
+  }
+
+  async createCalendarHoliday(data: InsertCalendarHoliday): Promise<CalendarHoliday> {
+    const date = data.date.slice(0, 10);
+    const dup = await db.collection(calendarHolidays).findOne({ date });
+    if (dup) {
+      throw new Error(`A holiday already exists on ${date}`);
+    }
+    const id = await this.getNextId(calendarHolidays);
+    const item = {
+      ...data,
+      date,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await db.collection(calendarHolidays).insertOne(item);
+    return item as CalendarHoliday;
+  }
+
+  async updateCalendarHoliday(
+    id: number,
+    data: Partial<InsertCalendarHoliday>
+  ): Promise<CalendarHoliday | undefined> {
+    const existing = (await db.collection(calendarHolidays).findOne({ id })) as CalendarHoliday | undefined;
+    if (!existing) return undefined;
+    if (data.date) {
+      const date = data.date.slice(0, 10);
+      const dup = await db.collection(calendarHolidays).findOne({ date, id: { $ne: id } });
+      if (dup) throw new Error(`A holiday already exists on ${date}`);
+      data = { ...data, date };
+    }
+    await db.collection(calendarHolidays).updateOne({ id }, { $set: { ...data, updatedAt: new Date() } });
+    return (await db.collection(calendarHolidays).findOne({ id })) as CalendarHoliday | undefined;
+  }
+
+  async deleteCalendarHoliday(id: number): Promise<void> {
+    await db.collection(calendarHolidays).deleteOne({ id });
   }
 
   async getCities(countryId?: number): Promise<Array<City & { countryName?: string }>> {
@@ -2808,6 +2948,291 @@ export class DatabaseStorage {
     await db.collection("project_resources").deleteOne({ id });
   }
 
+  async getProjectResourcesByWorkPackage(wpId: number): Promise<ProjectResource[]> {
+    return (await db.collection("project_resources").find({ wpId }).toArray()) as ProjectResource[];
+  }
+
+  async getProjectResourcesByActivity(projectActivityId: number): Promise<ProjectResource[]> {
+    return (await db.collection("project_resources").find({ projectActivityId }).toArray()) as ProjectResource[];
+  }
+
+  async getWorkPackageMaterials(filter: {
+    wpId?: number;
+    projectId?: number;
+    projectActivityId?: number;
+  }): Promise<WorkPackageMaterial[]> {
+    const query: Record<string, number> = {};
+    if (filter.wpId !== undefined) query.wpId = filter.wpId;
+    if (filter.projectId !== undefined) query.projectId = filter.projectId;
+    if (filter.projectActivityId !== undefined) query.projectActivityId = filter.projectActivityId;
+    return (await db.collection("work_package_materials").find(query).toArray()) as WorkPackageMaterial[];
+  }
+
+  async computeActivityEstimatedCost(projectActivityId: number): Promise<{
+    materialsCost: number;
+    resourcesCost: number;
+    servicesCost: number;
+    totalCost: number;
+  }> {
+    const materials = await this.getWorkPackageMaterials({ projectActivityId });
+    const resources = await this.getProjectResourcesByActivity(projectActivityId);
+    const services = await this.getWorkPackageServices({ projectActivityId });
+    const materialsCost = materials.reduce((s, m) => s + Number(m.estimatedValue || 0), 0);
+    const resourcesCost = resources.reduce(
+      (s, r) => s + Number(r.unitRate || 0) * Number(r.quantity || 0),
+      0
+    );
+    const servicesCost = services.reduce((s, svc) => s + Number(svc.estimatedValue || 0), 0);
+    return {
+      materialsCost,
+      resourcesCost,
+      servicesCost,
+      totalCost: materialsCost + resourcesCost + servicesCost,
+    };
+  }
+
+  async syncWorkPackageRollupFromActivities(wpId: number): Promise<{
+    materialsCost: number;
+    resourcesCost: number;
+    servicesCost: number;
+    totalCost: number;
+    activityCount: number;
+  }> {
+    const activities = await this.getProjectActivitiesByWorkPackage(wpId);
+    let materialsCost = 0;
+    let resourcesCost = 0;
+    let servicesCost = 0;
+    for (const act of activities) {
+      const costs = await this.computeActivityEstimatedCost(act.id);
+      materialsCost += costs.materialsCost;
+      resourcesCost += costs.resourcesCost;
+      servicesCost += costs.servicesCost;
+    }
+    const totalCost = materialsCost + resourcesCost + servicesCost;
+    const wp = await this.getWorkPackage(wpId);
+    if (wp) {
+      await this.updateWorkPackage(wpId, { budgetedCost: String(totalCost) });
+      await this.upsertPlannedCostWorkpackage({
+        projectId: wp.projectId,
+        wpId,
+        materialsPlannedValue: materialsCost.toFixed(2),
+        servicesPlannedValue: servicesCost.toFixed(2),
+        resourcesPlannedValue: resourcesCost.toFixed(2),
+        totalPlannedValue: totalCost.toFixed(2),
+        isLocked: true,
+      });
+    }
+    return { materialsCost, resourcesCost, servicesCost, totalCost, activityCount: activities.length };
+  }
+
+  async getWorkPackageMaterial(id: number): Promise<WorkPackageMaterial | undefined> {
+    return (await db.collection("work_package_materials").findOne({ id })) as WorkPackageMaterial | undefined;
+  }
+
+  async createWorkPackageMaterial(data: InsertWorkPackageMaterial): Promise<WorkPackageMaterial> {
+    const id = await this.getNextId("work_package_materials");
+    const item = { ...data, id, createdAt: new Date(), updatedAt: new Date() };
+    await db.collection("work_package_materials").insertOne(item);
+    return item as WorkPackageMaterial;
+  }
+
+  async updateWorkPackageMaterial(
+    id: number,
+    data: Partial<Pick<WorkPackageMaterial, "quantity" | "estimatedValue">>
+  ): Promise<WorkPackageMaterial | undefined> {
+    await db.collection("work_package_materials").updateOne(
+      { id },
+      { $set: { ...data, updatedAt: new Date() } }
+    );
+    return this.getWorkPackageMaterial(id);
+  }
+
+  async deleteWorkPackageMaterial(id: number): Promise<void> {
+    await db.collection("work_package_materials").deleteOne({ id });
+  }
+
+  async getMaterialsAllocationRollup(): Promise<
+    Array<
+      MaterialMaster & {
+        totalQuantityRequired: number;
+        allocations: Array<{
+          allocationId: number;
+          projectId: number;
+          projectName: string;
+          wpId: number;
+          wpCode: string;
+          wpName: string;
+          projectActivityId: number | null;
+          activityName: string | null;
+          quantity: number;
+          estimatedValue: number;
+        }>;
+      }
+    >
+  > {
+    const allMaterials = await this.getMaterialMasters();
+    const allocationRows = (await db
+      .collection("work_package_materials")
+      .find()
+      .toArray()) as WorkPackageMaterial[];
+
+    const projectIds = [...new Set(allocationRows.map((r) => r.projectId))];
+    const wpIds = [...new Set(allocationRows.map((r) => r.wpId))];
+    const actIds = [
+      ...new Set(
+        allocationRows
+          .map((r) => r.projectActivityId)
+          .filter((id): id is number => id != null)
+      ),
+    ];
+
+    const [projects, wps, acts] = await Promise.all([
+      projectIds.length > 0
+        ? db.collection("projects").find({ id: { $in: projectIds } }).toArray()
+        : [],
+      wpIds.length > 0
+        ? db.collection("work_packages").find({ id: { $in: wpIds } }).toArray()
+        : [],
+      actIds.length > 0
+        ? db.collection("project_activities").find({ id: { $in: actIds } }).toArray()
+        : [],
+    ]);
+
+    const projectById = new Map(projects.map((p: { id: number; name?: string }) => [p.id, p]));
+    const wpById = new Map(
+      wps.map((w: { id: number; code?: string; name?: string }) => [w.id, w])
+    );
+    const actById = new Map(acts.map((a: { id: number; name?: string }) => [a.id, a]));
+
+    type Alloc = {
+      allocationId: number;
+      projectId: number;
+      projectName: string;
+      wpId: number;
+      wpCode: string;
+      wpName: string;
+      projectActivityId: number | null;
+      activityName: string | null;
+      quantity: number;
+      estimatedValue: number;
+    };
+
+    const byMaterial = new Map<number, { total: number; allocations: Alloc[] }>();
+
+    for (const row of allocationRows) {
+      const q = parseFloat(String(row.quantity ?? "0"));
+      const qty = Number.isFinite(q) ? q : 0;
+      const ev = parseFloat(String(row.estimatedValue ?? "0"));
+      const estimatedValue = Number.isFinite(ev) ? ev : 0;
+      const project = projectById.get(row.projectId);
+      const wp = wpById.get(row.wpId);
+      const actId = row.projectActivityId ?? null;
+      const act = actId != null ? actById.get(actId) : undefined;
+
+      const cur = byMaterial.get(row.materialId) ?? { total: 0, allocations: [] as Alloc[] };
+      cur.total += qty;
+      cur.allocations.push({
+        allocationId: row.id,
+        projectId: row.projectId,
+        projectName: (project as { name?: string })?.name ?? `Project #${row.projectId}`,
+        wpId: row.wpId,
+        wpCode: (wp as { code?: string })?.code ?? String(row.wpId),
+        wpName: (wp as { name?: string })?.name ?? `WP #${row.wpId}`,
+        projectActivityId: actId,
+        activityName: actId != null ? (act as { name?: string })?.name ?? `Activity #${actId}` : null,
+        quantity: qty,
+        estimatedValue,
+      });
+      byMaterial.set(row.materialId, cur);
+    }
+
+    const materials = allMaterials.map((m) => {
+      const agg = byMaterial.get(m.id);
+      const allocations = [...(agg?.allocations ?? [])].sort((a, b) => {
+        const pc = a.projectName.localeCompare(b.projectName, undefined, { sensitivity: "base" });
+        if (pc !== 0) return pc;
+        const wc = a.wpCode.localeCompare(b.wpCode, undefined, { numeric: true });
+        if (wc !== 0) return wc;
+        return (a.activityName ?? "").localeCompare(b.activityName ?? "", undefined, { sensitivity: "base" });
+      });
+      return {
+        ...m,
+        totalQuantityRequired: agg?.total ?? 0,
+        allocations,
+      };
+    });
+
+    materials.sort((a, b) =>
+      String(a.materialCode ?? "").localeCompare(String(b.materialCode ?? ""), undefined, {
+        sensitivity: "base",
+      })
+    );
+
+    return materials;
+  }
+
+  async getWorkPackageServices(filter: {
+    wpId?: number;
+    projectId?: number;
+    projectActivityId?: number;
+  }): Promise<WorkPackageService[]> {
+    const query: Record<string, number> = {};
+    if (filter.wpId !== undefined) query.wpId = filter.wpId;
+    if (filter.projectId !== undefined) query.projectId = filter.projectId;
+    if (filter.projectActivityId !== undefined) query.projectActivityId = filter.projectActivityId;
+    return (await db.collection("work_package_services").find(query).toArray()) as WorkPackageService[];
+  }
+
+  async getWorkPackageService(id: number): Promise<WorkPackageService | undefined> {
+    return (await db.collection("work_package_services").findOne({ id })) as WorkPackageService | undefined;
+  }
+
+  async createWorkPackageService(data: InsertWorkPackageService): Promise<WorkPackageService> {
+    const id = await this.getNextId("work_package_services");
+    const item = { ...data, id, createdAt: new Date(), updatedAt: new Date() };
+    await db.collection("work_package_services").insertOne(item);
+    return item as WorkPackageService;
+  }
+
+  async updateWorkPackageService(
+    id: number,
+    data: Partial<Pick<WorkPackageService, "quantity" | "estimatedValue">>
+  ): Promise<WorkPackageService | undefined> {
+    await db.collection("work_package_services").updateOne(
+      { id },
+      { $set: { ...data, updatedAt: new Date() } }
+    );
+    return this.getWorkPackageService(id);
+  }
+
+  async deleteWorkPackageService(id: number): Promise<void> {
+    await db.collection("work_package_services").deleteOne({ id });
+  }
+
+  async getPlannedCostWorkpackage(
+    projectId: number,
+    wpId: number
+  ): Promise<PlannedCostWorkpackage | undefined> {
+    return (await db.collection("planned_cost_workpackages").findOne({ projectId, wpId })) as
+      | PlannedCostWorkpackage
+      | undefined;
+  }
+
+  async upsertPlannedCostWorkpackage(data: InsertPlannedCostWorkpackage): Promise<PlannedCostWorkpackage> {
+    const existing = await this.getPlannedCostWorkpackage(data.projectId, data.wpId);
+    if (existing) {
+      await db.collection("planned_cost_workpackages").updateOne(
+        { projectId: data.projectId, wpId: data.wpId },
+        { $set: { ...data, updatedAt: new Date() } }
+      );
+      return (await this.getPlannedCostWorkpackage(data.projectId, data.wpId)) as PlannedCostWorkpackage;
+    }
+    const id = await this.getNextId("planned_cost_workpackages");
+    const item = { ...data, id, createdAt: new Date(), updatedAt: new Date() };
+    await db.collection("planned_cost_workpackages").insertOne(item);
+    return item as PlannedCostWorkpackage;
+  }
+
   async getDailyProgressses(projectId?: number): Promise<DailyProgress[]> {
     const filter = projectId ? { projectId } : {};
     return await db.collection("daily_progress").find(filter).toArray() as any;
@@ -3095,9 +3520,61 @@ export class DatabaseStorage {
     await db.collection("work_packages").deleteOne({ id });
   }
 
-  async getKanbanCards(projectId?: number): Promise<KanbanCard[]> {
-    const filter = projectId ? { projectId } : {};
-    return await db.collection("kanban_cards").find(filter).toArray() as any;
+  async getKanbanCards(projectId?: number, includeArchived = false): Promise<KanbanCard[]> {
+    const filter: Record<string, unknown> = projectId ? { projectId } : {};
+    if (!includeArchived) {
+      filter.$or = [{ archivedAt: null }, { archivedAt: { $exists: false } }];
+    }
+    return (await db.collection("kanban_cards").find(filter).toArray()) as KanbanCard[];
+  }
+
+  async getKanbanCardsForBoard(projectId: number): Promise<
+    Array<{
+      card: KanbanCard;
+      wbsCode: string | null;
+      wbsName: string | null;
+      activityName: string | null;
+    }>
+  > {
+    const cards = await this.getKanbanCards(projectId, false);
+    const wbsIds = [...new Set(cards.map((c) => c.wbsItemId).filter((id): id is number => id != null))];
+    const activityIds = [
+      ...new Set(cards.map((c) => c.projectActivityId).filter((id): id is number => id != null)),
+    ];
+
+    const wbsById = new Map<number, { code?: string; name?: string }>();
+    if (wbsIds.length > 0) {
+      const wbsRows = await db.collection("wbs_items").find({ id: { $in: wbsIds } }).toArray();
+      for (const row of wbsRows) {
+        const w = row as { id: number; code?: string; name?: string };
+        wbsById.set(w.id, { code: w.code, name: w.name });
+      }
+    }
+
+    const activityById = new Map<number, string>();
+    if (activityIds.length > 0) {
+      const actRows = await db
+        .collection("project_activities")
+        .find({ id: { $in: activityIds } })
+        .toArray();
+      for (const row of actRows) {
+        const a = row as { id: number; name?: string };
+        activityById.set(a.id, a.name ?? "");
+      }
+    }
+
+    return cards.map((card) => {
+      const wbs = card.wbsItemId != null ? wbsById.get(card.wbsItemId) : undefined;
+      return {
+        card,
+        wbsCode: wbs?.code ?? null,
+        wbsName: wbs?.name ?? null,
+        activityName:
+          card.projectActivityId != null
+            ? activityById.get(card.projectActivityId) ?? null
+            : null,
+      };
+    });
   }
 
   async getKanbanCard(id: number): Promise<KanbanCard | undefined> {
@@ -3106,9 +3583,18 @@ export class DatabaseStorage {
 
   async createKanbanCard(data: InsertKanbanCard): Promise<KanbanCard> {
     const id = await this.getNextId("kanban_cards");
-    const item = { ...data, id, createdAt: new Date(), updatedAt: new Date() };
+    const item = {
+      ...data,
+      id,
+      archivedAt: data.archivedAt ?? null,
+      wbsItemId: data.wbsItemId ?? null,
+      projectActivityId: data.projectActivityId ?? null,
+      priority: data.priority ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
     await db.collection("kanban_cards").insertOne(item);
-    return item as any;
+    return item as KanbanCard;
   }
 
   async updateKanbanCard(id: number, data: Partial<InsertKanbanCard>): Promise<KanbanCard | undefined> {
@@ -3154,9 +3640,51 @@ export class DatabaseStorage {
     return await db.collection("project_activities").find({ wpId }).toArray() as any;
   }
 
-  async moveKanbanCardToPosition(projectId: number, cardId: number, newColumn: string, destinationIndex: number): Promise<void> {
-    // Basic implementation
-    await db.collection("kanban_cards").updateOne({ id: cardId }, { $set: { column: newColumn, position: destinationIndex, updatedAt: new Date() } });
+  async moveKanbanCardToPosition(
+    projectId: number,
+    cardId: number,
+    newColumn: string,
+    destinationIndex: number
+  ): Promise<void> {
+    const cards = (await this.getKanbanCards(projectId)).filter((c) => c.id !== cardId);
+    const dest = cards
+      .filter((c) => c.column === newColumn)
+      .sort((a, b) => a.position - b.position || a.id - b.id);
+    const clampedIndex = Math.max(0, Math.min(destinationIndex, dest.length));
+    dest.splice(clampedIndex, 0, {
+      id: cardId,
+      column: newColumn as KanbanCard["column"],
+      position: clampedIndex,
+    } as KanbanCard);
+
+    const updates: Promise<unknown>[] = [];
+    for (let i = 0; i < dest.length; i++) {
+      updates.push(
+        db.collection("kanban_cards").updateOne(
+          { id: dest[i].id },
+          { $set: { column: newColumn, position: i, updatedAt: new Date() } }
+        )
+      );
+    }
+
+    const otherColumns = ["wish", "ready", "doing", "done"].filter((c) => c !== newColumn);
+    for (const col of otherColumns) {
+      const colCards = cards
+        .filter((c) => c.column === col)
+        .sort((a, b) => a.position - b.position || a.id - b.id);
+      for (let i = 0; i < colCards.length; i++) {
+        if (colCards[i].position !== i) {
+          updates.push(
+            db.collection("kanban_cards").updateOne(
+              { id: colCards[i].id },
+              { $set: { position: i, updatedAt: new Date() } }
+            )
+          );
+        }
+      }
+    }
+
+    await Promise.all(updates);
   }
 
   async getWikiRecords(collectionName: string, projectId: number): Promise<WikiRecord[]> {

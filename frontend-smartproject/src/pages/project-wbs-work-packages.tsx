@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { FinalizeWbsButton } from "@/components/project/finalize-wbs-button";
 import { WorkPackageActivitiesPanel } from "@/components/project/work-package-activities-panel";
+import { WorkPackageActivitiesRegister } from "@/components/project/work-package-activities-register";
 import { cn } from "@/lib/utils";
 import { RESOURCE_HOURLY_UOM } from "@/lib/resource-uom";
 
@@ -39,9 +40,9 @@ interface WorkPackage {
   budgetedCost: string;
 }
 
-type TabKey = "home" | "activities" | "cost" | "schedule" | "progress";
+type TabKey = "home" | "activities" | "register" | "cost" | "schedule" | "progress";
 
-const TAB_KEYS: TabKey[] = ["home", "activities", "cost", "schedule", "progress"];
+const TAB_KEYS: TabKey[] = ["home", "activities", "register", "cost", "schedule", "progress"];
 
 function getTabFromHash(): TabKey {
   if (typeof window === "undefined") return "home";
@@ -169,6 +170,47 @@ export default function ProjectWbsWorkPackages() {
 
   const selectedWP = workPackages.find((wp) => wp.id === selectedWpId);
   const isLoading = loadingWbs || loadingWps;
+
+  type ActivityGrouped<T> = { activityId: number | null; activityName: string; items: T[] };
+
+  function groupByActivity<T extends { projectActivityId?: number | null; projectActivityName?: string | null }>(
+    items: T[]
+  ): ActivityGrouped<T>[] {
+    const map = new Map<string, ActivityGrouped<T>>();
+    for (const item of items) {
+      const activityId = item.projectActivityId ?? null;
+      const key = activityId != null ? String(activityId) : "none";
+      const activityName =
+        item.projectActivityName || (activityId != null ? `Activity #${activityId}` : "Unassigned");
+      const group = map.get(key) ?? { activityId, activityName, items: [] };
+      group.items.push(item);
+      map.set(key, group);
+    }
+    return [...map.values()].sort((a, b) => a.activityName.localeCompare(b.activityName));
+  }
+
+  const materialsByActivity = useMemo(() => groupByActivity(wpMaterials), [wpMaterials]);
+  const servicesByActivity = useMemo(() => groupByActivity(wpServices), [wpServices]);
+  const resourcesByActivity = useMemo(() => groupByActivity(wpResources), [wpResources]);
+
+  const wpMaterialsTotal = useMemo(
+    () => wpMaterials.reduce((s, r) => s + Number(r.estimatedValue || 0), 0),
+    [wpMaterials]
+  );
+  const wpServicesTotal = useMemo(
+    () => wpServices.reduce((s, r) => s + Number(r.estimatedValue || 0), 0),
+    [wpServices]
+  );
+  const wpResourcesTotal = useMemo(
+    () => wpResources.reduce((s, r) => s + getResourceEstimatedValue(r), 0),
+    [wpResources]
+  );
+
+  const wpEstimatedTotal = useMemo(() => {
+    const fromLineItems = wpMaterialsTotal + wpServicesTotal + wpResourcesTotal;
+    const fromWpBudget = Number(selectedWP?.budgetedCost ?? 0);
+    return fromWpBudget > 0 ? fromWpBudget : fromLineItems;
+  }, [selectedWP, wpMaterialsTotal, wpServicesTotal, wpResourcesTotal]);
 
   /** Prefer API `estimatedValue`; else qty × unit rate (camelCase or snake_case). */
   function getResourceEstimatedValue(r: Record<string, unknown>): number {
@@ -357,9 +399,20 @@ export default function ProjectWbsWorkPackages() {
                   : "Select a work package"}
               </CardTitle>
               {selectedWP && (
-                <p className="text-sm text-zinc-600">
-                  Materials, services and resources mapped to this work package
-                </p>
+                <>
+                  <p className="text-sm text-zinc-600">
+                    Materials, services and resources mapped to activities (rolled up to this work package)
+                  </p>
+                  {(wpMaterials.length > 0 || wpServices.length > 0 || wpResources.length > 0) && (
+                    <p className="text-sm font-semibold text-emerald-800 mt-1">
+                      WP estimated total: {formatCurrency(wpEstimatedTotal)}
+                      <span className="text-zinc-500 font-normal ml-2">
+                        (Mat {formatCurrency(wpMaterialsTotal)} + Svc {formatCurrency(wpServicesTotal)} + Res{" "}
+                        {formatCurrency(wpResourcesTotal)})
+                      </span>
+                    </p>
+                  )}
+                </>
               )}
             </CardHeader>
             <CardContent>
@@ -382,49 +435,57 @@ export default function ProjectWbsWorkPackages() {
                     {wpMaterials.length === 0 ? (
                       <p className="text-sm text-zinc-500">No materials assigned.</p>
                     ) : (
-                      <div className="w-full overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-                              Code
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-                              Description
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-                              UOM
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
-                              Qty
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
-                              Est. Value
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {wpMaterials.map((r: any) => (
-                            <TableRow key={r.id} className="hover:bg-amber-50/40">
-                              <TableCell className="font-semibold text-zinc-800">
-                                {r.materialCode}
-                              </TableCell>
-                              <TableCell className="text-zinc-700">
-                                {r.materialDescription}
-                              </TableCell>
-                              <TableCell className="text-zinc-600">
-                                {r.uom}
-                              </TableCell>
-                              <TableCell className="text-right font-mono text-zinc-800">
-                                {r.quantity}
-                              </TableCell>
-                              <TableCell className="text-right font-mono text-emerald-700">
-                                {formatCurrency(Number(r.estimatedValue || 0))}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                      <div className="w-full overflow-x-auto space-y-4">
+                        {materialsByActivity.map((group) => (
+                          <div key={`mat-${group.activityId ?? "none"}`}>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 mb-2">
+                              Activity: {group.activityName}
+                            </p>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                                    Code
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                                    Description
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                                    UOM
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
+                                    Qty
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
+                                    Est. Value
+                                  </TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {group.items.map((r: any) => (
+                                  <TableRow key={r.id} className="hover:bg-amber-50/40">
+                                    <TableCell className="font-semibold text-zinc-800">
+                                      {r.materialCode}
+                                    </TableCell>
+                                    <TableCell className="text-zinc-700">
+                                      {r.materialDescription}
+                                    </TableCell>
+                                    <TableCell className="text-zinc-600">{r.uom}</TableCell>
+                                    <TableCell className="text-right font-mono text-zinc-800">
+                                      {r.quantity}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono text-emerald-700">
+                                      {formatCurrency(Number(r.estimatedValue || 0))}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        ))}
+                        <p className="text-sm font-semibold text-right text-emerald-800 pt-1 border-t">
+                          WP materials total: {formatCurrency(wpMaterialsTotal)}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -442,49 +503,57 @@ export default function ProjectWbsWorkPackages() {
                     {wpServices.length === 0 ? (
                       <p className="text-sm text-zinc-500">No services assigned.</p>
                     ) : (
-                      <div className="w-full overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-                              Code
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-                              Description
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-                              UOM
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
-                              Qty
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
-                              Est. Value
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {wpServices.map((r: any) => (
-                            <TableRow key={r.id} className="hover:bg-sky-50/40">
-                              <TableCell className="font-semibold text-zinc-800">
-                                {r.serviceCode}
-                              </TableCell>
-                              <TableCell className="text-zinc-700">
-                                {r.serviceDescription}
-                              </TableCell>
-                              <TableCell className="text-zinc-600">
-                                {r.uom}
-                              </TableCell>
-                              <TableCell className="text-right font-mono text-zinc-800">
-                                {r.quantity}
-                              </TableCell>
-                              <TableCell className="text-right font-mono text-emerald-700">
-                                {formatCurrency(Number(r.estimatedValue || 0))}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                      <div className="w-full overflow-x-auto space-y-4">
+                        {servicesByActivity.map((group) => (
+                          <div key={`svc-${group.activityId ?? "none"}`}>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-sky-800 mb-2">
+                              Activity: {group.activityName}
+                            </p>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                                    Code
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                                    Description
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                                    UOM
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
+                                    Qty
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
+                                    Est. Value
+                                  </TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {group.items.map((r: any) => (
+                                  <TableRow key={r.id} className="hover:bg-sky-50/40">
+                                    <TableCell className="font-semibold text-zinc-800">
+                                      {r.serviceCode}
+                                    </TableCell>
+                                    <TableCell className="text-zinc-700">
+                                      {r.serviceDescription}
+                                    </TableCell>
+                                    <TableCell className="text-zinc-600">{r.uom}</TableCell>
+                                    <TableCell className="text-right font-mono text-zinc-800">
+                                      {r.quantity}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono text-emerald-700">
+                                      {formatCurrency(Number(r.estimatedValue || 0))}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        ))}
+                        <p className="text-sm font-semibold text-right text-emerald-800 pt-1 border-t">
+                          WP services total: {formatCurrency(wpServicesTotal)}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -502,55 +571,59 @@ export default function ProjectWbsWorkPackages() {
                     {wpResources.length === 0 ? (
                       <p className="text-sm text-zinc-500">No resources assigned.</p>
                     ) : (
-                      <div className="w-full overflow-x-auto">
-                      <Table className="min-w-[640px]">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-                              Name
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-                              Type
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-                              Rate UOM
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
-                              Hourly rate
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
-                              Qty
-                            </TableHead>
-                            <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
-                              Est. Value
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {wpResources.map((r: any) => (
-                            <TableRow key={r.id} className="hover:bg-emerald-50/40">
-                              <TableCell className="font-semibold text-zinc-800">
-                                {r.name}
-                              </TableCell>
-                              <TableCell className="text-zinc-700">
-                                {r.type}
-                              </TableCell>
-                              <TableCell className="text-zinc-600">
-                                {RESOURCE_HOURLY_UOM}
-                              </TableCell>
-                              <TableCell className="text-right font-mono text-zinc-800">
-                                {formatCurrency(getResourceUnitRate(r))}
-                              </TableCell>
-                              <TableCell className="text-right font-mono text-zinc-800">
-                                {r.quantity}
-                              </TableCell>
-                              <TableCell className="text-right font-mono text-emerald-700">
-                                {formatCurrency(getResourceEstimatedValue(r))}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                      <div className="w-full overflow-x-auto space-y-4">
+                        {resourcesByActivity.map((group) => (
+                          <div key={`res-${group.activityId ?? "none"}`}>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800 mb-2">
+                              Activity: {group.activityName}
+                            </p>
+                            <Table className="min-w-[640px]">
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                                    Name
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                                    Type
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                                    Rate UOM
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
+                                    Hourly rate
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
+                                    Qty
+                                  </TableHead>
+                                  <TableHead className="text-xs font-semibold tracking-wide text-zinc-500 uppercase text-right">
+                                    Est. Value
+                                  </TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {group.items.map((r: any) => (
+                                  <TableRow key={r.id} className="hover:bg-emerald-50/40">
+                                    <TableCell className="font-semibold text-zinc-800">{r.name}</TableCell>
+                                    <TableCell className="text-zinc-700">{r.type}</TableCell>
+                                    <TableCell className="text-zinc-600">{RESOURCE_HOURLY_UOM}</TableCell>
+                                    <TableCell className="text-right font-mono text-zinc-800">
+                                      {formatCurrency(getResourceUnitRate(r))}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono text-zinc-800">
+                                      {r.quantity}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono text-emerald-700">
+                                      {formatCurrency(getResourceEstimatedValue(r))}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        ))}
+                        <p className="text-sm font-semibold text-right text-emerald-800 pt-1 border-t">
+                          WP resources total: {formatCurrency(wpResourcesTotal)}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -589,6 +662,10 @@ export default function ProjectWbsWorkPackages() {
             selectedWpId={selectedWpId}
             onSelectWp={setSelectedWpId}
           />
+        </TabsContent>
+
+        <TabsContent value="register" className="mt-4">
+          <WorkPackageActivitiesRegister projectId={pid} />
         </TabsContent>
 
         <TabsContent value="cost" className="mt-4">

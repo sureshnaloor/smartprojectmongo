@@ -1,4 +1,4 @@
-import { Globe } from "lucide-react";
+import { Building2, Calendar, Globe } from "lucide-react";
 import MasterLayout from "@/layouts/master-layout";
 import { GlobalToolsHeader } from "@/components/global-tools-header";
 
@@ -7,7 +7,9 @@ interface GlobalMastersLayoutProps {
 }
 
 const tabs = [
+  { label: "Company", href: "/global-masters/company", Icon: Building2 },
   { label: "Regional & currency", href: "/global-masters/defaults", Icon: Globe },
+  { label: "Work calendar", href: "/global-masters/calendar", Icon: Calendar },
 ];
 
 export default function GlobalMastersLayout({ children }: GlobalMastersLayoutProps) {

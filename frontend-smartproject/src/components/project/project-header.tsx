@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Project, WbsItem } from "@shared/schema";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/utils";
-import { FileSpreadsheet, ChartLine, GanttChart, Menu, MoreHorizontal, BarChart2, PencilIcon, ArrowLeft, DollarSign, Package, Wrench, Users, LayoutDashboard, Activity, Calendar, TrendingUp, Pin, AlertTriangle, Award, Info, Megaphone, ClipboardCheck, HardHat, Laugh } from "lucide-react";
+import { FileSpreadsheet, ChartLine, GanttChart, Menu, MoreHorizontal, BarChart2, PencilIcon, ArrowLeft, DollarSign, Package, Wrench, Users, LayoutDashboard, Activity, Calendar, TrendingUp, Pin, AlertTriangle, Award, Info, Megaphone, ClipboardCheck, HardHat, Laugh, ListTree } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ImportWbsModal } from "./import-wbs-modal";
 import { DeleteProjectDialog } from "./delete-project-dialog";
@@ -219,27 +219,32 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
         <nav className="-mb-px flex space-x-8 overflow-x-auto">
           {isProjectRoot ? (
             <>
-              {(["home", "activities", "cost", "schedule", "progress"] as const).map((tab) => (
+              {(
+                [
+                  { key: "home", label: "Home", Icon: LayoutDashboard },
+                  { key: "activities", label: "Activities", Icon: Activity },
+                  { key: "register", label: "WP & Activities", Icon: ListTree },
+                  { key: "cost", label: "Cost", Icon: DollarSign },
+                  { key: "schedule", label: "Schedule", Icon: Calendar },
+                  { key: "progress", label: "Progress", Icon: TrendingUp },
+                ] as const
+              ).map((tab) => (
                 <a
-                  key={tab}
-                  href={`/projects/${projectId}#${tab}`}
+                  key={tab.key}
+                  href={`/projects/${projectId}#${tab.key}`}
                   onClick={(e) => {
                     e.preventDefault();
-                    window.location.hash = tab;
-                    setWbsTabHash(tab);
+                    window.location.hash = tab.key;
+                    setWbsTabHash(tab.key);
                     window.dispatchEvent(new HashChangeEvent("hashchange"));
                   }}
-                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all flex items-center gap-2 ${activeWbsTab === tab
+                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all flex items-center gap-2 ${activeWbsTab === tab.key
                     ? "border-zinc-900 text-zinc-900"
                     : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
                     }`}
                 >
-                  {tab === "home" && <LayoutDashboard className="h-4 w-4" />}
-                  {tab === "activities" && <Activity className="h-4 w-4" />}
-                  {tab === "cost" && <DollarSign className="h-4 w-4" />}
-                  {tab === "schedule" && <Calendar className="h-4 w-4" />}
-                  {tab === "progress" && <TrendingUp className="h-4 w-4" />}
-                  <span className="capitalize">{tab}</span>
+                  <tab.Icon className="h-4 w-4" />
+                  <span>{tab.label}</span>
                 </a>
               ))}
             </>

@@ -483,6 +483,7 @@ export type ProjectTask = InsertProjectTask & { id: number; createdAt: Date; upd
 export const insertProjectResourceSchema = z.object({
   projectId: z.number(),
   wpId: z.number(),
+  projectActivityId: z.number().optional().nullable(),
   globalResourceId: z.number().optional().nullable(),
   name: z.string(),
   description: z.string().optional().nullable(),
@@ -711,6 +712,7 @@ export type ServiceMaster = InsertServiceMaster & { id: number; createdAt: Date;
 export const insertWorkPackageMaterialSchema = z.object({
   projectId: z.number(),
   wpId: z.number(),
+  projectActivityId: z.number().optional().nullable(),
   materialId: z.number(),
   quantity: z.union([z.string(), z.number()]).transform((v) => (typeof v === 'number' ? String(v) : v)),
   estimatedValue: z.union([z.string(), z.number()]).transform((v) => (typeof v === 'number' ? String(v) : v)),
@@ -721,6 +723,7 @@ export type WorkPackageMaterial = InsertWorkPackageMaterial & { id: number; crea
 export const insertWorkPackageServiceSchema = z.object({
   projectId: z.number(),
   wpId: z.number(),
+  projectActivityId: z.number().optional().nullable(),
   serviceId: z.number(),
   quantity: z.union([z.string(), z.number()]).transform((v) => (typeof v === 'number' ? String(v) : v)),
   estimatedValue: z.union([z.string(), z.number()]).transform((v) => (typeof v === 'number' ? String(v) : v)),
@@ -1029,19 +1032,61 @@ export const insertCitySchema = z.object({ name: z.string(), countryId: z.number
 export type InsertCity = z.infer<typeof insertCitySchema>;
 export type City = InsertCity & { id: number; createdAt: Date; updatedAt: Date };
 
-// --- Global defaults (singleton: base currency, default country) ---
+// --- Global defaults (singleton: base currency, default country, company profile) ---
 export const updateGlobalDefaultsSchema = z.object({
   defaultCountryId: z.number().nullable().optional(),
-  defaultCurrencyCode: projectCurrencySchema,
+  defaultCurrencyCode: projectCurrencySchema.optional(),
+  companyName: z.string().max(200).nullable().optional(),
+  companyAddress: z.string().max(2000).nullable().optional(),
 });
 export type UpdateGlobalDefaults = z.infer<typeof updateGlobalDefaultsSchema>;
 export type GlobalDefaults = {
   id: number;
   defaultCountryId: number | null;
   defaultCurrencyCode: string;
+  companyName: string | null;
+  companyAddress: string | null;
+  companyLogoFileName: string | null;
+  companyLogoB2FileId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+// --- Default work calendar (singleton) ---
+export const weekendPatternEnum = z.enum(["fri_sat", "sat_sun", "sun_only", "fri_only", "custom"]);
+export type WeekendPattern = z.infer<typeof weekendPatternEnum>;
+
+export const calendarPartialDaySchema = z.object({
+  date: z.string().min(10),
+  hours: z.number().min(0).max(24),
+  note: z.string().optional().nullable(),
+});
+
+export const updateDefaultCalendarSchema = z.object({
+  weekendPattern: weekendPatternEnum.optional(),
+  customWeekendDays: z.array(z.number().int().min(0).max(6)).optional(),
+  standardHoursPerDay: z.number().min(0).max(24).optional(),
+  partialDays: z.array(calendarPartialDaySchema).optional(),
+});
+export type UpdateDefaultCalendar = z.infer<typeof updateDefaultCalendarSchema>;
+export type DefaultCalendar = {
+  id: number;
+  weekendPattern: WeekendPattern;
+  customWeekendDays: number[];
+  standardHoursPerDay: number;
+  partialDays: Array<{ date: string; hours: number; note?: string | null }>;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const insertCalendarHolidaySchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  date: z.string().min(10),
+  name: z.string().min(1),
+  holidayType: z.enum(["national", "common", "religious", "other"]).default("national"),
+});
+export type InsertCalendarHoliday = z.infer<typeof insertCalendarHolidaySchema>;
+export type CalendarHoliday = InsertCalendarHoliday & { id: number; createdAt: Date; updatedAt: Date };
 
 // --- Employee master details ---
 export const insertNationalitySchema = z.object({ name: z.string(), description: z.string().optional().nullable() });
@@ -1165,6 +1210,8 @@ export const materialGroups = 'material_groups';
 export const countries = 'countries';
 export const cities = 'cities';
 export const globalDefaults = 'global_defaults';
+export const defaultCalendar = 'default_calendar';
+export const calendarHolidays = 'calendar_holidays';
 export const nationalities = 'nationalities';
 export const employeeTitles = 'employee_titles';
 export const employeePositions = 'employee_positions';

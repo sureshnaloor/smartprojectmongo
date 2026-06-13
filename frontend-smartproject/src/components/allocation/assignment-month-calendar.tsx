@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   addMonths,
   eachDayOfInterval,
@@ -17,6 +18,12 @@ import {
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  CalendarHoliday,
+  DefaultCalendar,
+  dayCellClass,
+  getDayInfo,
+} from "@/lib/work-calendar";
 
 /** Matches API allocation assignment rows (manpower, equipment, tools, etc.). */
 export type AssignmentCalendarItem = {
@@ -27,7 +34,11 @@ export type AssignmentCalendarItem = {
   quantity: string;
   plannedStartDate: string | null;
   plannedEndDate: string | null;
+  /** Working days (excludes weekends & holidays). */
   durationDays: number | null;
+  calendarDays?: number | null;
+  workingHours?: number | null;
+  totalResourceHours?: number | null;
 };
 
 const CALENDAR_PALETTE = [
@@ -40,9 +51,17 @@ const CALENDAR_PALETTE = [
 
 type Props = {
   assignments: AssignmentCalendarItem[];
-  /** Shown when no assignment has both start and end dates. */
   emptyDateHint?: string;
 };
+
+async function fetchCalendarForYear(year: number) {
+  const res = await fetch(`/api/default-calendar?year=${year}`);
+  if (!res.ok) throw new Error("Failed to load work calendar");
+  return res.json() as Promise<{
+    calendar: DefaultCalendar;
+    holidays: CalendarHoliday[];
+  }>;
+}
 
 export function AssignmentMonthCalendar({ assignments, emptyDateHint }: Props) {
   const intervals = useMemo(() => {
@@ -78,6 +97,13 @@ export function AssignmentMonthCalendar({ assignments, emptyDateHint }: Props) {
   }, [intervals]);
 
   const [viewMonth, setViewMonth] = useState<Date>(firstMonth);
+  const viewYear = viewMonth.getFullYear();
+
+  const { data: calendarData } = useQuery({
+    queryKey: ["/api/default-calendar", viewYear],
+    queryFn: () => fetchCalendarForYear(viewYear),
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     setViewMonth(firstMonth);
@@ -90,6 +116,9 @@ export function AssignmentMonthCalendar({ assignments, emptyDateHint }: Props) {
     const gridEnd = endOfWeek(me, { weekStartsOn: 1 });
     return eachDayOfInterval({ start: gridStart, end: gridEnd });
   }, [viewMonth]);
+
+  const calendar = calendarData?.calendar;
+  const holidays = calendarData?.holidays ?? [];
 
   if (intervals.length === 0) {
     return (
@@ -138,27 +167,34 @@ export function AssignmentMonthCalendar({ assignments, emptyDateHint }: Props) {
         ))}
         {gridDays.map((day) => {
           const inMonth = isSameMonth(day, viewMonth);
+          const iso = format(day, "yyyy-MM-dd");
           const covering = intervals.filter(({ start, end }) =>
             isWithinInterval(day, { start, end })
           );
           const firstIdx = covering[0]?.assignmentIndex ?? 0;
-          const bg =
-            covering.length > 0
+          const dayInfo =
+            calendar && inMonth ? getDayInfo(iso, calendar, holidays) : null;
+          const isNonWorking =
+            dayInfo && (dayInfo.classification === "holiday" || dayInfo.classification === "weekend");
+          const assignmentBg =
+            covering.length > 0 && !isNonWorking
               ? CALENDAR_PALETTE[firstIdx % CALENDAR_PALETTE.length]
-              : inMonth
-                ? "bg-white"
-                : "bg-zinc-50/80";
+              : null;
           return (
             <div
               key={day.toISOString()}
               className={cn(
-                "min-h-[1.125rem] px-0.5 py-0.5 text-center tabular-nums flex items-center justify-center",
-                bg,
-                !inMonth && "text-zinc-300",
-                inMonth && covering.length === 0 && "text-zinc-800"
+                "min-h-[1.125rem] px-0.5 py-0.5 text-center tabular-nums flex items-center justify-center border",
+                assignmentBg ??
+                  (inMonth && dayInfo
+                    ? dayCellClass(dayInfo.classification)
+                    : inMonth
+                      ? "bg-white text-zinc-800"
+                      : "bg-zinc-50/80 text-zinc-300")
               )}
               title={
-                covering.length > 0
+                dayInfo?.holidayName ??
+                (covering.length > 0
                   ? covering
                       .map((c) => {
                         const a = assignments[c.assignmentIndex];
@@ -166,13 +202,23 @@ export function AssignmentMonthCalendar({ assignments, emptyDateHint }: Props) {
                       })
                       .filter(Boolean)
                       .join("; ")
-                  : undefined
+                  : dayInfo
+                    ? `${dayInfo.hours}h`
+                    : undefined)
               }
             >
               {inMonth ? format(day, "d") : ""}
             </div>
           );
         })}
+      </div>
+      <div className="flex flex-wrap gap-2 text-[9px] text-zinc-500">
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-sm bg-red-100 border border-red-200" /> Holiday
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-sm bg-zinc-100" /> Weekend
+        </span>
       </div>
       <ul className="flex flex-col gap-1 text-[10px] text-zinc-600 leading-snug">
         {assignments.map((a, i) => {
@@ -187,7 +233,10 @@ export function AssignmentMonthCalendar({ assignments, emptyDateHint }: Props) {
               />
               <span>
                 {a.projectName} / {a.wpCode}: {a.plannedStartDate} → {a.plannedEndDate}
-                {a.durationDays != null ? ` (${a.durationDays} d)` : ""}
+                {a.durationDays != null ? ` (${a.durationDays} wd` : ""}
+                {a.workingHours != null ? `, ${a.workingHours} h` : ""}
+                {a.totalResourceHours != null ? `, ${a.totalResourceHours} res-h` : ""}
+                {a.durationDays != null ? ")" : ""}
               </span>
             </li>
           );

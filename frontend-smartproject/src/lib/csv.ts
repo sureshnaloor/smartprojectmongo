@@ -168,8 +168,9 @@ export function validateCsvData(data: any[]): any {
   return csvImportSchema.parse(data);
 }
 
-// --- WBS upload: SUMMARY (root), WBS (2nd/3rd level), WorkPackage (leaves) ---
+// --- WBS upload: SUMMARY (root), WBS (structural), WorkPackage (leaves) ---
 const WBS_TYPES = ["SUMMARY", "WBS", "WorkPackage"] as const;
+const MAX_WBS_LEVEL = 9;
 
 /** Strip BOM, zero-width chars, normalize unicode (Excel often emits odd spaces). */
 function cleanCsvCell(raw: string): string {
@@ -293,6 +294,12 @@ export function parseWbsCsvText(text: string): { data: any[]; errors: string[] }
         wbsDescription: row.wbsDescription ?? "",
       });
     }
+
+    if (data.length > 0) {
+      const hierarchyErrors = validateWbsCsvHierarchy(data);
+      errors.push(...hierarchyErrors);
+    }
+
     return { data, errors };
   } catch (error) {
     return {
@@ -318,23 +325,101 @@ export async function parseWbsCsvFile(file: File): Promise<{ data: any[]; errors
   });
 }
 
-/** Template: Project -> SUMMARY (root) -> WBS (2nd) -> WBS (3rd) -> WorkPackage. Budgets are preliminary until Edit Allocation (version 0). */
+/** Cross-row hierarchy checks (mirrors backend import + wbs-validation). */
+export function validateWbsCsvHierarchy(rows: { wbsCode: string; wbsType: string }[]): string[] {
+  const errors: string[] = [];
+  const rowsByCode = new Map(rows.map((r) => [r.wbsCode, r]));
+  const childrenByParent = new Map<string, typeof rows>();
+
+  for (const row of rows) {
+    const parts = row.wbsCode.split(".").map((p) => p.trim());
+    if (parts.some((p) => !/^\d+$/.test(p))) {
+      errors.push(`Row ${row.wbsCode}: wbsCode segments must be numeric`);
+      continue;
+    }
+    const level = parts.length;
+    const csvType = row.wbsType;
+
+    if (level === 1 && csvType !== "SUMMARY") {
+      errors.push(`Row ${row.wbsCode}: Level 1 must be SUMMARY`);
+    }
+    if (level > 1 && csvType === "SUMMARY") {
+      errors.push(`Row ${row.wbsCode}: SUMMARY is only allowed at level 1`);
+    }
+    if (csvType === "WBS" && level > MAX_WBS_LEVEL) {
+      errors.push(`Row ${row.wbsCode}: WBS exceeds maximum depth of ${MAX_WBS_LEVEL}`);
+    }
+    if (csvType === "WorkPackage" && level < 3) {
+      errors.push(`Row ${row.wbsCode}: WorkPackage must be at depth 3 or deeper (e.g. 1.1.1)`);
+    }
+
+    if (level > 1) {
+      const parentCode = parts.slice(0, -1).join(".");
+      if (!rowsByCode.has(parentCode)) {
+        errors.push(`Row ${row.wbsCode}: Parent '${parentCode}' not found in file`);
+      }
+      const list = childrenByParent.get(parentCode) ?? [];
+      list.push(row);
+      childrenByParent.set(parentCode, list);
+    }
+  }
+
+  for (const [parentCode, children] of childrenByParent) {
+    const types = new Set(children.map((c) => c.wbsType));
+    if (types.has("WBS") && types.has("WorkPackage")) {
+      errors.push(`Parent ${parentCode}: Cannot mix WBS and WorkPackage children`);
+    }
+    const parent = rowsByCode.get(parentCode);
+    if (parent?.wbsType === "SUMMARY" && types.has("WorkPackage")) {
+      errors.push(`Parent ${parentCode}: SUMMARY cannot have WorkPackage children directly`);
+    }
+  }
+
+  for (const row of rows) {
+    if (row.wbsType !== "WBS") continue;
+    const children = childrenByParent.get(row.wbsCode) ?? [];
+    const hasWbsChild = children.some((c) => c.wbsType === "WBS");
+    const hasWpChild = children.some((c) => c.wbsType === "WorkPackage");
+    if (children.length === 0) {
+      errors.push(`Row ${row.wbsCode}: WBS must have child rows`);
+    }
+  }
+
+  return errors;
+}
+
+/** Template: SUMMARY root → nested WBS (up to 6+ levels) → WorkPackage leaves. */
 export function generateWbsCsvTemplate(): string {
   return [
     "wbsCode,wbsName,wbsType,wbsDescription,budget",
-    "1,Engineering & Design,SUMMARY,Top-level phase,50000",
-    "1.1,Design,WBS,Design sub-phase,20000",
-    "1.1.1,Detailed Design,WBS,Detailed design only WBS,15000",
-    "1.1.1.1,Drawings,WorkPackage,Preliminary budget,8000",
-    "1.1.1.2,Specifications,WorkPackage,Preliminary budget,7000",
-    "1.2,Procurement,WBS,Procurement sub-phase,30000",
-    "1.2.1,Equipment,WBS,Equipment only WBS,30000",
-    "1.2.1.1,Boilers,WorkPackage,Preliminary budget,12000",
-    "1.2.1.2,Pumps,WorkPackage,Preliminary budget,18000",
-    "2,Construction,SUMMARY,Construction phase,40000",
-    "2.1,Civil Works,WBS,Civil only WBS,40000",
-    "2.1.1,Foundation,WorkPackage,Preliminary budget,25000",
-    "2.1.2,Structure,WorkPackage,Preliminary budget,15000",
+    "1,Sample Project,SUMMARY,Project root,120000",
+    "1.1,Engineering,WBS,Engineering branch,60000",
+    "1.1.1,Design,WBS,Design sub-branch,35000",
+    "1.1.1.1,Detailed Design,WBS,Deep structural WBS,22000",
+    "1.1.1.1.1,Mechanical Design,WBS,Deepest WBS before work packages,12000",
+    "1.1.1.1.1.1,Piping Drawings,WorkPackage,Leaf work package,4000",
+    "1.1.1.1.1.2,Equipment Layout,WorkPackage,Leaf work package,4000",
+    "1.1.1.1.1.3,Stress Analysis,WorkPackage,Leaf work package,4000",
+    "1.1.1.1.2,Electrical Design,WBS,Sibling branch ends in work packages,10000",
+    "1.1.1.1.2.1,Single Line Diagrams,WorkPackage,Leaf work package,3500",
+    "1.1.1.1.2.2,Cable Schedules,WorkPackage,Leaf work package,3500",
+    "1.1.1.1.2.3,Load Studies,WorkPackage,Leaf work package,3000",
+    "1.1.2,Procurement,WBS,Shorter branch,15000",
+    "1.1.2.1,Long Lead Items,WorkPackage,Direct work packages under WBS,5000",
+    "1.1.2.2,Standard Items,WorkPackage,Direct work packages under WBS,5000",
+    "1.1.2.3,Spare Parts,WorkPackage,Direct work packages under WBS,5000",
+    "1.2,Construction,WBS,Construction branch,40000",
+    "1.2.1,Civil Works,WBS,Civil sub-branch,25000",
+    "1.2.1.1,Foundation,WorkPackage,Leaf work package,9000",
+    "1.2.1.2,Structure,WorkPackage,Leaf work package,8000",
+    "1.2.1.3,Finishing,WorkPackage,Leaf work package,8000",
+    "1.2.2,Mechanical Install,WBS,Mechanical install branch,15000",
+    "1.2.2.1,Equipment Setting,WorkPackage,Leaf work package,7500",
+    "1.2.2.2,Piping Install,WorkPackage,Leaf work package,7500",
+    "1.3,Commissioning,WBS,Shallow branch,20000",
+    "1.3.1,Cold Commissioning,WorkPackage,Leaf work package,7000",
+    "1.3.2,Hot Commissioning,WorkPackage,Leaf work package,7000",
+    "1.3.3,Handover,WorkPackage,Leaf work package,6000",
   ].join("\n");
 }
 

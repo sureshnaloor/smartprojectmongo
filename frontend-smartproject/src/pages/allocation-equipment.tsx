@@ -239,7 +239,8 @@ export default function AllocationEquipment() {
                                           <TableHead className="text-[10px] h-8">Tag</TableHead>
                                           <TableHead className="text-[10px] h-8">Start</TableHead>
                                           <TableHead className="text-[10px] h-8">End</TableHead>
-                                          <TableHead className="text-[10px] h-8 text-right">Days</TableHead>
+                                          <TableHead className="text-[10px] h-8 text-right">Work days</TableHead>
+                                          <TableHead className="text-[10px] h-8 text-right">Res-hrs</TableHead>
                                         </TableRow>
                                       </TableHeader>
                                       <TableBody>
@@ -264,6 +265,9 @@ export default function AllocationEquipment() {
                                             </TableCell>
                                             <TableCell className="text-xs py-1.5 text-right tabular-nums">
                                               {a.durationDays ?? "—"}
+                                            </TableCell>
+                                            <TableCell className="text-xs py-1.5 text-right tabular-nums">
+                                              {a.totalResourceHours ?? "—"}
                                             </TableCell>
                                           </TableRow>
                                         ))}

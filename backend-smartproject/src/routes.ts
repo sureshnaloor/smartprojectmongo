@@ -6,12 +6,17 @@ import { insertFileUploadRecord } from "./file-upload-helpers";
 import { registerCorrespondenceRoutes } from "./correspondence-helpers";
 import { registerWikiRecordRoutes } from "./wiki-register-routes";
 import { registerCollabRoutes } from "./collab-routes";
-import { validateWbsStructure } from "./wbs-validation.js";
+import { validateWbsStructure, MAX_WBS_LEVEL } from "./wbs-validation.js";
 import {
   computeActivityBudget,
   validateProjectActivityPayload,
   validateGlobalActivityPayload,
 } from "./activity-types.js";
+import {
+  calendarDaysBetween,
+  workingDaysBetween,
+  workingHoursBetween,
+} from "./work-calendar.js";
 
 async function normalizeAndValidateGlobalActivity(
   data: {
@@ -162,6 +167,8 @@ import {
   insertCountrySchema,
   insertCitySchema,
   updateGlobalDefaultsSchema,
+  updateDefaultCalendarSchema,
+  insertCalendarHolidaySchema,
   nationalities,
   employeeTitles,
   employeePositions,
@@ -235,6 +242,95 @@ const handleError = (err: unknown, res: Response) => {
   return res.status(500).json({ message: "An unexpected error occurred" });
 };
 
+async function enrichWorkPackageMaterials(rows: Array<Record<string, unknown>>) {
+  const materials = await db.collection(materialMaster).find().toArray();
+  const byMatId = new Map(materials.map((m: { id: number }) => [m.id, m]));
+  const actIds = [
+    ...new Set(
+      rows
+        .map((r) => r.projectActivityId as number | null | undefined)
+        .filter((id): id is number => id != null)
+    ),
+  ];
+  const acts =
+    actIds.length > 0
+      ? await db.collection(projectActivities).find({ id: { $in: actIds } }).toArray()
+      : [];
+  const actById = new Map(acts.map((a: { id: number; name?: string }) => [a.id, a]));
+  return rows.map((r) => {
+    const mat = byMatId.get(r.materialId as number);
+    const actId = r.projectActivityId as number | null | undefined;
+    return {
+      ...r,
+      materialCode: (mat as { materialCode?: string })?.materialCode,
+      materialDescription: (mat as { materialDescription?: string })?.materialDescription,
+      uom: (mat as { uom?: string })?.uom,
+      baseRate: (mat as { baseRate?: string })?.baseRate,
+      projectActivityName: actId != null ? (actById.get(actId) as { name?: string })?.name ?? null : null,
+    };
+  });
+}
+
+function enrichProjectResources(rows: Array<Record<string, unknown>>, actById: Map<number, { name?: string }>) {
+  return rows.map((r) => {
+    const unitRate = Number(r.unitRate ?? r.unit_rate ?? 0);
+    const quantity = Number(r.quantity ?? r.qty ?? 0);
+    const estimatedValue =
+      Number.isFinite(unitRate) && Number.isFinite(quantity) ? unitRate * quantity : 0;
+    const actId = r.projectActivityId as number | null | undefined;
+    return {
+      ...r,
+      estimatedValue: estimatedValue.toFixed(2),
+      projectActivityName: actId != null ? actById.get(actId)?.name ?? null : null,
+    };
+  });
+}
+
+async function enrichWorkPackageResources(rows: Array<Record<string, unknown>>) {
+  const actIds = [
+    ...new Set(
+      rows
+        .map((r) => r.projectActivityId as number | null | undefined)
+        .filter((id): id is number => id != null)
+    ),
+  ];
+  const acts =
+    actIds.length > 0
+      ? await db.collection(projectActivities).find({ id: { $in: actIds } }).toArray()
+      : [];
+  const actById = new Map(acts.map((a: { id: number; name?: string }) => [a.id, a]));
+  return enrichProjectResources(rows, actById);
+}
+
+async function enrichWorkPackageServices(rows: Array<Record<string, unknown>>) {
+  const services = await db.collection(serviceMaster).find().toArray();
+  const bySvcId = new Map(services.map((s: { id: number }) => [s.id, s]));
+  const actIds = [
+    ...new Set(
+      rows
+        .map((r) => r.projectActivityId as number | null | undefined)
+        .filter((id): id is number => id != null)
+    ),
+  ];
+  const acts =
+    actIds.length > 0
+      ? await db.collection(projectActivities).find({ id: { $in: actIds } }).toArray()
+      : [];
+  const actById = new Map(acts.map((a: { id: number; name?: string }) => [a.id, a]));
+  return rows.map((r) => {
+    const svc = bySvcId.get(r.serviceId as number);
+    const actId = r.projectActivityId as number | null | undefined;
+    return {
+      ...r,
+      serviceCode: (svc as { serviceCode?: string })?.serviceCode,
+      serviceDescription: (svc as { serviceDescription?: string })?.serviceDescription,
+      uom: (svc as { uom?: string })?.uom,
+      baseRate: (svc as { baseRate?: string })?.baseRate,
+      projectActivityName: actId != null ? (actById.get(actId) as { name?: string })?.name ?? null : null,
+    };
+  });
+}
+
 /** Work package rows for global resources (manpower, equipment, tools, etc.) joined to project/WP names. */
 type WpAssignmentRollup = {
   projectResourceId: number;
@@ -246,7 +342,11 @@ type WpAssignmentRollup = {
   quantity: string;
   plannedStartDate: string | null;
   plannedEndDate: string | null;
+  /** Working days (excludes weekends & holidays per default calendar). */
   durationDays: number | null;
+  calendarDays: number | null;
+  workingHours: number | null;
+  totalResourceHours: number | null;
 };
 
 function toIsoDateWp(d: unknown): string | null {
@@ -254,16 +354,6 @@ function toIsoDateWp(d: unknown): string | null {
   if (d instanceof Date) return d.toISOString().slice(0, 10);
   const s = String(d);
   return s.length >= 10 ? s.slice(0, 10) : s;
-}
-
-function durationDaysWp(start: unknown, end: unknown): number | null {
-  const a = toIsoDateWp(start);
-  const b = toIsoDateWp(end);
-  if (!a || !b) return null;
-  const t0 = new Date(a + "T12:00:00").getTime();
-  const t1 = new Date(b + "T12:00:00").getTime();
-  if (Number.isNaN(t0) || Number.isNaN(t1)) return null;
-  return Math.round((t1 - t0) / (24 * 60 * 60 * 1000)) + 1;
 }
 
 async function loadWpAssignmentsByGlobalResourceIds(
@@ -293,9 +383,33 @@ async function loadWpAssignmentsByGlobalResourceIds(
       and(eq(projectResources.type, projectResourceType), inArray(projectResources.globalResourceId, resourceIds))
     );
 
+  const defaultCalendar = await storage.getDefaultCalendar();
+  const dateBounds = prRows
+    .map((r) => ({
+      start: toIsoDateWp(r.plannedStartDate),
+      end: toIsoDateWp(r.plannedEndDate),
+    }))
+    .filter((r) => r.start && r.end) as Array<{ start: string; end: string }>;
+  const rangeStart =
+    dateBounds.length > 0
+      ? dateBounds.reduce((min, r) => (r.start < min ? r.start : min), dateBounds[0].start)
+      : null;
+  const rangeEnd =
+    dateBounds.length > 0
+      ? dateBounds.reduce((max, r) => (r.end > max ? r.end : max), dateBounds[0].end)
+      : null;
+  const holidays =
+    rangeStart && rangeEnd
+      ? await storage.getCalendarHolidaysInRange(rangeStart, rangeEnd)
+      : [];
+
   for (const row of prRows) {
     const gid = row.globalResourceId;
     if (gid == null) continue;
+    const start = toIsoDateWp(row.plannedStartDate);
+    const end = toIsoDateWp(row.plannedEndDate);
+    const qty = Number.parseFloat(String(row.quantity ?? "0")) || 0;
+    const hours = start && end ? workingHoursBetween(start, end, defaultCalendar, holidays) : null;
     const out: WpAssignmentRollup = {
       projectResourceId: row.id,
       projectId: row.projectId,
@@ -304,9 +418,13 @@ async function loadWpAssignmentsByGlobalResourceIds(
       wpCode: row.wpCode,
       wpName: row.wpName,
       quantity: String(row.quantity ?? "0"),
-      plannedStartDate: toIsoDateWp(row.plannedStartDate),
-      plannedEndDate: toIsoDateWp(row.plannedEndDate),
-      durationDays: durationDaysWp(row.plannedStartDate, row.plannedEndDate),
+      plannedStartDate: start,
+      plannedEndDate: end,
+      durationDays:
+        start && end ? workingDaysBetween(start, end, defaultCalendar, holidays) : null,
+      calendarDays: start && end ? calendarDaysBetween(start, end) : null,
+      workingHours: hours,
+      totalResourceHours: hours != null ? hours * qty : null,
     };
     const list = assignmentsByResourceId.get(gid) ?? [];
     list.push(out);
@@ -2799,12 +2917,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (n) (row as { wbsType: string }).wbsType = n;
       }
 
-      // First pass: validate hierarchy rules (level vs type, and same-level children consistency)
+      // First pass: validate hierarchy (aligned with wbs-validation.ts, up to MAX_WBS_LEVEL)
       const rowsByCode = new Map(sortedRows.map((r: { wbsCode: string }, idx: number) => [r.wbsCode, { ...r, _index: idx + 1 }]));
       const childrenByParent = new Map<string, typeof sortedRows>();
+
       for (const row of sortedRows) {
         const code = row.wbsCode;
-        const parts = code.split(".");
+        const parts = code.split(".").map((p: string) => p.trim());
+        if (parts.some((p: string) => !/^\d+$/.test(p))) {
+          errors.push(`Row ${code}: wbsCode segments must be numeric (e.g. 1.2.3)`);
+          continue;
+        }
         const level = parts.length;
         const csvType = (row.wbsType || "").trim();
 
@@ -2816,25 +2939,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors.push(`Row ${code}: Level 1 (root) must be type SUMMARY`);
           continue;
         }
-        if (level === 2 && csvType !== "WBS") {
-          errors.push(`Row ${code}: Level 2 must be type WBS`);
+        if (level > 1 && csvType === "SUMMARY") {
+          errors.push(`Row ${code}: SUMMARY is only allowed at level 1 (root)`);
           continue;
         }
-        if (level === 3) {
-          if (csvType !== "WBS" && csvType !== "WorkPackage") {
-            errors.push(`Row ${code}: Level 3 must be type WBS or WorkPackage`);
-            continue;
-          }
+        if (csvType === "WBS" && level > MAX_WBS_LEVEL) {
+          errors.push(`Row ${code}: WBS exceeds maximum depth of ${MAX_WBS_LEVEL} levels`);
+          continue;
         }
-        if (level >= 4) {
-          if (csvType !== "WorkPackage") {
-            errors.push(`Row ${code}: Level ${level} must be type WorkPackage`);
-            continue;
-          }
-          if (level > 4) {
-            errors.push(`Row ${code}: Maximum depth is 4 (SUMMARY -> WBS -> WBS or WorkPackage -> WorkPackage if level 3 is WBS)`);
-            continue;
-          }
+        if (csvType === "WorkPackage" && level < 3) {
+          errors.push(`Row ${code}: WorkPackage must be below a WBS node (minimum depth 3, e.g. 1.1.1)`);
+          continue;
+        }
+        if (csvType === "WorkPackage" && level - 1 > MAX_WBS_LEVEL) {
+          errors.push(`Row ${code}: Parent WBS exceeds maximum depth of ${MAX_WBS_LEVEL} levels`);
+          continue;
         }
 
         const budgetVal = row.budget != null ? row.budget : row.amount;
@@ -2846,18 +2965,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (level > 1) {
           const parentCode = parts.slice(0, -1).join(".");
+          if (!rowsByCode.has(parentCode)) {
+            errors.push(`Row ${code}: Parent '${parentCode}' not found in CSV (parents must appear before children)`);
+          }
           if (!childrenByParent.has(parentCode)) childrenByParent.set(parentCode, []);
           childrenByParent.get(parentCode)!.push(row);
         }
       }
 
-      // Level-2 WBS: children must be either all WBS or all WorkPackage (not mixed)
       for (const [parentCode, children] of Array.from(childrenByParent.entries())) {
-        const parentParts = parentCode.split(".");
-        if (parentParts.length !== 2) continue;
         const types = new Set(children.map((c: { wbsType: string }) => (c.wbsType || "").trim()));
         if (types.has("WBS") && types.has("WorkPackage")) {
-          errors.push(`Parent ${parentCode}: Level 2 WBS cannot have both WBS and WorkPackage children - use only one type`);
+          errors.push(`Parent ${parentCode}: Cannot mix WBS and WorkPackage children — use only one type per parent`);
+        }
+        const parentRow = rowsByCode.get(parentCode) as { wbsType?: string } | undefined;
+        if (parentRow?.wbsType === "SUMMARY" && types.has("WorkPackage")) {
+          errors.push(`Parent ${parentCode}: Root SUMMARY cannot have WorkPackage children — add WBS levels first`);
+        }
+      }
+
+      for (const row of sortedRows) {
+        const code = row.wbsCode;
+        if ((row.wbsType || "").trim() !== "WBS") continue;
+        const children = childrenByParent.get(code) ?? [];
+        const hasWbsChild = children.some((c: { wbsType: string }) => c.wbsType === "WBS");
+        const hasWpChild = children.some((c: { wbsType: string }) => c.wbsType === "WorkPackage");
+        if (children.length === 0) {
+          errors.push(`Row ${code}: WBS '${code}' must have child rows`);
+        } else if (!hasWbsChild && !hasWpChild) {
+          errors.push(`Row ${code}: WBS '${code}' must have WBS or WorkPackage children`);
         }
       }
 
@@ -3783,16 +3919,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const resources = await storage.getProjectResourcesByWorkPackage(wpId);
-      const withEstimatedValue = resources.map((r: Record<string, unknown>) => {
-        const unitRate = Number(r.unitRate ?? r.unit_rate ?? 0);
-        const quantity = Number(r.quantity ?? r.qty ?? 0);
-        const estimatedValue =
-          Number.isFinite(unitRate) && Number.isFinite(quantity) ? unitRate * quantity : 0;
-        return {
-          ...r,
-          estimatedValue: estimatedValue.toFixed(2),
-        };
-      });
+      const withEstimatedValue = await enrichWorkPackageResources(
+        resources as unknown as Array<Record<string, unknown>>
+      );
       res.json(withEstimatedValue);
     } catch (err) {
       handleError(err, res);
@@ -3814,63 +3943,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const projectId = workPackage.projectId;
 
-      const materialRows = await db.collection(workPackageMaterials).find().toArray().where(eq(workPackageMaterials.wpId, wpId));
-      const serviceRows = await db.collection(workPackageServices).find().toArray().where(eq(workPackageServices.wpId, wpId));
+      const materialRows = await storage.getWorkPackageMaterials({ wpId });
+      const serviceRows = await storage.getWorkPackageServices({ wpId });
       const resourceRows = await storage.getProjectResourcesByWorkPackage(wpId);
 
-      const materialsPlannedValue = materialRows.reduce((sum, m: any) => sum + Number(m.estimatedValue || 0), 0);
-      const servicesPlannedValue = serviceRows.reduce((sum, s: any) => sum + Number(s.estimatedValue || 0), 0);
+      const materialsPlannedValue = materialRows.reduce((sum, m) => sum + Number(m.estimatedValue || 0), 0);
+      const servicesPlannedValue = serviceRows.reduce((sum, s) => sum + Number(s.estimatedValue || 0), 0);
       const resourcesPlannedValue = resourceRows.reduce(
-        (sum: number, r: any) => sum + Number(r.unitRate || 0) * Number(r.quantity || 0),
+        (sum, r) => sum + Number(r.unitRate || 0) * Number(r.quantity || 0),
         0
       );
       const totalPlannedValue = materialsPlannedValue + servicesPlannedValue + resourcesPlannedValue;
 
-      const [existing] = await db
-        .select()
-        .from(plannedCostWorkpackages)
-        .where(
-          and(
-            eq(plannedCostWorkpackages.projectId, projectId),
-            eq(plannedCostWorkpackages.wpId, wpId)
-          )
-        );
+      const row = await storage.upsertPlannedCostWorkpackage({
+        projectId,
+        wpId,
+        materialsPlannedValue: materialsPlannedValue.toFixed(2),
+        servicesPlannedValue: servicesPlannedValue.toFixed(2),
+        resourcesPlannedValue: resourcesPlannedValue.toFixed(2),
+        totalPlannedValue: totalPlannedValue.toFixed(2),
+        isLocked: true,
+      });
 
-      let row;
-      if (existing) {
-        [row] = await db
-          .update(plannedCostWorkpackages)
-          .set({
-            materialsPlannedValue: materialsPlannedValue.toFixed(2),
-            servicesPlannedValue: servicesPlannedValue.toFixed(2),
-            resourcesPlannedValue: resourcesPlannedValue.toFixed(2),
-            totalPlannedValue: totalPlannedValue.toFixed(2),
-            isLocked: true,
-            updatedAt: new Date(),
-          } as any)
-          .where(
-            and(
-              eq(plannedCostWorkpackages.projectId, projectId),
-              eq(plannedCostWorkpackages.wpId, wpId)
-            )
-          )
-          .returning();
-      } else {
-        [row] = await db
-          .insert(plannedCostWorkpackages)
-          .values({
-            projectId,
-            wpId,
-            materialsPlannedValue: materialsPlannedValue.toFixed(2),
-            servicesPlannedValue: servicesPlannedValue.toFixed(2),
-            resourcesPlannedValue: resourcesPlannedValue.toFixed(2),
-            totalPlannedValue: totalPlannedValue.toFixed(2),
-            isLocked: true,
-          } as any)
-          .returning();
-      }
-
-      res.status(existing ? 200 : 201).json(row);
+      res.status(200).json(row);
     } catch (err) {
       handleError(err, res);
     }
@@ -3891,15 +3986,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const projectId = workPackage.projectId;
 
-      const [row] = await db
-        .select()
-        .from(plannedCostWorkpackages)
-        .where(
-          and(
-            eq(plannedCostWorkpackages.projectId, projectId),
-            eq(plannedCostWorkpackages.wpId, wpId)
-          )
-        );
+      const row = await storage.getPlannedCostWorkpackage(projectId, wpId);
 
       if (!row) {
         return res.status(404).json({ message: "No planned cost snapshot for this work package" });
@@ -6017,17 +6104,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(projectId)) {
         return res.status(400).json({ message: "Invalid project ID" });
       }
-      let wbsItemId: number | null | undefined =
-        req.body?.wbsItemId === undefined || req.body?.wbsItemId === ""
-          ? null
-          : Number(req.body.wbsItemId);
-      if (Number.isNaN(wbsItemId as number)) wbsItemId = null;
-
-      let projectActivityId: number | null | undefined =
-        req.body?.projectActivityId === undefined || req.body?.projectActivityId === ""
-          ? null
-          : Number(req.body.projectActivityId);
-      if (Number.isNaN(projectActivityId as number)) projectActivityId = null;
+      let wbsItemId = parseKanbanFkInput(req.body?.wbsItemId);
+      let projectActivityId = parseKanbanFkInput(req.body?.projectActivityId);
 
       if (projectActivityId != null) {
         const pa = await storage.getProjectActivity(projectActivityId);
@@ -6053,15 +6131,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const wishCards = existing.filter((c) => c.column === "wish");
       const nextPosition = wishCards.length ? Math.max(...wishCards.map((c) => c.position)) + 1 : 0;
 
+      let priority: string | null = null;
+      if ("priority" in req.body && req.body.priority !== undefined) {
+        const p = req.body.priority;
+        if (p === null || p === "") {
+          priority = null;
+        } else if (typeof p === "string" && KANBAN_PRIORITY_VALUES.has(p)) {
+          priority = p;
+        } else {
+          return res.status(400).json({ message: "Invalid priority" });
+        }
+      }
+
       const bodyParsed = insertKanbanCardSchema.parse({
         title: req.body.title,
         description: req.body.description ?? undefined,
-        priority:
-          !("priority" in req.body) || req.body.priority === undefined
-            ? ("normal" as const)
-            : req.body.priority === null || req.body.priority === ""
-              ? null
-              : (req.body.priority as string),
+        priority,
         column: "wish",
         position: nextPosition,
         projectId,
@@ -6789,80 +6874,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ALLOCATION (cross-project rollups for materials / resources on work packages)
   // ========================================
 
-  /** Global material master rows with total qty across all WPs and per-WP breakdown (project + WP). */
+  /** Global material master rows with total qty across all WPs and per-WP/activity breakdown. */
   app.get("/api/allocation/materials", async (_req: Request, res: Response) => {
     try {
-      const allMaterials = await db.collection(materialMaster).find().toArray();
-      const allocationRows = await db
-        .select({
-          id: workPackageMaterials.id,
-          materialId: workPackageMaterials.materialId,
-          quantity: workPackageMaterials.quantity,
-          wpId: workPackages.id,
-          wpName: workPackages.name,
-          wpCode: workPackages.code,
-          projectId: projects.id,
-          projectName: projects.name,
-        })
-        .from(workPackageMaterials)
-        .innerJoin(workPackages, eq(workPackageMaterials.wpId, workPackages.id))
-        .innerJoin(projects, eq(workPackageMaterials.projectId, projects.id));
-
-      type Alloc = {
-        allocationId: number;
-        projectId: number;
-        projectName: string;
-        wpId: number;
-        wpCode: string;
-        wpName: string;
-        quantity: number;
-      };
-      const byMaterial = new Map<number, { total: number; allocations: Alloc[] }>();
-      for (const row of allocationRows) {
-        const q = parseFloat(String(row.quantity ?? "0"));
-        const qty = Number.isFinite(q) ? q : 0;
-        const cur = byMaterial.get(row.materialId) ?? { total: 0, allocations: [] as Alloc[] };
-        cur.total += qty;
-        cur.allocations.push({
-          allocationId: row.id,
-          projectId: row.projectId,
-          projectName: row.projectName,
-          wpId: row.wpId,
-          wpCode: row.wpCode,
-          wpName: row.wpName,
-          quantity: qty,
-        });
-        byMaterial.set(row.materialId, cur);
-      }
-
-      const materials = allMaterials.map((m) => {
-        const agg = byMaterial.get(m.id);
-        const allocations = [...(agg?.allocations ?? [])].sort((a, b) => {
-          const pc = a.projectName.localeCompare(b.projectName, undefined, { sensitivity: "base" });
-          if (pc !== 0) return pc;
-          return a.wpCode.localeCompare(b.wpCode, undefined, { numeric: true });
-        });
-        return {
-          ...m,
-          totalQuantityRequired: agg?.total ?? 0,
-          allocations,
-        };
-      });
-      materials.sort((a, b) =>
-        String(a.materialCode ?? "").localeCompare(String(b.materialCode ?? ""), undefined, { sensitivity: "base" })
-      );
+      const materials = await storage.getMaterialsAllocationRollup();
 
       /** PO lines store free-text description (usually material master description); match to material rows. */
       const poMaterialLines = await db
-        .select()
-        .from(purchaseOrderItems)
-        .where(eq(purchaseOrderItems.itemType, "material"));
-      const poIdSet = [...new Set(poMaterialLines.map((r) => r.poId))];
+        .collection(purchaseOrderItems)
+        .find({ itemType: "material" })
+        .toArray();
+      const poIdSet = [...new Set(poMaterialLines.map((r: { poId: number }) => r.poId))];
       const orderRows =
         poIdSet.length > 0
-          ? await db.collection(purchaseOrders).find().toArray().where(inArray(purchaseOrders.id, poIdSet))
+          ? await db.collection(purchaseOrders).find({ id: { $in: poIdSet } }).toArray()
           : [];
-      const orderById = new Map(orderRows.map((o) => [o.id, o]));
+      const orderById = new Map(orderRows.map((o: { id: number }) => [o.id, o]));
 
       const lineMatchesMaterial = (
         itemDescription: string,
@@ -6903,18 +6930,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const materialsWithPo = materials.map((m) => {
-        const matching = poMaterialLines.filter((line) => lineMatchesMaterial(line.itemDescription, m));
-        const byPoId = new Map<number, (typeof purchaseOrderItems.$inferSelect)[]>();
+        const matching = poMaterialLines.filter((line: { itemDescription?: string }) =>
+          lineMatchesMaterial(String(line.itemDescription ?? ""), m)
+        );
+        const byPoId = new Map<number, typeof poMaterialLines>();
         for (const line of matching) {
-          const list = byPoId.get(line.poId) ?? [];
+          const list = byPoId.get((line as { poId: number }).poId) ?? [];
           list.push(line);
-          byPoId.set(line.poId, list);
+          byPoId.set((line as { poId: number }).poId, list);
         }
         const purchaseOrders: PoOut[] = [];
         for (const [poId, lines] of byPoId) {
-          const hdr = orderById.get(poId);
+          const hdr = orderById.get(poId) as
+            | {
+                id: number;
+                poNumber: string;
+                poDate: Date | string;
+                vendor: string;
+                remarks?: string | null;
+              }
+            | undefined;
           if (!hdr) continue;
-          const sorted = [...lines].sort((a, b) => a.lineNumber - b.lineNumber);
+          const sorted = [...lines].sort(
+            (a: { lineNumber: number }, b: { lineNumber: number }) => a.lineNumber - b.lineNumber
+          );
           purchaseOrders.push({
             poId: hdr.id,
             poNumber: hdr.poNumber,
@@ -6924,20 +6963,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 : String(hdr.poDate ?? ""),
             vendor: hdr.vendor,
             remarks: hdr.remarks ?? null,
-            lines: sorted.map((line) => ({
-              id: line.id,
-              lineNumber: line.lineNumber,
-              itemDescription: line.itemDescription,
-              quantity: String(line.quantity),
-              unitOfMeasure: line.unitOfMeasure,
-              unitPrice: String(line.unitPrice),
-              totalPrice: String(line.totalPrice),
+            lines: sorted.map((line: Record<string, unknown>) => ({
+              id: line.id as number,
+              lineNumber: line.lineNumber as number,
+              itemDescription: String(line.itemDescription ?? ""),
+              quantity: String(line.quantity ?? ""),
+              unitOfMeasure: String(line.unitOfMeasure ?? ""),
+              unitPrice: String(line.unitPrice ?? ""),
+              totalPrice: String(line.totalPrice ?? ""),
               estimatedDeliveryDate: line.estimatedDeliveryDate
                 ? String(line.estimatedDeliveryDate)
                 : null,
               actualDeliveryDate: line.actualDeliveryDate ? String(line.actualDeliveryDate) : null,
-              projectId: line.projectId ?? null,
-              wpId: line.wpId ?? null,
+              projectId: (line.projectId as number | null) ?? null,
+              wpId: (line.wpId as number | null) ?? null,
             })),
           });
         }
@@ -7276,19 +7315,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const projectId = parseInt(req.params.projectId);
       if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
-      const rows = await db.collection(workPackageMaterials).find().toArray().where(eq(workPackageMaterials.projectId, projectId));
-      const materials = await db.collection(materialMaster).find().toArray();
-      const byId = new Map(materials.map((m: any) => [m.id, m]));
-      const result = rows.map((r: typeof workPackageMaterials.$inferSelect) => {
-        const mat = byId.get(r.materialId);
-        return {
-          ...r,
-          materialCode: (mat as any)?.materialCode,
-          materialDescription: (mat as any)?.materialDescription,
-          uom: (mat as any)?.uom,
-          baseRate: (mat as any)?.baseRate,
-        };
-      });
+      const rows = await storage.getWorkPackageMaterials({ projectId });
+      const result = await enrichWorkPackageMaterials(rows as unknown as Array<Record<string, unknown>>);
       res.json(result);
     } catch (err) {
       handleError(err, res);
@@ -7299,19 +7327,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const wpId = parseInt(req.params.wpId);
       if (isNaN(wpId)) return res.status(400).json({ message: "Invalid work package ID" });
-      const rows = await db.collection(workPackageMaterials).find().toArray().where(eq(workPackageMaterials.wpId, wpId));
-      const materials = await db.collection(materialMaster).find().toArray();
-      const byId = new Map(materials.map((m: any) => [m.id, m]));
-      const result = rows.map((r: typeof workPackageMaterials.$inferSelect) => {
-        const mat = byId.get(r.materialId);
-        return {
-          ...r,
-          materialCode: (mat as any)?.materialCode,
-          materialDescription: (mat as any)?.materialDescription,
-          uom: (mat as any)?.uom,
-          baseRate: (mat as any)?.baseRate,
-        };
-      });
+      const rows = await storage.getWorkPackageMaterials({ wpId });
+      const result = await enrichWorkPackageMaterials(rows as unknown as Array<Record<string, unknown>>);
       res.json(result);
     } catch (err) {
       handleError(err, res);
@@ -7324,14 +7341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
       const body = { ...req.body, projectId };
       const data = insertWorkPackageMaterialSchema.parse(body);
-      const [row] = await db.insert(workPackageMaterials).values({
-        projectId: data.projectId,
-        wpId: data.wpId,
-        materialId: data.materialId,
-        quantity: data.quantity,
-        estimatedValue: data.estimatedValue,
-        updatedAt: new Date(),
-      } as any).returning();
+      const row = await storage.createWorkPackageMaterial(data);
       res.status(201).json(row);
     } catch (err) {
       handleError(err, res);
@@ -7343,10 +7353,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
       const body = req.body as { quantity?: string | number; estimatedValue?: string | number };
-      const updates: { quantity?: string; estimatedValue?: string; updatedAt: Date } = { updatedAt: new Date() };
+      const updates: { quantity?: string; estimatedValue?: string } = {};
       if (body.quantity !== undefined) updates.quantity = String(body.quantity);
       if (body.estimatedValue !== undefined) updates.estimatedValue = String(body.estimatedValue);
-      const [updated] = await db.update(workPackageMaterials).set(updates).where(eq(workPackageMaterials.id, id)).returning();
+      const updated = await storage.updateWorkPackageMaterial(id, updates);
       if (!updated) return res.status(404).json({ message: "Not found" });
       res.json(updated);
     } catch (err) {
@@ -7358,8 +7368,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-      await db.delete(workPackageMaterials).where(eq(workPackageMaterials.id, id));
+      const existing = await storage.getWorkPackageMaterial(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      await storage.deleteWorkPackageMaterial(id);
       res.status(204).end();
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // Activity-level materials (rollup to WP via wpId / projectActivityId)
+  app.get("/api/project-activities/:activityId/materials", async (req: Request, res: Response) => {
+    try {
+      const activityId = parseInt(req.params.activityId);
+      if (isNaN(activityId)) return res.status(400).json({ message: "Invalid activity ID" });
+      const activity = await storage.getProjectActivity(activityId);
+      if (!activity) return res.status(404).json({ message: "Activity not found" });
+      const rows = await storage.getWorkPackageMaterials({ projectActivityId: activityId });
+      const result = await enrichWorkPackageMaterials(rows as unknown as Array<Record<string, unknown>>);
+      res.json(result);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/project-activities/:activityId/resources", async (req: Request, res: Response) => {
+    try {
+      const activityId = parseInt(req.params.activityId);
+      if (isNaN(activityId)) return res.status(400).json({ message: "Invalid activity ID" });
+      const activity = await storage.getProjectActivity(activityId);
+      if (!activity) return res.status(404).json({ message: "Activity not found" });
+      const rows = await storage.getProjectResourcesByActivity(activityId);
+      const result = await enrichWorkPackageResources(rows as unknown as Array<Record<string, unknown>>);
+      res.json(result);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/project-activities/:activityId/services", async (req: Request, res: Response) => {
+    try {
+      const activityId = parseInt(req.params.activityId);
+      if (isNaN(activityId)) return res.status(400).json({ message: "Invalid activity ID" });
+      const activity = await storage.getProjectActivity(activityId);
+      if (!activity) return res.status(404).json({ message: "Activity not found" });
+      const rows = await storage.getWorkPackageServices({ projectActivityId: activityId });
+      const result = await enrichWorkPackageServices(rows as unknown as Array<Record<string, unknown>>);
+      res.json(result);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/project-activities/:activityId/cost-breakdown", async (req: Request, res: Response) => {
+    try {
+      const activityId = parseInt(req.params.activityId);
+      if (isNaN(activityId)) return res.status(400).json({ message: "Invalid activity ID" });
+      const activity = await storage.getProjectActivity(activityId);
+      if (!activity) return res.status(404).json({ message: "Activity not found" });
+      const breakdown = await storage.computeActivityEstimatedCost(activityId);
+      res.json({ activityId, ...breakdown });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/projects/:projectId/activity-cost-rollups", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+      const activities = await storage.getProjectActivities(projectId);
+      const rollups = [];
+      for (const act of activities) {
+        const costs = await storage.computeActivityEstimatedCost(act.id);
+        rollups.push({
+          activityId: act.id,
+          wpId: act.wpId,
+          activityName: act.name,
+          ...costs,
+        });
+      }
+      res.json(rollups);
     } catch (err) {
       handleError(err, res);
     }
@@ -7373,19 +7462,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const projectId = parseInt(req.params.projectId);
       if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
-      const rows = await db.collection(workPackageServices).find().toArray().where(eq(workPackageServices.projectId, projectId));
-      const services = await db.collection(serviceMaster).find().toArray();
-      const byId = new Map(services.map((s: any) => [s.id, s]));
-      const result = rows.map((r: typeof workPackageServices.$inferSelect) => {
-        const svc = byId.get(r.serviceId);
-        return {
-          ...r,
-          serviceCode: (svc as any)?.serviceCode,
-          serviceDescription: (svc as any)?.serviceDescription,
-          uom: (svc as any)?.uom,
-          baseRate: (svc as any)?.baseRate,
-        };
-      });
+      const rows = await storage.getWorkPackageServices({ projectId });
+      const result = await enrichWorkPackageServices(rows as unknown as Array<Record<string, unknown>>);
       res.json(result);
     } catch (err) {
       handleError(err, res);
@@ -7396,19 +7474,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const wpId = parseInt(req.params.wpId);
       if (isNaN(wpId)) return res.status(400).json({ message: "Invalid work package ID" });
-      const rows = await db.collection(workPackageServices).find().toArray().where(eq(workPackageServices.wpId, wpId));
-      const services = await db.collection(serviceMaster).find().toArray();
-      const byId = new Map(services.map((s: any) => [s.id, s]));
-      const result = rows.map((r: typeof workPackageServices.$inferSelect) => {
-        const svc = byId.get(r.serviceId);
-        return {
-          ...r,
-          serviceCode: (svc as any)?.serviceCode,
-          serviceDescription: (svc as any)?.serviceDescription,
-          uom: (svc as any)?.uom,
-          baseRate: (svc as any)?.baseRate,
-        };
-      });
+      const rows = await storage.getWorkPackageServices({ wpId });
+      const result = await enrichWorkPackageServices(rows as unknown as Array<Record<string, unknown>>);
       res.json(result);
     } catch (err) {
       handleError(err, res);
@@ -7421,14 +7488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
       const body = { ...req.body, projectId };
       const data = insertWorkPackageServiceSchema.parse(body);
-      const [row] = await db.insert(workPackageServices).values({
-        projectId: data.projectId,
-        wpId: data.wpId,
-        serviceId: data.serviceId,
-        quantity: data.quantity,
-        estimatedValue: data.estimatedValue,
-        updatedAt: new Date(),
-      } as any).returning();
+      const row = await storage.createWorkPackageService(data);
       res.status(201).json(row);
     } catch (err) {
       handleError(err, res);
@@ -7440,10 +7500,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
       const body = req.body as { quantity?: string | number; estimatedValue?: string | number };
-      const updates: { quantity?: string; estimatedValue?: string; updatedAt: Date } = { updatedAt: new Date() };
+      const updates: { quantity?: string; estimatedValue?: string } = {};
       if (body.quantity !== undefined) updates.quantity = String(body.quantity);
       if (body.estimatedValue !== undefined) updates.estimatedValue = String(body.estimatedValue);
-      const [updated] = await db.update(workPackageServices).set(updates).where(eq(workPackageServices.id, id)).returning();
+      const updated = await storage.updateWorkPackageService(id, updates);
       if (!updated) return res.status(404).json({ message: "Not found" });
       res.json(updated);
     } catch (err) {
@@ -7455,7 +7515,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-      await db.delete(workPackageServices).where(eq(workPackageServices.id, id));
+      const existing = await storage.getWorkPackageService(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      await storage.deleteWorkPackageService(id);
       res.status(204).end();
     } catch (err) {
       handleError(err, res);
@@ -7514,15 +7576,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         const baseRate = Number(mat.baseRate ?? 0);
         const estimatedValue = (qty * baseRate).toFixed(2);
-        const [inserted] = await db.insert(workPackageMaterials).values({
+        const inserted = await storage.createWorkPackageMaterial({
           projectId,
           wpId,
           materialId: mat.id,
           quantity: row.quantity,
           estimatedValue,
-          updatedAt: new Date(),
-        } as any).returning();
-        if (inserted) created.push(inserted);
+        });
+        created.push(inserted);
       }
 
       res.status(201).json({ created: created.length, rows: created, errors: errors.length ? errors : undefined });
@@ -7583,15 +7644,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         const baseRate = Number(svc.baseRate ?? 0);
         const estimatedValue = (qty * baseRate).toFixed(2);
-        const [inserted] = await db.insert(workPackageServices).values({
+        const inserted = await storage.createWorkPackageService({
           projectId,
           wpId,
           serviceId: svc.id,
           quantity: row.quantity,
           estimatedValue,
-          updatedAt: new Date(),
-        } as any).returning();
-        if (inserted) created.push(inserted);
+        });
+        created.push(inserted);
       }
 
       res.status(201).json({ created: created.length, rows: created, errors: errors.length ? errors : undefined });
@@ -7732,21 +7792,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GLOBAL DEFAULTS (singleton: base currency, default country)
   // ========================================
 
+  async function enrichGlobalDefaultsResponse(defaults: Awaited<ReturnType<typeof storage.getGlobalDefaults>>) {
+    let defaultCountry: { id: number; name: string; code: string | null } | null = null;
+    if (defaults.defaultCountryId != null) {
+      const country = await storage.getCountry(defaults.defaultCountryId);
+      if (country) {
+        defaultCountry = {
+          id: country.id,
+          name: country.name,
+          code: country.code ?? null,
+        };
+      }
+    }
+    let companyLogoUrl: string | null = null;
+    if (defaults.companyLogoFileName) {
+      try {
+        const { getDownloadUrl } = await import("./b2");
+        companyLogoUrl = await getDownloadUrl(defaults.companyLogoFileName);
+      } catch {
+        companyLogoUrl = null;
+      }
+    }
+    return {
+      ...defaults,
+      companyName: defaults.companyName ?? null,
+      companyAddress: defaults.companyAddress ?? null,
+      companyLogoFileName: defaults.companyLogoFileName ?? null,
+      companyLogoB2FileId: defaults.companyLogoB2FileId ?? null,
+      defaultCountry,
+      companyLogoUrl,
+    };
+  }
+
   app.get("/api/global-defaults", async (_req: Request, res: Response) => {
     try {
       const defaults = await storage.getGlobalDefaults();
-      let defaultCountry: { id: number; name: string; code: string | null } | null = null;
-      if (defaults.defaultCountryId != null) {
-        const country = await storage.getCountry(defaults.defaultCountryId);
-        if (country) {
-          defaultCountry = {
-            id: country.id,
-            name: country.name,
-            code: country.code ?? null,
-          };
-        }
-      }
-      res.json({ ...defaults, defaultCountry });
+      res.json(await enrichGlobalDefaultsResponse(defaults));
     } catch (err) {
       handleError(err, res);
     }
@@ -7756,22 +7837,170 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = updateGlobalDefaultsSchema.parse(req.body);
       const updated = await storage.updateGlobalDefaults(data);
-      let defaultCountry: { id: number; name: string; code: string | null } | null = null;
-      if (updated.defaultCountryId != null) {
-        const country = await storage.getCountry(updated.defaultCountryId);
-        if (country) {
-          defaultCountry = {
-            id: country.id,
-            name: country.name,
-            code: country.code ?? null,
-          };
-        }
-      }
-      res.json({ ...updated, defaultCountry });
+      res.json(await enrichGlobalDefaultsResponse(updated));
     } catch (err) {
       if (err instanceof Error && err.message.includes("not found")) {
         return res.status(400).json({ message: err.message });
       }
+      handleError(err, res);
+    }
+  });
+
+  app.post("/api/global-defaults/logo", async (req: Request, res: Response) => {
+    try {
+      if (!req.files || Object.keys(req.files).length === 0) {
+        return res.status(400).json({ message: "No file was uploaded." });
+      }
+
+      const file = (req.files.file ?? req.files.logo) as fileUpload.UploadedFile | undefined;
+      if (!file) {
+        return res.status(400).json({ message: "Upload a file using the 'file' field." });
+      }
+
+      const allowedTypes = new Set([
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/webp",
+        "image/gif",
+        "image/svg+xml",
+      ]);
+      if (!allowedTypes.has(file.mimetype)) {
+        return res.status(400).json({
+          message: "Logo must be PNG, JPEG, WebP, GIF, or SVG.",
+        });
+      }
+      const maxBytes = 2 * 1024 * 1024;
+      if (file.size > maxBytes) {
+        return res.status(400).json({ message: "Logo must be 2 MB or smaller." });
+      }
+
+      const existing = await storage.getGlobalDefaults();
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const fileName = `global/company-logo/${Date.now()}_${safeName}`;
+
+      const { uploadFile, deleteFile } = await import("./b2");
+      const fs = await import("fs");
+      const fileData = file.tempFilePath ? fs.readFileSync(file.tempFilePath) : file.data;
+      const result = await uploadFile(fileName, fileData, file.mimetype, {
+        category: "company-logo",
+      });
+
+      if (existing.companyLogoB2FileId && existing.companyLogoFileName) {
+        try {
+          await deleteFile(existing.companyLogoB2FileId, existing.companyLogoFileName);
+        } catch {
+          /* previous logo may already be gone */
+        }
+      }
+
+      const updated = await storage.updateGlobalDefaultsLogo(
+        result.fileName || fileName,
+        result.fileId
+      );
+      res.status(201).json(await enrichGlobalDefaultsResponse(updated));
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.delete("/api/global-defaults/logo", async (_req: Request, res: Response) => {
+    try {
+      const existing = await storage.getGlobalDefaults();
+      if (existing.companyLogoB2FileId && existing.companyLogoFileName) {
+        try {
+          const { deleteFile } = await import("./b2");
+          await deleteFile(existing.companyLogoB2FileId, existing.companyLogoFileName);
+        } catch {
+          /* ignore missing file in B2 */
+        }
+      }
+      const updated = await storage.clearGlobalDefaultsLogo();
+      res.json(await enrichGlobalDefaultsResponse(updated));
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // ========================================
+  // DEFAULT WORK CALENDAR
+  // ========================================
+
+  app.get("/api/default-calendar", async (req: Request, res: Response) => {
+    try {
+      const calendar = await storage.getDefaultCalendar();
+      const yearParam = req.query.year;
+      const year =
+        typeof yearParam === "string" && /^\d{4}$/.test(yearParam)
+          ? Number(yearParam)
+          : new Date().getFullYear();
+      const holidays = await storage.getCalendarHolidays(year);
+      res.json({ calendar, holidays, year });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.patch("/api/default-calendar", async (req: Request, res: Response) => {
+    try {
+      const data = updateDefaultCalendarSchema.parse(req.body);
+      const calendar = await storage.updateDefaultCalendar(data);
+      res.json(calendar);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/calendar-holidays", async (req: Request, res: Response) => {
+    try {
+      const yearParam = req.query.year;
+      const year =
+        typeof yearParam === "string" && /^\d{4}$/.test(yearParam)
+          ? Number(yearParam)
+          : undefined;
+      const holidays = await storage.getCalendarHolidays(year);
+      res.json(holidays);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.post("/api/calendar-holidays", async (req: Request, res: Response) => {
+    try {
+      const data = insertCalendarHolidaySchema.parse(req.body);
+      const holiday = await storage.createCalendarHoliday(data);
+      res.status(201).json(holiday);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("already exists")) {
+        return res.status(400).json({ message: err.message });
+      }
+      handleError(err, res);
+    }
+  });
+
+  app.patch("/api/calendar-holidays/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid holiday ID" });
+      const data = insertCalendarHolidaySchema.partial().parse(req.body);
+      const updated = await storage.updateCalendarHoliday(id, data);
+      if (!updated) return res.status(404).json({ message: "Holiday not found" });
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("already exists")) {
+        return res.status(400).json({ message: err.message });
+      }
+      handleError(err, res);
+    }
+  });
+
+  app.delete("/api/calendar-holidays/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid holiday ID" });
+      await storage.deleteCalendarHoliday(id);
+      res.status(204).end();
+    } catch (err) {
       handleError(err, res);
     }
   });

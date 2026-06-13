@@ -58,7 +58,9 @@ import ToolMasterModels from "@/pages/tool-master-models";
 import ToolMasterTypes from "@/pages/tool-master-types";
 import ToolMasterPr from "@/pages/tool-master-pr";
 import GlobalMastersLayout from "@/layouts/global-masters-layout";
+import GlobalMastersCompany from "@/pages/global-masters-company";
 import GlobalMastersDefaults from "@/pages/global-masters-defaults";
+import GlobalMastersCalendar from "@/pages/global-masters-calendar";
 import RiskRegister from "@/pages/risk-register";
 import ProjectDailyProgress from "@/pages/project-daily-progress";
 import ResourcePlan from "@/pages/resource-plan";
@@ -538,14 +540,24 @@ function Router() {
       </Route>
 
       {/* Global Masters */}
+      <Route path="/global-masters/company">
+        <GlobalMastersLayout>
+          <GlobalMastersCompany />
+        </GlobalMastersLayout>
+      </Route>
       <Route path="/global-masters/defaults">
         <GlobalMastersLayout>
           <GlobalMastersDefaults />
         </GlobalMastersLayout>
       </Route>
+      <Route path="/global-masters/calendar">
+        <GlobalMastersLayout>
+          <GlobalMastersCalendar />
+        </GlobalMastersLayout>
+      </Route>
       <Route path="/global-masters">
         <GlobalMastersLayout>
-          <GlobalMastersDefaults />
+          <GlobalMastersCompany />
         </GlobalMastersLayout>
       </Route>
 

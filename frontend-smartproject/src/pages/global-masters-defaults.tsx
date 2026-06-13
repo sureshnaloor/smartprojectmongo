@@ -118,9 +118,8 @@ export default function GlobalMastersDefaultsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Regional &amp; currency defaults</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          System-wide defaults used for tax rules, calendar weekends, and base-currency value
-          calculations. Exchange-rate conversion from PO currencies will use the default currency
-          as the base — to be wired in a later release.
+          System-wide defaults used for tax rules and base-currency value calculations.
+          Weekend and holiday rules are configured under Global masters → Work calendar.
         </p>
       </div>
 
@@ -132,7 +131,7 @@ export default function GlobalMastersDefaultsPage() {
               Default country
             </CardTitle>
             <CardDescription>
-              Used for tax calculation and default weekend calendar (coming soon). Countries are
+              Used for tax calculation. Weekend rules are set under Work calendar. Countries are
               maintained under Vendor Master → Country.
             </CardDescription>
           </CardHeader>

@@ -601,8 +601,42 @@ export default function ResourceMaster() {
                       </div>
                     </>
                   )}
-                  {mappedEntities.resourceType !== "manpower" && mappedEntities.resourceType !== "equipment" && (
-                    <p className="text-sm text-gray-500">Mapped entities are shown for manpower and equipment resources only.</p>
+                  {mappedEntities.resourceType === "rental_manpower" && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-2">
+                        <Users className="h-4 w-4" />
+                        Rental Manpower
+                      </h4>
+                      {mappedEntities.rentalManpower.length === 0 ? (
+                        <p className="text-sm text-gray-500 pl-6">No rental manpower mapped to this resource.</p>
+                      ) : (
+                        <ul className="list-disc list-inside pl-4 space-y-1 text-sm">
+                          {mappedEntities.rentalManpower.map((r: any) => (
+                            <li key={r.id}>{r.employeeNumber} – {r.empFirstName} {r.empLastName}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                  {mappedEntities.resourceType === "rental_equipment" && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-2">
+                        <HardDrive className="h-4 w-4" />
+                        Rental Equipment
+                      </h4>
+                      {mappedEntities.rentalEquipment.length === 0 ? (
+                        <p className="text-sm text-gray-500 pl-6">No rental equipment mapped to this resource.</p>
+                      ) : (
+                        <ul className="list-disc list-inside pl-4 space-y-1 text-sm">
+                          {mappedEntities.rentalEquipment.map((r: any) => (
+                            <li key={r.id}>{r.equipmentNumber} – {r.equipmentName}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                  {mappedEntities.resourceType === "tools" && (
+                    <p className="text-sm text-gray-500">Tool resource mappings are managed from the Tools master.</p>
                   )}
                 </div>
               ) : null}

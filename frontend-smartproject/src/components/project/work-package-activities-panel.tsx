@@ -58,6 +58,14 @@ export interface WpProjectActivity {
   remarks?: string | null;
 }
 
+interface ActivityCostRollup {
+  activityId: number;
+  materialsCost: number;
+  resourcesCost: number;
+  servicesCost: number;
+  totalCost: number;
+}
+
 interface WorkPackageActivitiesPanelProps {
   projectId: number;
   workPackages: WorkPackage[];
@@ -110,6 +118,27 @@ export function WorkPackageActivitiesPanel({
   const selectedWp = workPackages.find((wp) => wp.id === selectedWpId) ?? null;
   const wpBudget = Number(selectedWp?.budgetedCost ?? 0);
 
+  const { data: costRollups = [] } = useQuery<ActivityCostRollup[]>({
+    queryKey: ["activity-cost-rollups", projectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${projectId}/activity-cost-rollups`);
+      if (!res.ok) throw new Error("Failed to load activity cost rollups");
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const costByActivityId = useMemo(
+    () => new Map(costRollups.map((r) => [r.activityId, r])),
+    [costRollups]
+  );
+
+  function activityEstimatedCost(act: WpProjectActivity): number {
+    const rollup = costByActivityId.get(act.id);
+    if (rollup && rollup.totalCost > 0) return rollup.totalCost;
+    return computeActivityBudget(act);
+  }
+
   const { data: activities = [], isLoading } = useQuery<WpProjectActivity[]>({
     queryKey: ["wp-activities", selectedWpId],
     queryFn: async () => {
@@ -121,14 +150,15 @@ export function WorkPackageActivitiesPanel({
   });
 
   const budgetSummary = useMemo(() => {
-    const allocated = activities.reduce((s, a) => s + computeActivityBudget(a), 0);
+    const allocated = activities.reduce((s, a) => s + activityEstimatedCost(a), 0);
     const earned = activities.reduce((s, a) => s + computeEarnedValue(a), 0);
     return { allocated, earned, remaining: wpBudget - allocated };
-  }, [activities, wpBudget]);
+  }, [activities, wpBudget, costByActivityId]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["wp-activities", selectedWpId] });
     queryClient.invalidateQueries({ queryKey: ["project-activities", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["activity-cost-rollups", projectId] });
   };
 
   const createMutation = useMutation({
@@ -260,7 +290,7 @@ export function WorkPackageActivitiesPanel({
             </CardTitle>
             {selectedWp && (
               <p className="text-sm text-muted-foreground mt-1">
-                WP budget {formatCurrency(wpBudget)} · Allocated{" "}
+                WP budget {formatCurrency(wpBudget)} · Estimated (mat + svc + res){" "}
                 {formatCurrency(budgetSummary.allocated)} · Remaining{" "}
                 <span
                   className={
@@ -341,7 +371,7 @@ export function WorkPackageActivitiesPanel({
                         ) : null}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatCurrency(computeActivityBudget(a))}
+                        {formatCurrency(activityEstimatedCost(a))}
                       </TableCell>
                       <TableCell className="text-right">
                         {formatCurrency(computeEarnedValue(a))}

@@ -18,7 +18,13 @@
     "db:clone:schema:to-remote": "tsx scripts/db-clone-schema-to-remote.ts",
     "db:fix-duration": "tsx scripts/fix-duration.ts",
     "db:migrate:allocation-version": "tsx scripts/run-allocation-version-migration.ts",
-    "auth-health": "tsx scripts/auth-health-check.ts"
+    "auth-health": "tsx scripts/auth-health-check.ts",
+    "seed:activities": "tsx scripts/seed-activity-samples.ts",
+    "seed:resources": "tsx scripts/seed-resource-samples.ts",
+    "seed:workforce": "tsx scripts/seed-workforce-samples.ts",
+    "seed:rental-mappings": "tsx scripts/seed-rental-mappings.ts",
+    "seed:materials-tools": "tsx scripts/seed-materials-tools-costs.ts",
+    "seed:services-vendors": "tsx scripts/seed-services-vendors.ts"
   },
   "dependencies": {
     "@types/passport-google-oauth20": "^2.0.17",

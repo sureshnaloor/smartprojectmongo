@@ -15,6 +15,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Printer, X } from "lucide-react";
+import { CompanyDocumentHeader } from "@/components/company-document-header";
+import { useCompanyProfile } from "@/lib/company-profile";
 
 interface PurchaseOrder {
   id: number;
@@ -249,20 +251,21 @@ function PrintViewContent({
   items: PurchaseOrderItem[];
   vendor?: Vendor;
 }) {
+  const { data: companyProfile } = useCompanyProfile();
   const grandTotal = items.reduce((sum, i) => sum + Number(i.totalPrice || 0), 0);
 
   return (
     <div id="po-print-document" className="bg-white text-black mx-auto w-full max-w-[210mm] min-h-[297mm] p-10 shadow-sm border border-zinc-200 print:shadow-none print:border-0 print:p-0 print:max-w-none">
-      <div className="flex justify-between items-start border-b-2 border-zinc-900 pb-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">PURCHASE ORDER</h1>
-          <p className="text-sm text-zinc-600 mt-1">ConstructPro</p>
-        </div>
-        <div className="text-right text-sm">
-          <p className="font-bold text-lg">{order.poNumber}</p>
-          <p>Date: {formatDate(order.poDate)}</p>
-        </div>
-      </div>
+      <CompanyDocumentHeader
+        profile={companyProfile}
+        documentTitle="PURCHASE ORDER"
+        rightContent={
+          <>
+            <p className="font-bold text-lg">{order.poNumber}</p>
+            <p>Date: {formatDate(order.poDate)}</p>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-8 mb-8 text-sm">
         <div>

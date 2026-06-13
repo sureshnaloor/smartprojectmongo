@@ -214,10 +214,11 @@ export function ImportWbsModal({ isOpen, onClose, projectId }: ImportWbsModalPro
           <AlertDescription>
             <p className="mb-1 font-semibold">WBS hierarchy (tree from top):</p>
             <ul className="list-disc pl-5 text-sm space-y-1">
-              <li><strong>SUMMARY</strong> — Root only (level 1). Cannot have Work packages directly below.</li>
-              <li><strong>WBS</strong> — Level 2 or 3. Level 2 has either only WBS or only Work packages below (not both). Level 3 can be WBS or WorkPackage; if WBS, only Work packages below.</li>
-              <li><strong>WorkPackage</strong> — Leaves with a budget. Use preliminary values here; finalize with &quot;Edit allocation&quot; for version 0.</li>
-              <li>Each parent WBS has a budget; buffer = parent budget − sum of children budgets (assigned to the WBS).</li>
+              <li><strong>SUMMARY</strong> — Root only (level 1). Cannot have WorkPackage rows directly below.</li>
+              <li><strong>WBS</strong> — Structural nodes at levels 2–{9}. Each parent has either only WBS children or only WorkPackage children (never mixed).</li>
+              <li><strong>WorkPackage</strong> — Leaf rows (minimum depth 3, e.g. 1.1.1). Every branch must end in WorkPackages. Budgets are preliminary until &quot;Edit allocation&quot; (version 0).</li>
+              <li>Parent budget ≥ sum of child budgets; the difference is buffer on the parent WBS.</li>
+              <li>Codes use dot notation (1, 1.1, 1.1.1, …). Parents must appear before children in the file.</li>
               <li>Existing items with the same code will be updated.</li>
             </ul>
           </AlertDescription>

@@ -28,6 +28,7 @@ const GLOBAL_TOOLS: { label: string; href: string }[] = [
 
 const GLOBAL_MASTERS: { label: string; href: string }[] = [
   { label: "Regional & currency defaults", href: "/global-masters/defaults" },
+  { label: "Default work calendar", href: "/global-masters/calendar" },
 ];
 
 const ALLOCATION: { label: string; href: string }[] = [
