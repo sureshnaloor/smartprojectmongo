@@ -1,96 +1,76 @@
-import { useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Pencil, Trash2, Upload, Download, ListTodo } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { toast } from "sonner";
-import { Link } from "wouter";
+import { MASTER_FILTERS, masterPageTitle } from "@/components/global-masters/constants";
 import {
-  ACTIVITY_TYPE_LABELS,
-  type ProjectActivityType,
-  type ActivityMilestone,
-} from "@shared/activity-types";
+  GlobalMasterFilterBar,
+  type FilterState,
+} from "@/components/global-masters/global-master-filter-bar";
+import { GlobalMasterTableHeader } from "@/components/global-masters/global-master-table-header";
 import {
-  ActivityFormDialog,
-  type ProjectActivityFormValues,
-} from "@/components/project/activity-form-dialog";
+  GlobalMasterDataTable,
+  type MasterTableColumn,
+} from "@/components/global-masters/global-master-data-table";
+import {
+  GlobalMasterModal,
+  type ModalMode,
+} from "@/components/global-masters/global-master-modal";
+import { MappedEntitiesPanel } from "@/components/global-masters/mapped-entities-panel";
+import {
+  encodeMeta,
+  parseMeta,
+  stripMeta,
+  displayStatus,
+} from "@/components/global-masters/meta-fields";
+import { StatusBadge, TypeBadge, useFilteredRows } from "@/components/global-masters/table-utils";
 
 interface GlobalActivity {
   id: number;
   name: string;
   description?: string | null;
-  activityType?: ProjectActivityType | string | null;
+  activityType?: string | null;
   unitOfMeasure?: string | null;
   unitRate?: string | null;
-  quantity?: string | null;
-  totalBudget?: string | null;
-  percentComplete?: number | null;
-  progressState?: number | null;
-  milestones?: ActivityMilestone[] | null;
   remarks?: string | null;
 }
 
-function activityToForm(a: GlobalActivity): ProjectActivityFormValues {
+function activityToForm(a: GlobalActivity): Record<string, unknown> {
+  const meta = parseMeta(a.remarks);
   return {
-    id: a.id,
-    activityType: (a.activityType ?? "units") as ProjectActivityType,
+    type: "activities",
+    code: meta.code ?? `ACT-${a.id}`,
     name: a.name,
     description: a.description ?? "",
-    remarks: a.remarks ?? "",
-    unitOfMeasure: a.unitOfMeasure ?? "",
-    unitRate: a.unitRate ?? "0",
-    quantity: a.quantity ?? "1",
-    totalBudget: a.totalBudget ?? "0",
-    percentComplete: a.percentComplete ?? 0,
-    progressState: (a.progressState ?? 0) as 0 | 50 | 100,
-    milestones: a.milestones ?? [],
+    phase: meta.phase ?? "Construction",
+    duration: meta.duration ?? "",
+    activityType: meta.activityType ?? "Standard",
+    status: displayStatus(meta),
+    remarks: stripMeta(a.remarks),
   };
 }
 
-function formToPayload(values: ProjectActivityFormValues) {
+function formToPayload(values: Record<string, unknown>) {
+  const remarks = encodeMeta(String(values.remarks ?? ""), {
+    code: String(values.code ?? ""),
+    phase: String(values.phase ?? ""),
+    duration: String(values.duration ?? ""),
+    activityType: String(values.activityType ?? "Standard"),
+    status: String(values.status ?? "active"),
+  });
+  const isStandard = values.activityType === "Standard";
   return {
-    activityType: values.activityType,
-    name: values.name,
-    description: values.description || null,
-    remarks: values.remarks || null,
-    unitOfMeasure: values.activityType === "units" ? values.unitOfMeasure : null,
-    unitRate: values.activityType === "units" ? values.unitRate : null,
+    activityType: isStandard ? "units" : "lumpsum",
+    name: String(values.name),
+    description: String(values.description || "") || null,
+    remarks: remarks || null,
+    unitOfMeasure: isStandard ? "ea" : null,
+    unitRate: isStandard ? "0" : null,
     quantity: null,
     totalBudget: null,
     percentComplete: 0,
     progressState: 0,
-    milestones: values.activityType === "milestone" ? values.milestones : null,
+    milestones: null,
   };
-}
-
-function formatDetail(a: GlobalActivity): string {
-  const type = (a.activityType ?? "units") as ProjectActivityType;
-  if (type === "units") {
-    return `${a.unitOfMeasure ?? "—"} @ ${a.unitRate ?? "0"}`;
-  }
-  if (type === "milestone") {
-    return `${a.milestones?.length ?? 0} milestones`;
-  }
-  if (type === "lumpsum") return "Scope template";
-  if (type === "progress_0_50_100") return "0/50/100 template";
-  return "";
-}
-
-function formatRefValue(a: GlobalActivity): string {
-  const type = (a.activityType ?? "units") as ProjectActivityType;
-  if (type === "units") {
-    return a.unitRate ?? "—";
-  }
-  return "—";
 }
 
 async function parseApiError(res: Response): Promise<string> {
@@ -103,19 +83,38 @@ async function parseApiError(res: Response): Promise<string> {
 }
 
 export default function ActivityMaster() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<GlobalActivity | null>(null);
   const queryClient = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [filters, setFilters] = useState<FilterState>({
+    search: "",
+    type: "all",
+    category: "all",
+    status: "all",
+  });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<ModalMode>("create");
+  const [editing, setEditing] = useState<GlobalActivity | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [flashId, setFlashId] = useState<number | null>(null);
 
   const { data: activities = [], isLoading } = useQuery<GlobalActivity[]>({
     queryKey: ["/api/activities"],
   });
 
+  const filtered = useFilteredRows(activities, filters, {
+    search: (a, q) =>
+      a.name.toLowerCase().includes(q) ||
+      (a.description?.toLowerCase().includes(q) ?? false) ||
+      (parseMeta(a.remarks).code?.toLowerCase().includes(q) ?? false),
+    type: (a, t) => parseMeta(a.remarks).activityType === t,
+    category: (a, c) => parseMeta(a.remarks).phase === c,
+    status: (a, s) => displayStatus(parseMeta(a.remarks)) === s,
+  });
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
 
   const createMutation = useMutation({
-    mutationFn: async (values: ProjectActivityFormValues) => {
+    mutationFn: async (values: Record<string, unknown>) => {
       const res = await fetch("/api/activities", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -124,15 +123,19 @@ export default function ActivityMaster() {
       if (!res.ok) throw new Error(await parseApiError(res));
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: GlobalActivity) => {
       invalidate();
-      toast.success("Activity created");
+      toast.success(`${data.name} created successfully`);
+      setFlashId(data.id);
+      setTimeout(() => setFlashId(null), 2000);
+      setModalOpen(false);
       setEditing(null);
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, values }: { id: number; values: ProjectActivityFormValues }) => {
+    mutationFn: async ({ id, values }: { id: number; values: Record<string, unknown> }) => {
       const res = await fetch(`/api/activities/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -143,9 +146,11 @@ export default function ActivityMaster() {
     },
     onSuccess: () => {
       invalidate();
-      toast.success("Activity updated");
+      toast.success("Changes saved");
+      setModalOpen(false);
       setEditing(null);
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMutation = useMutation({
@@ -155,7 +160,8 @@ export default function ActivityMaster() {
     },
     onSuccess: () => {
       invalidate();
-      toast.success("Activity deleted");
+      toast.success("Record deleted");
+      setSelectedId(null);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -172,29 +178,59 @@ export default function ActivityMaster() {
     },
     onSuccess: (data: GlobalActivity[]) => {
       invalidate();
-      toast.success(`${data.length} activities imported`);
+      toast.success(`${data.length} records imported`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const filteredActivities = useMemo(
-    () =>
-      activities.filter(
-        (a) =>
-          a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (a.description ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (a.unitOfMeasure ?? "").toLowerCase().includes(searchQuery.toLowerCase())
+  const columns: MasterTableColumn<GlobalActivity>[] = [
+    {
+      key: "type",
+      header: "Type",
+      width: "90px",
+      render: (a) => (
+        <TypeBadge label={parseMeta(a.remarks).activityType || "Standard"} />
       ),
-    [activities, searchQuery]
-  );
+    },
+    {
+      key: "name",
+      header: "Name",
+      render: (a) => <span className="font-medium">{a.name}</span>,
+    },
+    {
+      key: "description",
+      header: "Description",
+      render: (a) => (
+        <span className="text-sm text-[var(--text-secondary)] line-clamp-2">
+          {a.description || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "rate",
+      header: "Default Duration",
+      width: "100px",
+      className: "text-right font-mono text-sm",
+      render: (a) => {
+        const d = parseMeta(a.remarks).duration;
+        return d ? `${d} days` : "—";
+      },
+    },
+    {
+      key: "category",
+      header: "Phase",
+      width: "120px",
+      render: (a) => parseMeta(a.remarks).phase || "—",
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "90px",
+      render: (a) => <StatusBadge status={displayStatus(parseMeta(a.remarks))} />,
+    },
+  ];
 
-  const handleSubmit = async (values: ProjectActivityFormValues) => {
-    if (editing?.id) {
-      await updateMutation.mutateAsync({ id: editing.id, values });
-    } else {
-      await createMutation.mutateAsync(values);
-    }
-  };
+  const selectedActivity = activities.find((a) => a.id === selectedId);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -213,7 +249,6 @@ export default function ActivityMaster() {
             activityType: values[headers.indexOf("activityType")] || "units",
             unitOfMeasure: values[headers.indexOf("unitOfMeasure")] || null,
             unitRate: values[headers.indexOf("unitRate")] || null,
-            totalBudget: values[headers.indexOf("totalBudget")] || null,
             remarks: values[headers.indexOf("remarks")] || null,
           };
         });
@@ -227,152 +262,102 @@ export default function ActivityMaster() {
   };
 
   return (
-    <div className="flex-1 space-y-4 p-6 md:p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-extrabold tracking-tight text-zinc-900 flex items-center gap-2">
-            <ListTodo className="h-6 w-6" />
-            Activity Master
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-            Company-wide activity library. Units activities carry a reference rate and UOM; milestone, lump-sum, and 0/50/100 templates define scope only — budget is set per project when assigned to a work package. UOMs must come from the{" "}
-            <Link href="/activity-master/uom" className="text-teal-600 hover:underline">
-              UOM master
-            </Link>
-            .
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search activities..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 w-[220px] sm:w-[280px]"
-            />
-          </div>
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setDialogOpen(true);
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New Activity
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              const link = document.createElement("a");
-              link.href = "/templates/activity-master-template.csv";
-              link.download = "activity-master-template.csv";
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-            }}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Template
-          </Button>
-          <label>
-            <Button variant="outline" asChild>
-              <span>
-                <Upload className="mr-2 h-4 w-4" />
-                Import CSV
-              </span>
-            </Button>
-            <input
-              type="file"
-              accept=".csv"
-              onChange={handleFileUpload}
-              className="hidden"
-              disabled={bulkUploadMutation.isPending}
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="rounded-lg border bg-white shadow-sm overflow-hidden">
-        {isLoading ? (
-          <div className="p-8 text-center text-muted-foreground">Loading activities…</div>
-        ) : filteredActivities.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">
-            No activities yet. Add UOMs first, then create your global activity catalog.
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Detail</TableHead>
-                <TableHead className="text-right">Ref. unit rate</TableHead>
-                <TableHead className="w-24" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredActivities.map((activity) => {
-                const type = (activity.activityType ?? "units") as ProjectActivityType;
-                return (
-                  <TableRow key={activity.id}>
-                    <TableCell>
-                      <div className="font-medium">{activity.name}</div>
-                      {activity.description && (
-                        <div className="text-xs text-muted-foreground mt-0.5">{activity.description}</div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{ACTIVITY_TYPE_LABELS[type]}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDetail(activity)}</TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {formatRefValue(activity)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setEditing(activity);
-                            setDialogOpen(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            if (confirm(`Delete "${activity.name}"?`)) {
-                              deleteMutation.mutate(activity.id);
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-
-      <ActivityFormDialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) setEditing(null);
+    <>
+      <GlobalMasterTableHeader
+        title={masterPageTitle("activities")}
+        count={filtered.length}
+        addLabel="Activity"
+        onAdd={() => {
+          setEditing(null);
+          setModalMode("create");
+          setModalOpen(true);
         }}
-        initial={editing ? activityToForm(editing) : null}
-        mode="global"
-        onSubmit={handleSubmit}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
+        onDownloadTemplate={() => {
+          const link = document.createElement("a");
+          link.href = "/templates/activity-master-template.csv";
+          link.download = "activity-master-template.csv";
+          link.click();
+        }}
+        onImportCsv={() => fileRef.current?.click()}
+        onExportAll={() => toast.success("Export complete")}
       />
-    </div>
+      <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
+
+      <GlobalMasterFilterBar
+        filters={MASTER_FILTERS.activities}
+        value={filters}
+        onChange={setFilters}
+      />
+
+      <GlobalMasterDataTable
+        columns={columns}
+        rows={filtered.map((a) => ({
+          id: a.id,
+          data: a,
+          inactive: displayStatus(parseMeta(a.remarks)) !== "active",
+          flash: flashId === a.id,
+        }))}
+        isLoading={isLoading}
+        emptyTypeLabel="Activity"
+        onAdd={() => {
+          setEditing(null);
+          setModalMode("create");
+          setModalOpen(true);
+        }}
+        onImport={() => fileRef.current?.click()}
+        selectedId={selectedId}
+        onSelectRow={(id) => setSelectedId(id as number | null)}
+        onEdit={(a) => {
+          setEditing(a);
+          setModalMode("edit");
+          setModalOpen(true);
+        }}
+        onDelete={(a) => {
+          if (window.confirm(`Delete ${a.name}?`)) deleteMutation.mutate(a.id);
+        }}
+        onNameClick={(a) => {
+          setEditing(a);
+          setModalMode("view");
+          setModalOpen(true);
+        }}
+        onBulkDelete={(ids) => ids.forEach((id) => deleteMutation.mutate(id as number))}
+      />
+
+      <MappedEntitiesPanel
+        entityLabel="Resources Required"
+        resourceName={selectedActivity?.name}
+        count={0}
+        onClose={() => setSelectedId(null)}
+      />
+
+      <GlobalMasterModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        masterKey="activities"
+        mode={modalMode}
+        typeLabel="Activity"
+        resourceName={editing?.name}
+        initialValues={editing ? activityToForm(editing) : undefined}
+        isSubmitting={createMutation.isPending || updateMutation.isPending}
+        onSubmit={(values) => {
+          if (editing && modalMode === "edit") {
+            updateMutation.mutate({ id: editing.id, values });
+          } else {
+            createMutation.mutate(values);
+          }
+        }}
+        onRequestEdit={() => setModalMode("edit")}
+        onDelete={
+          editing
+            ? () => {
+                if (window.confirm(`Delete ${editing.name}?`)) {
+                  deleteMutation.mutate(editing.id);
+                  setModalOpen(false);
+                }
+              }
+            : undefined
+        }
+      />
+    </>
   );
 }

@@ -31,14 +31,17 @@ export type AssignmentCalendarItem = {
   projectName: string;
   wpCode: string;
   wpName: string;
+  projectActivityId?: number | null;
+  activityName?: string | null;
   quantity: string;
   plannedStartDate: string | null;
   plannedEndDate: string | null;
-  /** Working days (excludes weekends & holidays). */
   durationDays: number | null;
   calendarDays?: number | null;
   workingHours?: number | null;
   totalResourceHours?: number | null;
+  hasDeficiency?: boolean;
+  maxShortfall?: number;
 };
 
 const CALENDAR_PALETTE = [

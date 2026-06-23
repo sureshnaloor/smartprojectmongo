@@ -57,38 +57,25 @@ export const SharedNavigation: React.FC<SharedNavigationProps> = ({ variant = 'a
 
   const isLanding = variant === 'landing'
   const testbenchHref = authenticated ? '/newlanding' : '/login'
-  const navBgClass = isLanding
-    ? 'bg-slate-900/90 backdrop-blur-md border-b border-slate-800 text-slate-100'
-    : 'bg-slate-900/90 backdrop-blur-md border-b border-slate-800 text-slate-100'
-  const navElevationClass = isScrolled ? 'shadow-md' : 'shadow-sm'
-  const navHeightClass = isScrolled ? 'h-12' : 'h-16'
-  const brandTextSizeClass = isScrolled ? 'text-xl' : 'text-2xl'
-  const logoSizeClass = isScrolled ? 'h-7' : 'h-8'
 
   return (
-    <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${navBgClass} ${navElevationClass}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className={`flex justify-between items-center gap-2 ${navHeightClass} transition-all duration-300`}>
-          <div className="flex items-center gap-2 lg:gap-4 min-w-0 flex-1">
-            <div
-              className={`font-display font-bold gradient-text cursor-pointer flex items-center gap-2 transition-all duration-300 shrink-0 ${brandTextSizeClass}`}
-              onClick={() => handleNavClick('/')}
-            >
-              {!isLanding && (
-                <img
-                  src="/smartproject.png"
-                  alt="ConstructPro Logo"
-                  className={`${logoSizeClass} w-auto mr-2 transition-all duration-300`}
-                />
-              )}
-              <span>ConstructPro</span>
-            </div>
+    <nav className="cp-topnav">
+      <div className="mx-auto flex h-full max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="flex min-w-0 flex-1 items-center gap-3 lg:gap-5">
+          <button
+            type="button"
+            className="cp-topnav-brand flex shrink-0 cursor-pointer items-center gap-2 border-0 bg-transparent"
+            onClick={() => handleNavClick('/')}
+          >
             {!isLanding && (
-              <AppWorkbenchNav className="hidden md:flex" />
+              <img src="/smartproject.png" alt="" className="h-7 w-auto" />
             )}
-          </div>
+            <span>ConstructPro</span>
+          </button>
+          {!isLanding && <AppWorkbenchNav className="hidden md:flex" />}
+        </div>
 
-          <div className="hidden md:flex items-center space-x-4 lg:space-x-6 shrink-0">
+        <div className="hidden shrink-0 items-center gap-4 md:flex">
             {/* Navigation Links */}
             {isLanding ? (
               <>
@@ -124,10 +111,10 @@ export const SharedNavigation: React.FC<SharedNavigationProps> = ({ variant = 'a
                   href={testbenchHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="nav-link flex items-center gap-1.5 text-teal-300 hover:text-teal-200 font-semibold"
+                  className="cp-topnav-link flex items-center gap-1.5 font-semibold text-[var(--copper-400)] hover:text-[var(--copper-400)]"
                 >
                   <span>Project testbench</span>
-                  <ArrowUpRight className="w-3.5 h-3.5" />
+                  <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </a>
               </>
             ) : (
@@ -136,10 +123,10 @@ export const SharedNavigation: React.FC<SharedNavigationProps> = ({ variant = 'a
                   href={testbenchHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="nav-link flex items-center gap-1.5 text-teal-300 hover:text-teal-200 font-semibold"
+                  className="cp-topnav-link flex items-center gap-1.5 font-semibold text-[var(--copper-400)] hover:text-[var(--copper-400)]"
                 >
                   <span>Project testbench</span>
-                  <ArrowUpRight className="w-3.5 h-3.5" />
+                  <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </a>
                 {/* {authenticated && (
                   <>
@@ -204,39 +191,36 @@ export const SharedNavigation: React.FC<SharedNavigationProps> = ({ variant = 'a
 
             {/* Auth Section */}
             {authenticated ? (
-              <div className="flex items-center gap-4 pl-4 border-l border-slate-700 text-slate-100">
+              <div className="flex items-center gap-4 border-l border-[var(--border-dark)] pl-4">
                 <UserProfile />
               </div>
             ) : (
-              <div className="flex items-center gap-3 pl-4 border-l border-slate-700 text-slate-100">
+              <div className="flex items-center gap-3 border-l border-[var(--border-dark)] pl-4">
                 <Button
                   variant="outline"
                   onClick={() => handleNavClick('/login')}
-                  className="border-slate-600 text-slate-100 hover:bg-slate-800/60"
+                  className="border-[var(--navy-700)] bg-transparent text-[var(--text-on-dark)] hover:bg-[var(--navy-800)]"
                 >
                   Sign In
                 </Button>
-                <Button
-                  onClick={() => login('google')}
-                  variant="default"
-                >
+                <Button onClick={() => login('google')} variant="default">
                   Sign Up
                 </Button>
               </div>
             )}
-          </div>
+        </div>
 
-          {/* Mobile Menu Button */}
-          <div className="md:hidden">
-            <button
-              className="text-gray-600 hover:text-gray-900"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
-              </svg>
-            </button>
-          </div>
+        <div className="md:hidden">
+          <button
+            type="button"
+            className="text-[var(--text-on-dark-muted)] hover:text-[var(--text-on-dark)]"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Menu"
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
         </div>
       </div>
 

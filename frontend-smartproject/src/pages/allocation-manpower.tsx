@@ -105,13 +105,13 @@ export default function AllocationManpower() {
   };
 
   return (
-    <div className="flex-1 min-w-0 bg-zinc-50">
-      <div className="border-b border-zinc-200 bg-white px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-2 text-zinc-900 min-w-0">
-          <HardHat className="h-6 w-6 text-teal-600 shrink-0" />
+    <div className="flex-1 min-w-0">
+      <div className="cp-page-title-bar">
+        <div className="flex min-w-0 items-center gap-3 text-[var(--text-primary)]">
+          <HardHat className="cp-page-title-bar__icon h-6 w-6 shrink-0" />
           <div>
-            <h1 className="text-lg font-extrabold tracking-tight">Manpower allocation</h1>
-            <p className="text-xs text-zinc-500 mt-0.5 max-w-2xl">
+            <h1 className="cp-heading-lg">Manpower allocation</h1>
+            <p className="mt-0.5 max-w-2xl kanban-body-sm text-[var(--text-secondary)]">
               Employees mapped to global manpower resources appear with work package assignments across projects.
               Map remaining employees to a manpower resource from the section below.
             </p>
@@ -119,17 +119,17 @@ export default function AllocationManpower() {
         </div>
       </div>
 
-      <div className="p-4 sm:p-6 lg:p-8 max-w-[1200px] mx-auto">
+      <div className="cp-page-body">
         <Tabs defaultValue="allocation" className="space-y-4">
           <TabsList>
             <TabsTrigger value="allocation">Allocation</TabsTrigger>
             <TabsTrigger value="utilization">Resource utilization</TabsTrigger>
           </TabsList>
           <TabsContent value="allocation" className="space-y-8">
-        <Card className="border-zinc-200 shadow-sm">
+        <Card className="border-[var(--border-subtle)] shadow-[var(--shadow-md)]">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-bold text-zinc-800">Mapped to manpower resources</CardTitle>
-            <p className="text-xs text-zinc-500 font-normal">
+            <CardTitle className="cp-heading-md text-[var(--text-primary)]">Mapped to manpower resources</CardTitle>
+            <p className="kanban-body-sm font-normal text-[var(--text-secondary)]">
               Assignments come from project resources (manpower) on work packages. Calendar highlights planned
               date ranges.
             </p>
@@ -249,6 +249,7 @@ export default function AllocationManpower() {
                                           <TableHead className="text-[10px] h-8">Project</TableHead>
                                           <TableHead className="text-[10px] h-8">WP code</TableHead>
                                           <TableHead className="text-[10px] h-8">Work package</TableHead>
+                                          <TableHead className="text-[10px] h-8">Activity</TableHead>
                                           <TableHead className="text-[10px] h-8 text-right">Qty</TableHead>
                                           <TableHead className="text-[10px] h-8">Tag</TableHead>
                                           <TableHead className="text-[10px] h-8">Start</TableHead>
@@ -259,7 +260,13 @@ export default function AllocationManpower() {
                                       </TableHeader>
                                       <TableBody>
                                         {row.assignments.map((a) => (
-                                          <TableRow key={a.projectResourceId} className="border-zinc-100">
+                                          <TableRow
+                                            key={a.projectResourceId}
+                                            className={cn(
+                                              "border-zinc-100",
+                                              a.hasDeficiency && "bg-red-50/80"
+                                            )}
+                                          >
                                             <TableCell className="text-xs py-1.5 text-zinc-800">
                                               {a.projectName}
                                             </TableCell>
@@ -267,6 +274,14 @@ export default function AllocationManpower() {
                                               {a.wpCode}
                                             </TableCell>
                                             <TableCell className="text-xs py-1.5 text-zinc-700">{a.wpName}</TableCell>
+                                            <TableCell className="text-xs py-1.5 text-zinc-600">
+                                              {a.activityName ?? "—"}
+                                              {a.hasDeficiency && (
+                                                <span className="block text-[10px] text-red-700 font-semibold">
+                                                  Short {a.maxShortfall ?? 0}
+                                                </span>
+                                              )}
+                                            </TableCell>
                                             <TableCell className="text-xs py-1.5 text-right tabular-nums">
                                               {a.quantity}
                                             </TableCell>
@@ -311,11 +326,11 @@ export default function AllocationManpower() {
           </CardContent>
         </Card>
 
-        <Card className="border-zinc-200 shadow-sm border-dashed">
+        <Card className="border-[var(--border-subtle)] border-dashed shadow-[var(--shadow-md)]">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-bold text-zinc-800">Not mapped to a manpower resource</CardTitle>
-            <p className="text-xs text-zinc-500 font-normal">
-              Use <span className="font-medium text-zinc-700">Map Resource</span> to link an employee to a global
+            <CardTitle className="cp-heading-md text-[var(--text-primary)]">Not mapped to a manpower resource</CardTitle>
+            <p className="kanban-body-sm font-normal text-[var(--text-secondary)]">
+              Use <span className="font-medium text-[var(--text-primary)]">Map Resource</span> to link an employee to a global
               manpower resource (same as Employee Master).
             </p>
           </CardHeader>

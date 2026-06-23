@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { SideNavigation } from "@/components/project/side-navigation";
 import { ProjectHeader } from "@/components/project/project-header";
+import { ProjectRootHeader } from "@/components/project/project-root-header";
 import { SimpleProjectHeader } from "@/components/project/simple-project-header";
 import { useMobile } from "@/hooks/use-mobile";
 import { Toaster } from "sonner";
@@ -18,7 +19,6 @@ export default function ProjectLayout({ children, projectId }: ProjectLayoutProp
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isMobile);
   const [location, setLocation] = useLocation();
 
-  // Validate the projectId if provided
   useEffect(() => {
     if (projectId && (isNaN(projectId) || projectId <= 0)) {
       setLocation("/");
@@ -29,8 +29,6 @@ export default function ProjectLayout({ children, projectId }: ProjectLayoutProp
     setIsSidebarOpen(!isSidebarOpen);
   };
 
-  // Check if current page is a wiki or document page
-  // Note: collab is excluded from isWikiPage so it can use ProjectHeader with tabs
   const isWikiPage =
     location.includes('/risk-register') ||
     location.includes('/lesson-learnt-register') ||
@@ -51,7 +49,6 @@ export default function ProjectLayout({ children, projectId }: ProjectLayoutProp
     location.includes('/project-docs/ITPAndReports') ||
     location.includes('/project-docs/OtherDocuments');
 
-  // Determine page title and icon
   const getPageInfo = () => {
     if (location.includes('/collab')) {
       return { title: 'Collaboration Hub', icon: <MessageSquareText className="h-4 w-4" /> };
@@ -77,63 +74,6 @@ export default function ProjectLayout({ children, projectId }: ProjectLayoutProp
     if (location.includes('/charts')) {
       return { title: 'PERT & Gantt Charts', icon: <PieChart className="h-4 w-4" /> };
     }
-    if (location.includes('/project-docs/RiskRegister')) {
-      return { title: 'Risk Register', icon: <AlertTriangle className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/ProjectDailyProgress')) {
-      return { title: 'Project Daily Progress', icon: <Calendar className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/ProjectDailyResourceDeployed')) {
-      return { title: 'Project Daily Resource Deployed', icon: <AlertTriangle className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/LessonLearntRegister')) {
-      return { title: 'Lesson Learnt Register', icon: <AlertTriangle className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/DirectManpowerList')) {
-      return { title: 'Direct Manpower List', icon: <AlertTriangle className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/IndirectManpowerList')) {
-      return { title: 'Indirect Manpower List', icon: <AlertTriangle className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/DailyActivityTasksPlanned')) {
-      return { title: 'Daily Activity/Tasks Planned', icon: <AlertTriangle className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/OtherWiki')) {
-      return { title: 'Other Wiki', icon: <AlertTriangle className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/ProjectDrawings')) {
-      return { title: 'Project Drawings', icon: <FolderOpen className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/ProjectBOQ')) {
-      return { title: 'Project BOQ', icon: <FolderOpen className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/ProjectScope')) {
-      return { title: 'Project Scope Document (PTS)', icon: <FolderOpen className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/EquipmentCatalogue')) {
-      return { title: 'Equipment Catalogue', icon: <FolderOpen className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/ClientCorrespondence')) {
-      return { title: 'Client Correspondence', icon: <FolderOpen className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/SupplierCorrespondence')) {
-      return { title: 'Supplier Correspondence', icon: <FolderOpen className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/SubcontractCorrespondence')) {
-      return { title: 'Subcontract Correspondence', icon: <FolderOpen className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/InternalCorrespondence')) {
-      return { title: 'Internal Project Correspondence', icon: <FolderOpen className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/RequestForInspection')) {
-      return { title: 'Request for Inspection', icon: <FolderOpen className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/ITPAndReports')) {
-      return { title: 'ITP and Reports', icon: <FolderOpen className="h-4 w-4" /> };
-    }
-    if (location.includes('/project-docs/OtherDocuments')) {
-      return { title: 'Other Documents', icon: <FolderOpen className="h-4 w-4" /> };
-    }
     if (isWikiPage) {
       return { title: 'Project Wiki', icon: <AlertTriangle className="h-4 w-4" /> };
     }
@@ -144,21 +84,30 @@ export default function ProjectLayout({ children, projectId }: ProjectLayoutProp
   };
 
   const pageInfo = getPageInfo();
+  const isProjectRoot =
+    !!projectId && typeof location === "string" && new RegExp(`^/projects/${projectId}$`).test(location);
+
+  const isFullBleedPage =
+    isProjectRoot ||
+    location.includes("/materials-services") ||
+    location.includes("/collab") ||
+    (typeof location === "string" &&
+      !!projectId &&
+      (new RegExp(`^/projects/${projectId}/activities/?$`).test(location) ||
+        new RegExp(`^/projects/${projectId}/activities/page5/?$`).test(location) ||
+        new RegExp(`^/projects/${projectId}/tasks/?$`).test(location) ||
+        new RegExp(`^/projects/${projectId}/tasks/page1/?$`).test(location)));
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="cp-app-shell">
       <Toaster position="top-right" />
-      {/* Top Navigation - Fixed */}
       <SharedNavigation variant="app" />
 
-      <div className="flex flex-1" style={{ minHeight: 'calc(100vh - 4rem)', paddingTop: '4rem' }}>
-        <div className="flex flex-1">
-          {/* Left Sidebar Navigation */}
+      <div className="cp-app-main">
+        <div className="flex min-h-0 min-w-0 flex-1">
           <SideNavigation currentProjectId={projectId} />
 
-          {/* Main Content Area */}
-          <main className="flex-1 flex flex-col">
-            {/* Project Header & Tabs */}
+          <div className="cp-app-content">
             {projectId && (
               isWikiPage || isDocumentPage ? (
                 <SimpleProjectHeader
@@ -166,6 +115,8 @@ export default function ProjectLayout({ children, projectId }: ProjectLayoutProp
                   pageTitle={pageInfo.title}
                   pageIcon={pageInfo.icon}
                 />
+              ) : isProjectRoot ? (
+                <ProjectRootHeader projectId={projectId} activeTab="activities" />
               ) : (
                 <ProjectHeader
                   projectId={projectId}
@@ -174,16 +125,16 @@ export default function ProjectLayout({ children, projectId }: ProjectLayoutProp
               )
             )}
 
-            <div className="flex-1">
+            <div className={isFullBleedPage ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "cp-app-content__inner cp-page-enter"}>
               {children}
             </div>
-          </main>
+          </div>
         </div>
       </div>
 
-      <footer className="border-t border-gray-200 bg-gray-100/90 text-xs text-gray-500">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-center gap-2">
-          <img src="/smartproject.png" alt="ConstructPro Logo" className="h-4 w-auto" />
+      <footer className="cp-app-footer">
+        <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 px-4 py-3">
+          <img src="/smartproject.png" alt="ConstructPro Logo" className="h-4 w-auto opacity-70" />
           <span>© {new Date().getFullYear()} ConstructPro. All rights reserved.</span>
         </div>
       </footer>

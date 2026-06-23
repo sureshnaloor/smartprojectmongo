@@ -988,6 +988,26 @@ export const insertResourceTimesheetSchema = z.object({
 export type InsertResourceTimesheet = z.infer<typeof insertResourceTimesheetSchema>;
 export type ResourceTimesheet = InsertResourceTimesheet & { id: number; enteredDate: Date; createdAt: Date; updatedAt: Date };
 
+export const insertResourceEntityAssignmentSchema = z.object({
+  date: z.string(),
+  resourceType: z.enum(['manpower', 'rental_manpower', 'equipment', 'rental_equipment']),
+  projectId: z.number(),
+  wpId: z.number(),
+  projectActivityId: z.number().optional().nullable(),
+  projectResourceId: z.number(),
+  globalResourceId: z.number(),
+  entityType: z.enum(['employee', 'rental_manpower', 'equipment', 'rental_equipment']),
+  entityId: z.number(),
+  plannedHours: z.union([z.string(), z.number()]).transform((v) => String(Number(v))),
+  onboardingRunId: z.number().optional().nullable(),
+});
+export type InsertResourceEntityAssignment = z.infer<typeof insertResourceEntityAssignmentSchema>;
+export type ResourceEntityAssignment = InsertResourceEntityAssignment & {
+  id: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 // --- File Uploads ---
 export const insertFileUploadSchema = z.object({
   projectId: z.number(),
@@ -1203,6 +1223,8 @@ export const toolModels = 'tool_models';
 export const toolMaster = 'tool_master';
 export const toolResourceMappings = 'tool_resource_mappings';
 export const resourceTimesheets = 'resource_timesheets';
+export const resourceEntityAssignments = 'resource_entity_assignments';
+export const resourceOnboardingRuns = 'resource_onboarding_runs';
 export const fileUploads = 'file_uploads';
 export const uoms = 'uoms';
 export const materialTypes = 'material_types';

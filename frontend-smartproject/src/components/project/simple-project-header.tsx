@@ -2,6 +2,7 @@ import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Project } from "@shared/schema";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
   FileImage,
@@ -17,7 +18,6 @@ import {
   ShieldAlert,
   HardHat,
   Leaf,
-  FolderOpen,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -61,21 +61,23 @@ export function SimpleProjectHeader({ projectId, pageTitle, pageIcon, onClose }:
 
   if (isLoadingProject) {
     return (
-      <div className="bg-zinc-100 border-b border-zinc-200 animate-pulse w-full min-w-0">
-        <div className="px-4 py-4 sm:px-6 lg:px-8">
-          <div className="h-6 bg-zinc-200 rounded w-1/3 mb-2" />
-          <div className="h-4 bg-zinc-200 rounded w-1/2" />
+      <div className="cp-inline-page-header animate-pulse">
+        <div className="cp-inline-page-header__body space-y-2">
+          <div className="cp-skeleton h-7 w-1/3" />
+          <div className="cp-skeleton h-4 w-1/2" />
         </div>
-        <div className="h-12 px-4 bg-zinc-50/50" />
+        <div className="cp-inline-page-header__tabs">
+          <div className="cp-skeleton h-10 w-full" />
+        </div>
       </div>
     );
   }
 
   if (!project) {
     return (
-      <div className="bg-zinc-100 border-b border-zinc-200 w-full min-w-0">
-        <div className="px-4 py-4 sm:px-6 lg:px-8">
-          <div className="text-red-500">Project not found</div>
+      <div className="cp-inline-page-header">
+        <div className="cp-inline-page-header__body">
+          <div className="text-[var(--status-danger)] kanban-body-md">Project not found</div>
         </div>
       </div>
     );
@@ -86,51 +88,60 @@ export function SimpleProjectHeader({ projectId, pageTitle, pageIcon, onClose }:
 
   const isDocumentsRoute = typeof location === "string" && documentTabs.some((tab) => location.includes(tab.match));
   const isWikiRoute = typeof location === "string" && wikiTabs.some((tab) => location.includes(tab.match));
+  const isHseHub = typeof location === "string" && location.includes("/risk-register");
+  const isDocumentsHub = isDocumentsRoute;
 
   const tabClass = (active: boolean) =>
-    `shrink-0 border-b-2 py-2 px-1.5 text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 min-w-0 ${
-      active ? "border-zinc-900 text-zinc-900" : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-    }`;
+    cn(
+      "cp-tab-underline inline-flex shrink-0 items-center gap-1.5 !py-2.5 !px-3",
+      active && "cp-tab-underline--active"
+    );
 
   return (
-    <div className="bg-zinc-100 border-b border-zinc-200 shadow-sm w-full min-w-0">
-      {/* Header: project name, budget, timeline */}
-      <div className="px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between min-w-0">
-          <div className="space-y-2 min-w-0 flex-1">
-            <div className="flex items-center gap-3 min-w-0">
+    <div className="cp-inline-page-header">
+      <div className="cp-inline-page-header__body">
+        <div className="flex min-w-0 items-center justify-between">
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex min-w-0 items-center gap-3">
               {onClose && (
-                <Button variant="ghost" size="sm" onClick={onClose} className="mr-2 text-zinc-500 hover:text-zinc-700">
-                  <ArrowLeft className="h-4 w-4 mr-1" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClose}
+                  className="mr-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >
+                  <ArrowLeft className="mr-1 h-4 w-4" />
                   <span className="sr-only md:not-sr-only md:inline-block">Back to Projects</span>
                 </Button>
               )}
-              <h1 className="text-xl font-extrabold tracking-tight text-zinc-900 truncate">{project.name}</h1>
+              <h1 className={cn("cp-display-md truncate", (isHseHub || isDocumentsHub) && "!text-[2rem]")}>
+                {project.name}
+              </h1>
             </div>
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-base text-zinc-600">
-              <span className="flex items-center gap-1.5">
-                <span className="font-semibold text-sky-800">Budget:</span>
-                {formatCurrency(Number(project.budget), project.currency || "USD")}
+            <div className="flex flex-wrap items-center gap-2 kanban-body-sm text-[var(--text-secondary)]">
+              <span className="font-mono">Budget: {formatCurrency(Number(project.budget), project.currency || "USD")}</span>
+              <span className="h-1 w-1 rounded-full bg-[var(--text-muted)]" />
+              <span>
+                Timeline: {formatDate(project.startDate ?? undefined)} — {formatDate(project.endDate ?? undefined)}
               </span>
-              <span className="flex items-center gap-1.5">
-                <span className="font-semibold text-sky-800">Timeline:</span>
-                {formatDate(project.startDate ?? undefined)} — {formatDate(project.endDate ?? undefined)}
-              </span>
-              {pageIcon && (
-                <span className="flex items-center gap-1.5 text-zinc-600">
+              {isHseHub ? (
+                <span className="cp-badge cp-badge--warning">Risk Register</span>
+              ) : isDocumentsHub ? (
+                <span className="cp-badge cp-badge--info">Project Documents</span>
+              ) : pageIcon ? (
+                <span className="flex items-center gap-1.5">
                   {pageIcon}
                   <span className="font-medium">{pageTitle}</span>
                 </span>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Document tabs: fit width; very small = icons only; wider = icon + small text (wraps) */}
-      {isDocumentsRoute && (
-        <div className="w-full min-w-0 px-4 sm:px-6 lg:px-8 border-t border-zinc-200 bg-zinc-50/50">
-          <nav className="-mb-px flex flex-wrap gap-x-2 gap-y-1 py-2">
+      {isDocumentsRoute && !isDocumentsHub && (
+        <div className="cp-inline-page-header__tabs">
+          <nav className="cp-tabs-underline flex flex-wrap gap-x-1 overflow-x-auto py-1">
             {documentTabs.map((tab) => {
               const active = typeof location === "string" && location.includes(tab.match);
               const Icon = tab.Icon;
@@ -143,9 +154,7 @@ export function SimpleProjectHeader({ projectId, pageTitle, pageIcon, onClose }:
                   title={tab.label}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
-                  <span className="hidden sm:inline text-left leading-tight max-w-[4.5rem] sm:max-w-[5rem] break-words">
-                    {tab.label}
-                  </span>
+                  <span className="hidden max-w-[5rem] text-left leading-tight sm:inline">{tab.label}</span>
                 </button>
               );
             })}
@@ -153,10 +162,9 @@ export function SimpleProjectHeader({ projectId, pageTitle, pageIcon, onClose }:
         </div>
       )}
 
-      {/* Wiki tabs: same responsive behavior */}
-      {isWikiRoute && (
-        <div className="w-full min-w-0 px-4 sm:px-6 lg:px-8 border-t border-zinc-200 bg-zinc-50/50">
-          <nav className="-mb-px flex flex-wrap gap-x-2 gap-y-1 py-2">
+      {isWikiRoute && !isHseHub && (
+        <div className="cp-inline-page-header__tabs">
+          <nav className="cp-tabs-underline flex flex-wrap gap-x-1 overflow-x-auto py-1">
             {wikiTabs.map((tab) => {
               const active = typeof location === "string" && location.includes(tab.match);
               const Icon = tab.Icon;
@@ -169,9 +177,7 @@ export function SimpleProjectHeader({ projectId, pageTitle, pageIcon, onClose }:
                   title={tab.label}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
-                  <span className="hidden sm:inline text-left leading-tight max-w-[4.5rem] sm:max-w-[5rem] break-words">
-                    {tab.label}
-                  </span>
+                  <span className="hidden max-w-[5rem] text-left leading-tight sm:inline">{tab.label}</span>
                 </button>
               );
             })}

@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
 
 const triggerBase =
-  "inline-flex items-center gap-0.5 rounded-md px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-200 hover:bg-slate-800/90 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/60";
+  "cp-topnav-link inline-flex items-center gap-0.5 rounded-md px-2 py-1.5 cp-focus-ring hover:bg-[var(--navy-800)]";
 
 const GLOBAL_TOOLS: { label: string; href: string }[] = [
   { label: "Collaboration Hub", href: "/collab" },

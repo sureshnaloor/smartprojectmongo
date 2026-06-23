@@ -1,0 +1,520 @@
+/**
+ * ConstructPro — Inside Pages Design System
+ * Shared tokens & utilities for authenticated app workspace
+ */
+
+:root {
+  /* Primary copper */
+  --copper-500: #c17817;
+  --copper-600: #a86512;
+  --copper-400: #d4903d;
+  --copper-50: #fdf5e8;
+
+  /* Navy shell */
+  --navy-900: #0f1729;
+  --navy-800: #1a2035;
+  --navy-700: #252d45;
+  --navy-600: #3d4663;
+
+  /* Backgrounds */
+  --bg-cream: #f8f7f4;
+  --bg-white: #ffffff;
+  --bg-warm-gray: #f0efea;
+
+  /* Text */
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --text-on-dark: #f1f5f9;
+  --text-on-dark-muted: #94a3b8;
+
+  /* Status */
+  --status-success: #16a34a;
+  --status-success-bg: #dcfce7;
+  --status-warning: #e85d04;
+  --status-warning-bg: #fff0e0;
+  --status-danger: #dc2626;
+  --status-danger-bg: #fee2e2;
+  --status-info: #2563eb;
+  --status-info-bg: #dbeafe;
+
+  /* Borders & radius */
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-dark: rgba(255, 255, 255, 0.08);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12);
+  --shadow-copper: 0 4px 16px rgba(193, 120, 23, 0.15);
+
+  /* Layout */
+  --cp-sidebar-width: 260px;
+  --cp-topnav-height: 56px;
+  --cp-content-padding: 32px;
+}
+
+/* ── Typography (aliases: kanban-* kept for backward compat) ── */
+.cp-display-lg,
+.kanban-display-lg {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.cp-display-md,
+.hse-display-md {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.cp-heading-lg,
+.kanban-heading-lg {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.cp-heading-md,
+.kanban-heading-md {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.cp-body-lg {
+  font-size: 0.9375rem;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.cp-body-md,
+.kanban-body-md {
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.cp-body-sm,
+.kanban-body-sm {
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+.cp-caption,
+.kanban-caption {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+}
+
+/* ── App shell ── */
+.cp-app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-cream);
+}
+
+.cp-app-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding-top: var(--cp-topnav-height);
+}
+
+.cp-app-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-cream);
+}
+
+.cp-app-content__inner {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--cp-content-padding);
+}
+
+.cp-app-footer {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-warm-gray);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+/* ── Top navigation ── */
+.cp-topnav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  height: var(--cp-topnav-height);
+  background: var(--navy-900);
+  border-bottom: 1px solid var(--border-dark);
+  color: var(--text-on-dark);
+}
+
+.cp-topnav-brand {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--copper-400);
+}
+
+.cp-topnav-link {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-on-dark-muted);
+  transition: color 150ms ease;
+}
+
+.cp-topnav-link:hover {
+  color: var(--text-on-dark);
+}
+
+/* ── Sidebar ── */
+.cp-sidebar {
+  width: var(--cp-sidebar-width);
+  flex-shrink: 0;
+  background: var(--navy-900);
+  border-right: 1px solid var(--border-dark);
+  color: var(--text-on-dark-muted);
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+}
+
+.cp-sidebar-section-label {
+  padding: 0 20px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-on-dark-muted);
+}
+
+.cp-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 16px 0 20px;
+  margin: 2px 8px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid transparent;
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--text-on-dark-muted);
+  text-decoration: none;
+  transition: background 150ms ease, color 150ms ease, border-color 200ms ease;
+}
+
+.cp-sidebar-link:hover {
+  background: var(--navy-800);
+  color: var(--text-on-dark);
+}
+
+.cp-sidebar-link--active {
+  background: rgba(193, 120, 23, 0.15);
+  border-left-color: var(--copper-500);
+  color: var(--copper-400);
+  font-weight: 500;
+}
+
+.cp-sidebar-link--active .cp-sidebar-link__icon {
+  color: var(--copper-400);
+}
+
+.cp-sidebar-link__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.cp-sidebar-current-project {
+  margin: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-dark);
+  background: var(--navy-800);
+}
+
+/* ── Cards ── */
+.cp-card {
+  background: var(--bg-white);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 24px;
+  transition: box-shadow 200ms ease, transform 200ms ease;
+}
+
+.cp-card--interactive:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+.cp-card--compact {
+  padding: 16px;
+}
+
+.cp-card--highlight {
+  border-color: rgba(212, 144, 61, 0.3);
+  box-shadow: var(--shadow-copper);
+}
+
+/* ── Tabs (underline) ── */
+.cp-tabs-underline {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cp-tab-underline {
+  position: relative;
+  padding: 12px 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.cp-tab-underline:hover {
+  color: var(--text-primary);
+}
+
+.cp-tab-underline--active {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.cp-tab-underline--active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--copper-500);
+  border-radius: 1px;
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Status badges ── */
+.cp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.cp-badge--success {
+  background: var(--status-success-bg);
+  color: var(--status-success);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+}
+
+.cp-badge--warning {
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+  border: 1px solid rgba(232, 93, 4, 0.2);
+}
+
+.cp-badge--danger {
+  background: var(--status-danger-bg);
+  color: var(--status-danger);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+}
+
+.cp-badge--info {
+  background: var(--status-info-bg);
+  color: var(--status-info);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.cp-badge--neutral {
+  background: var(--bg-warm-gray);
+  color: var(--text-secondary);
+}
+
+/* ── Buttons (utility; shadcn variant also updated) ── */
+.cp-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--copper-500);
+  border: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease;
+}
+
+.cp-btn-primary:hover {
+  background: var(--copper-600);
+  box-shadow: var(--shadow-copper);
+}
+
+.cp-btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* ── Tables ── */
+.cp-table-header {
+  background: var(--bg-warm-gray);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.cp-table-row:hover {
+  background: rgba(253, 245, 232, 0.5);
+}
+
+/* ── Focus ring ── */
+.cp-focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(193, 120, 23, 0.25);
+}
+
+/* ── Page enter animation ── */
+@keyframes cp-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cp-page-enter {
+  animation: cp-page-in 0.25s ease-out both;
+}
+
+/* ── Inline page header (sub-pages above content) ── */
+.cp-inline-page-header {
+  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  background: var(--bg-cream);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cp-inline-page-header__body {
+  padding: 20px var(--cp-content-padding);
+  background: var(--bg-white);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cp-inline-page-header__tabs {
+  padding: 0 var(--cp-content-padding);
+  background: var(--bg-white);
+}
+
+.cp-inline-page-header__tabs .cp-tabs-underline {
+  margin-bottom: -1px;
+}
+
+.cp-page-title-bar {
+  flex-shrink: 0;
+  padding: 20px var(--cp-content-padding);
+  background: var(--bg-white);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cp-page-title-bar__icon {
+  color: var(--copper-500);
+}
+
+.cp-page-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--cp-content-padding);
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── Data tables inside workspace ── */
+.cp-app-content table thead tr {
+  background: var(--bg-warm-gray);
+}
+
+.cp-app-content table thead th {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.cp-app-content table tbody tr:hover {
+  background: rgba(253, 245, 232, 0.5);
+}
+
+.cp-app-content table tbody td {
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.cp-app-content .bg-card {
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-md);
+}
+
+@keyframes cp-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.cp-skeleton {
+  background: var(--bg-warm-gray);
+  border-radius: var(--radius-sm);
+  animation: cp-skeleton-pulse 1.5s ease-in-out infinite;
+}

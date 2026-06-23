@@ -2956,6 +2956,174 @@ export class DatabaseStorage {
     return (await db.collection("project_resources").find({ projectActivityId }).toArray()) as ProjectResource[];
   }
 
+  async loadWpAssignmentsByGlobalResourceIds(
+    resourceIds: number[],
+    projectResourceType: string
+  ): Promise<
+    Map<
+      number,
+      Array<{
+        projectResourceId: number;
+        projectId: number;
+        projectName: string;
+        wpId: number;
+        wpCode: string;
+        wpName: string;
+        projectActivityId: number | null;
+        activityName: string | null;
+        quantity: string;
+        plannedStartDate: string | null;
+        plannedEndDate: string | null;
+        durationDays: number | null;
+        calendarDays: number | null;
+        workingHours: number | null;
+        totalResourceHours: number | null;
+        hasDeficiency: boolean;
+        maxShortfall: number;
+      }>
+    >
+  > {
+    const { workingDaysBetween, workingHoursBetween, calendarDaysBetween } = await import(
+      "./work-calendar.js"
+    );
+    const assignmentsByResourceId = new Map<number, Array<Record<string, unknown>>>();
+    if (resourceIds.length === 0) return assignmentsByResourceId as never;
+
+    const prRows = (await db
+      .collection("project_resources")
+      .find({
+        type: projectResourceType,
+        globalResourceId: { $in: resourceIds },
+      })
+      .toArray()) as ProjectResource[];
+
+    const projectIds = [...new Set(prRows.map((r) => r.projectId))];
+    const wpIds = [...new Set(prRows.map((r) => r.wpId))];
+    const actIds = [
+      ...new Set(
+        prRows.map((r) => r.projectActivityId).filter((id): id is number => id != null)
+      ),
+    ];
+
+    const [projects, wps, acts] = await Promise.all([
+      projectIds.length > 0
+        ? db.collection("projects").find({ id: { $in: projectIds } }).toArray()
+        : [],
+      wpIds.length > 0
+        ? db.collection("work_packages").find({ id: { $in: wpIds } }).toArray()
+        : [],
+      actIds.length > 0
+        ? db.collection("project_activities").find({ id: { $in: actIds } }).toArray()
+        : [],
+    ]);
+
+    const projectById = new Map(projects.map((p: { id: number; name?: string }) => [p.id, p]));
+    const wpById = new Map(wps.map((w: { id: number; code?: string; name?: string }) => [w.id, w]));
+    const actById = new Map(acts.map((a: { id: number; name?: string }) => [a.id, a]));
+
+    const projectIdsFromRuns = [...new Set(prRows.map((r) => r.projectId))];
+    const latestRunByProject = new Map<number, { deficiencies?: Array<{ projectResourceId: number; shortfall: number }> }>();
+    for (const pid of projectIdsFromRuns) {
+      const run = await db
+        .collection("resource_onboarding_runs")
+        .find({ projectId: pid })
+        .sort({ createdAt: -1 })
+        .limit(1)
+        .toArray();
+      if (run[0]) latestRunByProject.set(pid, run[0] as { deficiencies?: Array<{ projectResourceId: number; shortfall: number }> });
+    }
+
+    const deficiencyByPrId = new Map<number, { hasDeficiency: boolean; maxShortfall: number }>();
+    for (const [, run] of latestRunByProject) {
+      for (const d of run.deficiencies ?? []) {
+        const cur = deficiencyByPrId.get(d.projectResourceId) ?? {
+          hasDeficiency: false,
+          maxShortfall: 0,
+        };
+        cur.hasDeficiency = true;
+        cur.maxShortfall = Math.max(cur.maxShortfall, d.shortfall);
+        deficiencyByPrId.set(d.projectResourceId, cur);
+      }
+    }
+
+    const defaultCalendar = await this.getDefaultCalendar();
+    const toIso = (d: unknown) => {
+      if (d == null || d === "") return null;
+      const s = String(d);
+      return s.length >= 10 ? s.slice(0, 10) : null;
+    };
+
+    const dateBounds = prRows
+      .map((r) => ({ start: toIso(r.plannedStartDate), end: toIso(r.plannedEndDate) }))
+      .filter((r) => r.start && r.end) as Array<{ start: string; end: string }>;
+    const rangeStart =
+      dateBounds.length > 0
+        ? dateBounds.reduce((min, r) => (r.start < min ? r.start : min), dateBounds[0].start)
+        : null;
+    const rangeEnd =
+      dateBounds.length > 0
+        ? dateBounds.reduce((max, r) => (r.end > max ? r.end : max), dateBounds[0].end)
+        : null;
+    const holidays =
+      rangeStart && rangeEnd
+        ? await this.getCalendarHolidaysInRange(rangeStart, rangeEnd)
+        : [];
+
+    for (const row of prRows) {
+      const gid = row.globalResourceId;
+      if (gid == null) continue;
+      const start = toIso(row.plannedStartDate);
+      const end = toIso(row.plannedEndDate);
+      const qty = Number.parseFloat(String(row.quantity ?? "0")) || 0;
+      const hours = start && end ? workingHoursBetween(start, end, defaultCalendar, holidays) : null;
+      const project = projectById.get(row.projectId);
+      const wp = wpById.get(row.wpId);
+      const actId = row.projectActivityId ?? null;
+      const act = actId != null ? actById.get(actId) : undefined;
+      const def = deficiencyByPrId.get(row.id);
+
+      const out = {
+        projectResourceId: row.id,
+        projectId: row.projectId,
+        projectName: (project as { name?: string })?.name ?? `Project #${row.projectId}`,
+        wpId: row.wpId,
+        wpCode: (wp as { code?: string })?.code ?? String(row.wpId),
+        wpName: (wp as { name?: string })?.name ?? `WP #${row.wpId}`,
+        projectActivityId: actId,
+        activityName: actId != null ? (act as { name?: string })?.name ?? null : null,
+        quantity: String(row.quantity ?? "0"),
+        plannedStartDate: start,
+        plannedEndDate: end,
+        durationDays:
+          start && end ? workingDaysBetween(start, end, defaultCalendar, holidays) : null,
+        calendarDays: start && end ? calendarDaysBetween(start, end) : null,
+        workingHours: hours,
+        totalResourceHours: hours != null ? hours * qty : null,
+        hasDeficiency: def?.hasDeficiency ?? false,
+        maxShortfall: def?.maxShortfall ?? 0,
+      };
+      const list = assignmentsByResourceId.get(gid) ?? [];
+      list.push(out);
+      assignmentsByResourceId.set(gid, list);
+    }
+
+    for (const [, list] of assignmentsByResourceId) {
+      list.sort((a, b) => {
+        const pc = String(a.projectName).localeCompare(String(b.projectName), undefined, {
+          sensitivity: "base",
+        });
+        if (pc !== 0) return pc;
+        const wc = String(a.wpCode).localeCompare(String(b.wpCode), undefined, { numeric: true });
+        if (wc !== 0) return wc;
+        return String(a.activityName ?? "").localeCompare(String(b.activityName ?? ""), undefined, {
+          sensitivity: "base",
+        });
+      });
+    }
+
+    return assignmentsByResourceId as never;
+  }
+
   async getWorkPackageMaterials(filter: {
     wpId?: number;
     projectId?: number;

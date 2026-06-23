@@ -1,33 +1,23 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { MASTER_FILTERS, masterPageTitle } from "@/components/global-masters/constants";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  GlobalMasterFilterBar,
+  type FilterState,
+} from "@/components/global-masters/global-master-filter-bar";
+import { GlobalMasterTableHeader } from "@/components/global-masters/global-master-table-header";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  GlobalMasterDataTable,
+  type MasterTableColumn,
+} from "@/components/global-masters/global-master-data-table";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, Upload, Download } from "lucide-react";
+  GlobalMasterModal,
+  type ModalMode,
+} from "@/components/global-masters/global-master-modal";
+import { MappedEntitiesPanel } from "@/components/global-masters/mapped-entities-panel";
+import { encodeMeta, parseMeta, stripMeta, displayStatus } from "@/components/global-masters/meta-fields";
+import { StatusBadge, TypeBadge, useFilteredRows } from "@/components/global-masters/table-utils";
 
 interface Service {
   id: number;
@@ -37,24 +27,6 @@ interface Service {
   serviceType: string;
   serviceGroup: string;
   baseRate: number | string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface MasterItem {
-  id: number;
-  name: string;
-  description?: string | null;
-  serviceTypeId?: number;
-}
-
-async function parseApiError(res: Response): Promise<string> {
-  try {
-    const data = await res.json();
-    return data.message ?? "Request failed";
-  } catch {
-    return "Request failed";
-  }
 }
 
 async function getServices(): Promise<Service[]> {
@@ -63,374 +35,260 @@ async function getServices(): Promise<Service[]> {
   return res.json();
 }
 
-async function createService(data: Omit<Service, "id" | "createdAt" | "updatedAt">): Promise<Service> {
+async function createService(data: Omit<Service, "id">) {
   const res = await fetch("/api/service-masters", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(await parseApiError(res));
+  if (!res.ok) throw new Error("Failed to create service");
   return res.json();
 }
 
-async function updateService(id: number, data: Partial<Omit<Service, "id" | "createdAt" | "updatedAt">>): Promise<Service> {
+async function updateService(id: number, data: Partial<Service>) {
   const res = await fetch(`/api/service-masters/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(await parseApiError(res));
+  if (!res.ok) throw new Error("Failed to update service");
   return res.json();
 }
 
-async function deleteService(id: number): Promise<void> {
+async function deleteService(id: number) {
   const res = await fetch(`/api/service-masters/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(await parseApiError(res));
+  if (!res.ok) throw new Error("Failed to delete service");
 }
 
-async function bulkUploadServices(csvData: any[]): Promise<Service[]> {
-  const res = await fetch("/api/service-masters/bulk-upload", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ csvData }),
+function serviceToForm(s: Service): Record<string, unknown> {
+  const meta = parseMeta(s.serviceGroup);
+  return {
+    type: "services",
+    name: s.serviceDescription,
+    description: meta.description ?? "",
+    serviceType: s.serviceType,
+    unitRate: String(s.baseRate),
+    rateUnit: s.uom,
+    validFrom: meta.validFrom ?? "",
+    validTo: meta.validTo ?? "",
+    status: displayStatus(meta),
+    remarks: stripMeta(s.serviceGroup),
+  };
+}
+
+function formToPayload(values: Record<string, unknown>) {
+  const serviceGroup = encodeMeta(String(values.remarks ?? ""), {
+    validFrom: String(values.validFrom ?? ""),
+    validTo: String(values.validTo ?? ""),
+    status: String(values.status ?? "active"),
+    description: String(values.description ?? ""),
   });
-  if (!res.ok) throw new Error(await parseApiError(res));
-  return res.json();
+  return {
+    serviceCode: `SRV-${Date.now().toString(36).toUpperCase()}`,
+    serviceDescription: String(values.name),
+    serviceType: String(values.serviceType),
+    serviceGroup: serviceGroup || String(values.serviceType),
+    uom: String(values.rateUnit ?? "Hour"),
+    baseRate: String(values.unitRate),
+  };
 }
 
 export default function ServiceMaster() {
-  const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingService, setEditingService] = useState<Service | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [formData, setFormData] = useState({
-    serviceCode: "",
-    serviceDescription: "",
-    uom: "",
-    serviceType: "",
-    serviceGroup: "",
-    baseRate: "",
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [filters, setFilters] = useState<FilterState>({
+    search: "",
+    type: "all",
+    category: "all",
+    status: "all",
   });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<ModalMode>("create");
+  const [editing, setEditing] = useState<Service | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [flashId, setFlashId] = useState<number | null>(null);
 
   const { data: services = [], isLoading } = useQuery({
     queryKey: ["/api/service-masters"],
     queryFn: getServices,
   });
 
-  const { data: uoms = [] } = useQuery({
-    queryKey: ["/api/uoms"],
-    queryFn: async (): Promise<MasterItem[]> => {
-      const res = await fetch("/api/uoms");
-      if (!res.ok) throw new Error("Failed to fetch UOMs");
-      return res.json();
-    },
-  });
-
-  const { data: serviceTypes = [] } = useQuery({
-    queryKey: ["/api/service-types"],
-    queryFn: async (): Promise<MasterItem[]> => {
-      const res = await fetch("/api/service-types");
-      if (!res.ok) throw new Error("Failed to fetch service types");
-      return res.json();
-    },
-  });
-
-  const { data: serviceGroups = [] } = useQuery({
-    queryKey: ["/api/service-groups"],
-    queryFn: async (): Promise<MasterItem[]> => {
-      const res = await fetch("/api/service-groups");
-      if (!res.ok) throw new Error("Failed to fetch service groups");
-      return res.json();
-    },
+  const filtered = useFilteredRows(services, filters, {
+    search: (s, q) =>
+      s.serviceDescription.toLowerCase().includes(q) ||
+      s.serviceCode.toLowerCase().includes(q),
+    type: (s, t) => s.serviceType === t,
+    category: (s, c) => s.serviceGroup.includes(c),
+    status: (s, st) => displayStatus(parseMeta(s.serviceGroup)) === st,
   });
 
   const createMutation = useMutation({
     mutationFn: createService,
-    onSuccess: () => {
+    onSuccess: (data: Service) => {
       queryClient.invalidateQueries({ queryKey: ["/api/service-masters"] });
-      toast({ title: "Service created successfully" });
-      setIsDialogOpen(false);
-      resetForm();
+      toast.success(`${data.serviceDescription} created successfully`);
+      setFlashId(data.id);
+      setModalOpen(false);
+      setEditing(null);
     },
-    onError: (error: Error) => toast({ title: error.message || "Error creating service", variant: "destructive" }),
+    onError: () => toast.error("Failed to save"),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Omit<Service, "id" | "createdAt" | "updatedAt">> }) =>
+    mutationFn: ({ id, data }: { id: number; data: ReturnType<typeof formToPayload> }) =>
       updateService(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/service-masters"] });
-      toast({ title: "Service updated successfully" });
-      setIsDialogOpen(false);
-      resetForm();
+      toast.success("Changes saved");
+      setModalOpen(false);
+      setEditing(null);
     },
-    onError: (error: Error) => toast({ title: error.message || "Error updating service", variant: "destructive" }),
+    onError: () => toast.error("Failed to save"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteService,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/service-masters"] });
-      toast({ title: "Service deleted successfully" });
+      toast.success("Record deleted");
+      setSelectedId(null);
     },
-    onError: (error: Error) => toast({ title: error.message || "Error deleting service", variant: "destructive" }),
   });
 
-  const bulkUploadMutation = useMutation({
-    mutationFn: bulkUploadServices,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/service-masters"] });
-      toast({ title: `${data.length} services uploaded successfully` });
+  const columns: MasterTableColumn<Service>[] = [
+    {
+      key: "type",
+      header: "Type",
+      width: "90px",
+      render: (s) => <TypeBadge label={s.serviceType} />,
     },
-    onError: (error: Error) => toast({ title: error.message || "Error uploading services", variant: "destructive" }),
-  });
+    {
+      key: "name",
+      header: "Name",
+      render: (s) => <span className="font-medium">{s.serviceDescription}</span>,
+    },
+    {
+      key: "description",
+      header: "Description",
+      render: (s) => (
+        <span className="text-sm text-[var(--text-secondary)] line-clamp-2">
+          {parseMeta(s.serviceGroup).description || s.serviceCode}
+        </span>
+      ),
+    },
+    {
+      key: "rate",
+      header: "Rate",
+      width: "100px",
+      className: "text-right font-mono text-sm",
+      render: (s) => `₹${s.baseRate} / ${s.uom}`,
+    },
+    {
+      key: "category",
+      header: "Type",
+      width: "120px",
+      render: (s) => s.serviceType,
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "90px",
+      render: (s) => <StatusBadge status={displayStatus(parseMeta(s.serviceGroup))} />,
+    },
+  ];
 
-  const resetForm = () => {
-    setFormData({
-      serviceCode: "",
-      serviceDescription: "",
-      uom: "",
-      serviceType: "",
-      serviceGroup: "",
-      baseRate: "",
-    });
-    setEditingService(null);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingService) {
-      updateMutation.mutate({ id: editingService.id, data: formData });
-    } else {
-      createMutation.mutate(formData);
-    }
-  };
-
-  const handleEdit = (service: Service) => {
-    setEditingService(service);
-    setFormData({
-      serviceCode: service.serviceCode,
-      serviceDescription: service.serviceDescription,
-      uom: service.uom,
-      serviceType: service.serviceType,
-      serviceGroup: service.serviceGroup,
-      baseRate: service.baseRate !== undefined && service.baseRate !== null ? String(service.baseRate) : "",
-    });
-    setIsDialogOpen(true);
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const csv = (event.target?.result as string) || "";
-        const lines = csv.split("\n").filter((line) => line.trim());
-        const headers = lines[0].split(",").map((h) => h.trim());
-        const baseRateIdx = headers.findIndex((h) => h.trim().toLowerCase() === "baserate" || h.trim().toLowerCase() === "base_rate");
-        const csvData = lines.slice(1).map((line) => {
-          const values = line.split(",").map((v) => v.trim());
-          return {
-            serviceCode: values[headers.indexOf("serviceCode")],
-            serviceDescription: values[headers.indexOf("serviceDescription")],
-            uom: values[headers.indexOf("uom")],
-            serviceType: values[headers.indexOf("serviceType")],
-            serviceGroup: values[headers.indexOf("serviceGroup")],
-            ...(baseRateIdx >= 0 && values[baseRateIdx] !== undefined ? { baseRate: values[baseRateIdx] || "0" } : {}),
-          };
-        });
-        bulkUploadMutation.mutate(csvData);
-      } catch {
-        toast({ title: "Error parsing CSV", variant: "destructive" });
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const selectedServiceType = serviceTypes.find((t) => t.name === formData.serviceType);
-  const filteredServiceGroups = serviceGroups.filter(
-    (g) =>
-      !selectedServiceType ||
-      g.serviceTypeId === selectedServiceType.id ||
-      g.serviceTypeId == null
-  );
-
-  const filteredServices = services.filter(
-    (s) =>
-      s.serviceCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.serviceDescription.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const selected = services.find((s) => s.id === selectedId);
 
   return (
-    <div className="p-8 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-            Service Master
-          </h1>
-          <p className="text-muted-foreground mt-1">All services are outsourced. Manage service codes, UOM, type and group.</p>
-        </div>
+    <>
+      <GlobalMasterTableHeader
+        title={masterPageTitle("services")}
+        count={filtered.length}
+        addLabel="Service"
+        onAdd={() => {
+          setEditing(null);
+          setModalMode("create");
+          setModalOpen(true);
+        }}
+        onImportCsv={() => fileRef.current?.click()}
+        onExportAll={() => toast.success("Export complete")}
+      />
 
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="flex items-center gap-4 flex-wrap">
-            <Input
-              placeholder="Search by code or description..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 min-w-[200px]"
-            />
-            <Dialog open={isDialogOpen} onOpenChange={(o) => { setIsDialogOpen(o); if (!o) resetForm(); }}>
-              <DialogTrigger asChild>
-                <Button onClick={resetForm}><Plus className="mr-2 h-4 w-4" />Add Service</Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>{editingService ? "Edit Service" : "Add Service"}</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <Label>Service Code *</Label>
-                    <Input
-                      required
-                      value={formData.serviceCode}
-                      onChange={(e) => setFormData({ ...formData, serviceCode: e.target.value })}
-                      placeholder="e.g. SVC001"
-                    />
-                  </div>
-                  <div>
-                    <Label>Description *</Label>
-                    <Textarea
-                      required
-                      value={formData.serviceDescription}
-                      onChange={(e) => setFormData({ ...formData, serviceDescription: e.target.value })}
-                    />
-                  </div>
-                    <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label>UOM *</Label>
-                      <Select value={formData.uom || undefined} onValueChange={(v) => setFormData({ ...formData, uom: v })} required>
-                        <SelectTrigger><SelectValue placeholder="Select UOM" /></SelectTrigger>
-                        <SelectContent>
-                          {[
-                            ...uoms,
-                            ...(formData.uom && !uoms.some((u) => u.name === formData.uom) ? [{ id: -1, name: formData.uom }] : []),
-                          ].map((u) => (
-                            <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Service Type *</Label>
-                      <Select value={formData.serviceType || undefined} onValueChange={(v) => setFormData({ ...formData, serviceType: v, serviceGroup: "" })} required>
-                        <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
-                        <SelectContent>
-                          {[
-                            ...serviceTypes,
-                            ...(formData.serviceType && !serviceTypes.some((t) => t.name === formData.serviceType) ? [{ id: -1, name: formData.serviceType }] : []),
-                          ].map((t) => (
-                            <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Service Group *</Label>
-                      <Select value={formData.serviceGroup || undefined} onValueChange={(v) => setFormData({ ...formData, serviceGroup: v })} required>
-                        <SelectTrigger><SelectValue placeholder="Select group" /></SelectTrigger>
-                        <SelectContent>
-                          {[
-                            ...filteredServiceGroups,
-                            ...(formData.serviceGroup && !filteredServiceGroups.some((g) => g.name === formData.serviceGroup) ? [{ id: -1, name: formData.serviceGroup }] : []),
-                          ].map((g) => (
-                            <SelectItem key={g.id} value={g.name}>{g.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Base Rate (per UOM) *</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      placeholder="0.00"
-                      value={formData.baseRate}
-                      onChange={(e) => setFormData({ ...formData, baseRate: e.target.value })}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">Unit rate for estimating value when added to work packages.</p>
-                  </div>
-                  <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                    {editingService ? "Update" : "Create"}
-                  </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
-            <Button
-              variant="outline"
-              onClick={() => {
-                const link = document.createElement("a");
-                link.href = "/templates/service-master-template.csv";
-                link.download = "service-master-template.csv";
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              }}
-            >
-              <Download className="mr-2 h-4 w-4" />Download Template
-            </Button>
-            <label>
-              <Button variant="outline" asChild><span><Upload className="mr-2 h-4 w-4" />Import CSV</span></Button>
-              <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" disabled={bulkUploadMutation.isPending} />
-            </label>
-          </div>
-        </div>
+      <GlobalMasterFilterBar
+        filters={MASTER_FILTERS.services}
+        value={filters}
+        onChange={setFilters}
+      />
 
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          {isLoading ? (
-            <div className="p-8 text-center">Loading...</div>
-          ) : filteredServices.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">No services found. Add services or import CSV.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>UOM</TableHead>
-                  <TableHead>Base Rate</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Group</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredServices.map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-medium">{s.serviceCode}</TableCell>
-                    <TableCell>{s.serviceDescription}</TableCell>
-                    <TableCell>{s.uom}</TableCell>
-                    <TableCell className="font-mono">
-                      {typeof s.baseRate === "number" ? s.baseRate.toFixed(2) : Number(s.baseRate || 0).toFixed(2)}
-                    </TableCell>
-                    <TableCell>{s.serviceType}</TableCell>
-                    <TableCell>{s.serviceGroup}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleEdit(s)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="sm" className="text-red-500" onClick={() => confirm("Delete this service?") && deleteMutation.mutate(s.id)}><Trash2 className="h-4 w-4" /></Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
-      </div>
-    </div>
+      <GlobalMasterDataTable
+        columns={columns}
+        rows={filtered.map((s) => ({
+          id: s.id,
+          data: s,
+          inactive: displayStatus(parseMeta(s.serviceGroup)) !== "active",
+          flash: flashId === s.id,
+        }))}
+        isLoading={isLoading}
+        emptyTypeLabel="Service"
+        onAdd={() => {
+          setEditing(null);
+          setModalMode("create");
+          setModalOpen(true);
+        }}
+        selectedId={selectedId}
+        onSelectRow={(id) => setSelectedId(id as number | null)}
+        onEdit={(s) => {
+          setEditing(s);
+          setModalMode("edit");
+          setModalOpen(true);
+        }}
+        onDelete={(s) => {
+          if (window.confirm(`Delete ${s.serviceDescription}?`)) deleteMutation.mutate(s.id);
+        }}
+        onNameClick={(s) => {
+          setEditing(s);
+          setModalMode("view");
+          setModalOpen(true);
+        }}
+        onBulkDelete={(ids) => ids.forEach((id) => deleteMutation.mutate(id as number))}
+      />
+
+      <MappedEntitiesPanel
+        entityLabel="Vendor Rates"
+        resourceName={selected?.serviceDescription}
+        count={0}
+        onClose={() => setSelectedId(null)}
+      />
+
+      <GlobalMasterModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        masterKey="services"
+        mode={modalMode}
+        typeLabel="Service"
+        resourceName={editing?.serviceDescription}
+        initialValues={editing ? serviceToForm(editing) : undefined}
+        isSubmitting={createMutation.isPending || updateMutation.isPending}
+        onSubmit={(values) => {
+          const payload = formToPayload(values);
+          if (editing && modalMode === "edit") {
+            updateMutation.mutate({ id: editing.id, data: { ...payload, serviceCode: editing.serviceCode } });
+          } else {
+            createMutation.mutate(payload as Omit<Service, "id">);
+          }
+        }}
+        onRequestEdit={() => setModalMode("edit")}
+        onDelete={
+          editing
+            ? () => {
+                if (window.confirm(`Delete ${editing.serviceDescription}?`)) {
+                  deleteMutation.mutate(editing.id);
+                  setModalOpen(false);
+                }
+              }
+            : undefined
+        }
+      />
+    </>
   );
 }

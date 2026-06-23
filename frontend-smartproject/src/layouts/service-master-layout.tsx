@@ -1,13 +1,13 @@
 import { Wrench, Ruler, Layers, Folder, FileText, ClipboardList } from "lucide-react";
-import MasterLayout from "@/layouts/master-layout";
-import { GlobalToolsHeader } from "@/components/global-tools-header";
+import { GlobalMastersHubLayout } from "@/layouts/global-masters-hub-layout";
+import { SecondaryMasterTabs } from "@/components/global-masters/secondary-master-tabs";
 
 interface ServiceMasterLayoutProps {
   children: React.ReactNode;
 }
 
-const tabs = [
-  { label: "Service Master", href: "/service-master", Icon: Wrench },
+const secondaryTabs = [
+  { label: "Services", href: "/service-master", Icon: Wrench },
   { label: "UOM", href: "/service-master/uom", Icon: Ruler },
   { label: "Service Type", href: "/service-master/service-type", Icon: Layers },
   { label: "Service Group", href: "/service-master/service-group", Icon: Folder },
@@ -17,11 +17,8 @@ const tabs = [
 
 export default function ServiceMasterLayout({ children }: ServiceMasterLayoutProps) {
   return (
-    <MasterLayout>
-      <div className="flex flex-col h-full min-w-0">
-        <GlobalToolsHeader hubTitle="Global services hub" tabs={tabs} />
-        <div className="flex-1 overflow-auto min-w-0">{children}</div>
-      </div>
-    </MasterLayout>
+    <GlobalMastersHubLayout secondaryTabs={<SecondaryMasterTabs tabs={secondaryTabs} />}>
+      {children}
+    </GlobalMastersHubLayout>
   );
 }

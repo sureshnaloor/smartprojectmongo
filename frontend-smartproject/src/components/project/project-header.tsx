@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Project, WbsItem } from "@shared/schema";
-import { formatCurrency, formatDate, getStatusColor } from "@/lib/utils";
+import { formatCurrency, formatDate, getStatusColor, cn } from "@/lib/utils";
 import { FileSpreadsheet, ChartLine, GanttChart, Menu, MoreHorizontal, BarChart2, PencilIcon, ArrowLeft, DollarSign, Package, Wrench, Users, LayoutDashboard, Activity, Calendar, TrendingUp, Pin, AlertTriangle, Award, Info, Megaphone, ClipboardCheck, HardHat, Laugh, ListTree } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ImportWbsModal } from "./import-wbs-modal";
@@ -45,14 +45,24 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
       return baseMatch[1]; // Return 'activities', 'tasks', 'resources', or 'collab'
     }
 
+    if (location.includes("/kanban")) {
+      return "kanban";
+    }
+
+    if (location.includes("/materials-services")) {
+      return "materials-services";
+    }
+
     // Default to 'resources' if no match found
     return 'resources';
   };
 
   const routeContext = getRouteContext();
   const isMaterialsServicesRoute = location.includes("/materials-services");
-  const isResourcesRoute = location.includes("/resources") && !location.includes("/materials-services");
-  const showMaterialsServicesTabs = isMaterialsServicesRoute || isResourcesRoute;
+  const isResourcesRoute =
+    (location.includes("/resources") && !location.includes("/materials-services")) ||
+    location.includes("/materials-services/resources");
+  const showMaterialsServicesTabs = isResourcesRoute && !location.includes("/materials-services");
 
   const isProjectRoot = typeof location === "string" && new RegExp(`^/projects/${projectId}$`).test(location);
   const [wbsTabHash, setWbsTabHash] = useState("");
@@ -87,13 +97,13 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
 
   if (isLoadingProject) {
     return (
-      <div className="bg-white border-b border-gray-200 animate-pulse">
-        <div className="px-4 py-4 sm:px-6">
-          <div className="h-6 bg-gray-200 rounded w-1/3 mb-2"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+      <div className="cp-inline-page-header animate-pulse">
+        <div className="cp-inline-page-header__body space-y-2">
+          <div className="cp-skeleton h-7 w-1/3" />
+          <div className="cp-skeleton h-4 w-1/2" />
         </div>
-        <div className="border-b border-gray-200">
-          <div className="h-10 px-4 bg-gray-50"></div>
+        <div className="cp-inline-page-header__tabs">
+          <div className="cp-skeleton h-10 w-full" />
         </div>
       </div>
     );
@@ -101,9 +111,9 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
 
   if (!project) {
     return (
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-4 py-4 sm:px-6">
-          <div className="text-red-500">Project not found</div>
+      <div className="cp-inline-page-header">
+        <div className="cp-inline-page-header__body">
+          <div className="text-[var(--status-danger)] kanban-body-md">Project not found</div>
         </div>
       </div>
     );
@@ -123,68 +133,70 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
     setLocation("/");
   };
 
+  const tabLinkClass = (active: boolean) =>
+    cn("cp-tab-underline inline-flex shrink-0 items-center gap-2", active && "cp-tab-underline--active");
+
   return (
-    <div className="bg-zinc-100 border-b border-zinc-200 shadow-sm">
-      {/* Project Basic Information */}
-      <div className="px-6 py-6 sm:px-8">
+    <div className="cp-inline-page-header">
+      <div className="cp-inline-page-header__body">
         <div className="flex items-center justify-between">
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <div className="flex items-center gap-3">
               {onClose && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={onClose}
-                  className="mr-2 text-zinc-500 hover:text-zinc-700"
+                  className="mr-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 >
-                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  <ArrowLeft className="mr-1 h-4 w-4" />
                   <span className="sr-only md:not-sr-only md:inline-block">Back to Projects</span>
                 </Button>
               )}
-              <h1 className="text-xl font-extrabold tracking-tight text-zinc-900">
-                {project.name}
-              </h1>
+              <h1 className="cp-display-md truncate">{project.name}</h1>
               <Button
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 rounded-full border-zinc-300 hover:bg-zinc-200"
+                className="h-8 w-8 rounded-full"
                 onClick={() => setIsEditModalOpen(true)}
               >
-                <PencilIcon className="h-4 w-4 text-zinc-600" />
+                <PencilIcon className="h-4 w-4 text-[var(--text-secondary)]" />
                 <span className="sr-only">Edit</span>
               </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-base text-zinc-600">
-              <span className="flex items-center gap-1.5">
-                <span className="font-semibold text-sky-800">Budget:</span>
-                {formatCurrency(Number(project.budget), project.currency || "USD")}
+            <div className="flex flex-wrap items-center gap-2 kanban-body-sm text-[var(--text-secondary)]">
+              <span className="font-mono">
+                Budget: {formatCurrency(Number(project.budget), project.currency || "USD")}
               </span>
-              <span className="flex items-center gap-1.5 text-balance">
-                <span className="font-semibold text-sky-800">Timeline:</span>
-                {formatDate(project.startDate ?? undefined)} — {formatDate(project.endDate ?? undefined)}
+              <span className="h-1 w-1 rounded-full bg-[var(--text-muted)]" />
+              <span>
+                Timeline: {formatDate(project.startDate ?? undefined)} — {formatDate(project.endDate ?? undefined)}
               </span>
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-bold ${status.color.replace('bg-', 'bg-opacity-20 ')} ${status.textColor}`}>
-                <span
-                  className={`w-2 h-2 mr-2 rounded-full ${status.color}`}
-                ></span>
+              <span className="h-1 w-1 rounded-full bg-[var(--text-muted)]" />
+              <span
+                className={cn(
+                  "cp-badge inline-flex items-center gap-1.5",
+                  status.status === "On Track"
+                    ? "cp-badge--success"
+                    : status.status === "Behind Schedule"
+                      ? "cp-badge--warning"
+                      : "cp-badge--danger"
+                )}
+              >
+                <span className={cn("h-2 w-2 rounded-full", status.color)} />
                 {status.status}
               </span>
             </div>
           </div>
           <div className="flex items-center space-x-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className="bg-sky-100 border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 shadow-sm font-semibold"
-              onClick={() => setIsImportModalOpen(true)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setIsImportModalOpen(true)}>
               Import WBS
             </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="hover:bg-zinc-200">
-                  <MoreHorizontal className="h-5 w-5 text-zinc-600" />
+                <Button variant="ghost" size="icon">
+                  <MoreHorizontal className="h-5 w-5 text-[var(--text-secondary)]" />
                   <span className="sr-only">More options</span>
                 </Button>
               </DropdownMenuTrigger>
@@ -214,9 +226,8 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
         </div>
       </div>
 
-      {/* Navigation Tabs: Project root = Home|Activities|Cost|Schedule|Progress; Materials & Services = Materials|Services|Manpower; Collab = same light strip with icons + underline; else Tab1–Tab5 */}
-      <div className="px-6 sm:px-8 border-t border-zinc-200 bg-zinc-50/50">
-        <nav className="-mb-px flex space-x-8 overflow-x-auto">
+      <div className="cp-inline-page-header__tabs">
+        <nav className="cp-tabs-underline flex gap-1 overflow-x-auto">
           {isProjectRoot ? (
             <>
               {(
@@ -238,10 +249,7 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
                     setWbsTabHash(tab.key);
                     window.dispatchEvent(new HashChangeEvent("hashchange"));
                   }}
-                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all flex items-center gap-2 ${activeWbsTab === tab.key
-                    ? "border-zinc-900 text-zinc-900"
-                    : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                    }`}
+                  className={tabLinkClass(activeWbsTab === tab.key)}
                 >
                   <tab.Icon className="h-4 w-4" />
                   <span>{tab.label}</span>
@@ -252,122 +260,61 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
             <>
               <Link href={`/projects/${projectId}/materials-services/materials`}>
                 <a
-                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all flex items-center gap-2 ${location.includes("/materials-services/materials") || (location.includes("/materials-services") && !location.includes("/materials-services/services") && !location.includes("/materials-services/manpower") && !location.includes("/materials-services/equipment"))
-                    ? "border-zinc-900 text-zinc-900"
-                    : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                    }`}
+                  className={tabLinkClass(
+                    location.includes("/materials-services/materials") ||
+                      (location.includes("/materials-services") &&
+                        !location.includes("/materials-services/services") &&
+                        !location.includes("/materials-services/manpower") &&
+                        !location.includes("/materials-services/equipment"))
+                  )}
                 >
                   <Package className="h-4 w-4" />
                   Materials
                 </a>
               </Link>
               <Link href={`/projects/${projectId}/materials-services/services`}>
-                <a
-                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all flex items-center gap-2 ${location.includes("/materials-services/services")
-                    ? "border-zinc-900 text-zinc-900"
-                    : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                    }`}
-                >
+                <a className={tabLinkClass(location.includes("/materials-services/services"))}>
                   <Wrench className="h-4 w-4" />
                   Services
                 </a>
               </Link>
-              <Link href={`/projects/${projectId}/resources`}>
-                <a
-                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all flex items-center gap-2 ${isResourcesRoute
-                    ? "border-zinc-900 text-zinc-900"
-                    : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                    }`}
-                >
+              <Link href={`/projects/${projectId}/materials-services/resources`}>
+                <a className={tabLinkClass(location.includes("/materials-services/resources") || isResourcesRoute)}>
                   <Users className="h-4 w-4" />
                   Manpower &amp; Equipment
                 </a>
               </Link>
             </>
           ) : routeContext === "collab" ? (
-            <>
-              {[
-                { key: "all", hash: "all", label: "All Chats", Icon: LayoutDashboard },
-                { key: "pinned", hash: "pinned", label: "Pinned", Icon: Pin },
-                { key: "quality", hash: "quality", label: "Quality", Icon: ClipboardCheck },
-                { key: "safety", hash: "safety", label: "Safety", Icon: HardHat },
-                { key: "issues", hash: "issues", label: "Issues", Icon: AlertTriangle },
-                { key: "casual", hash: "casual", label: "Casual", Icon: Laugh },
-                { key: "info", hash: "info", label: "Info", Icon: Info },
-              ].map((tab) => {
-                const active = (collabTabHash || "all") === tab.hash;
-                const Icon = tab.Icon;
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => {
-                      window.location.hash = tab.hash;
-                      setCollabTabHash(tab.hash);
-                      window.dispatchEvent(new HashChangeEvent("hashchange"));
-                    }}
-                    className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all flex items-center gap-2 ${active
-                        ? "border-zinc-900 text-zinc-900"
-                        : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                      }`}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </>
+            <span className={cn(tabLinkClass(true), "cursor-default")}>Collaboration Hub</span>
+          ) : routeContext === "kanban" ? (
+            <span className={cn(tabLinkClass(true), "cursor-default")}>Kanban</span>
+          ) : routeContext === "materials-services" ? (
+            <span className={cn(tabLinkClass(true), "cursor-default")}>Materials &amp; Resources</span>
           ) : (
             <>
-              <Link href={`/projects/${projectId}/${routeContext}/${routeContext === 'activities' ? 'activity-plan' : 'page1'}`}>
+              <Link href={`/projects/${projectId}/${routeContext}/${routeContext === "activities" ? "activity-plan" : "page1"}`}>
                 <a
-                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all ${location === `/projects/${projectId}/${routeContext}/${routeContext === 'activities' ? 'activity-plan' : 'page1'}`
-                    ? "border-zinc-900 text-zinc-900"
-                    : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                    }`}
+                  className={tabLinkClass(
+                    location === `/projects/${projectId}/${routeContext}/${routeContext === "activities" ? "activity-plan" : "page1"}`
+                  )}
                 >
-                  {routeContext === 'activities' ? 'Activity Plan' : 'Tab1'}
+                  {routeContext === "activities" ? "Activity Plan" : "Tab1"}
                 </a>
               </Link>
               <Link href={`/projects/${projectId}/${routeContext}/page2`}>
-                <a
-                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all ${location === `/projects/${projectId}/${routeContext}/page2`
-                    ? "border-zinc-900 text-zinc-900"
-                    : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                    }`}
-                >
+                <a className={tabLinkClass(location === `/projects/${projectId}/${routeContext}/page2`)}>
                   Activities Overview
                 </a>
               </Link>
               <Link href={`/projects/${projectId}/${routeContext}/page3`}>
-                <a
-                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all ${location === `/projects/${projectId}/${routeContext}/page3`
-                    ? "border-zinc-900 text-zinc-900"
-                    : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                    }`}
-                >
-                  Plan Versions
-                </a>
+                <a className={tabLinkClass(location === `/projects/${projectId}/${routeContext}/page3`)}>Plan Versions</a>
               </Link>
               <Link href={`/projects/${projectId}/${routeContext}/page4`}>
-                <a
-                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all ${location === `/projects/${projectId}/${routeContext}/page4`
-                    ? "border-zinc-900 text-zinc-900"
-                    : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                    }`}
-                >
-                  Dependencies
-                </a>
+                <a className={tabLinkClass(location === `/projects/${projectId}/${routeContext}/page4`)}>Dependencies</a>
               </Link>
               <Link href={`/projects/${projectId}/${routeContext}/page5`}>
-                <a
-                  className={`whitespace-nowrap border-b-2 py-4 px-1 text-sm font-bold transition-all ${location === `/projects/${projectId}/${routeContext}/page5`
-                    ? "border-zinc-900 text-zinc-900"
-                    : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
-                    }`}
-                >
-                  Activities
-                </a>
+                <a className={tabLinkClass(location === `/projects/${projectId}/${routeContext}/page5`)}>Activities</a>
               </Link>
             </>
           )}

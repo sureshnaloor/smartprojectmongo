@@ -30,8 +30,8 @@ export function GlobalCollabTabs({ activeHash, onTabChange }: GlobalCollabTabsPr
   ];
 
   return (
-    <div className="w-full border-b border-zinc-200 bg-zinc-50/80 -mx-4 md:-mx-6 px-4 md:px-6 mb-4">
-      <nav className="-mb-px flex flex-wrap gap-x-1 gap-y-1 py-2">
+    <div className="mb-4 w-full border-b border-[var(--border-subtle)] bg-[var(--bg-white)] -mx-4 px-4 md:-mx-6 md:px-6">
+      <nav className="cp-tabs-underline flex flex-wrap gap-x-1 gap-y-1 overflow-x-auto py-1">
         {tabs.map((tab) => {
           const Icon = tab.Icon;
           const isActive = active === tab.hash;
@@ -41,10 +41,8 @@ export function GlobalCollabTabs({ activeHash, onTabChange }: GlobalCollabTabsPr
               type="button"
               onClick={() => onTabChange(tab.hash)}
               className={cn(
-                "shrink-0 border-b-2 py-2 px-2 text-xs font-bold transition-all flex items-center gap-1.5",
-                isActive
-                  ? "border-zinc-900 text-zinc-900"
-                  : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
+                "cp-tab-underline inline-flex shrink-0 items-center gap-1.5 !px-3 !py-2.5",
+                isActive && "cp-tab-underline--active"
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />

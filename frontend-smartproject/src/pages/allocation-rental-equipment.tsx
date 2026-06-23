@@ -96,30 +96,30 @@ export default function AllocationRentalEquipment() {
   };
 
   return (
-    <div className="flex-1 min-w-0 bg-zinc-50">
-      <div className="border-b border-zinc-200 bg-white px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-2 text-zinc-900 min-w-0">
-          <Truck className="h-6 w-6 text-teal-600 shrink-0" />
+    <div className="flex-1 min-w-0">
+      <div className="cp-page-title-bar">
+        <div className="flex min-w-0 items-center gap-3 text-[var(--text-primary)]">
+          <Truck className="cp-page-title-bar__icon h-6 w-6 shrink-0" />
           <div>
-            <h1 className="text-lg font-extrabold tracking-tight">Rental equipment allocation</h1>
-            <p className="text-xs text-zinc-500 mt-0.5 max-w-2xl">
+            <h1 className="cp-heading-lg">Rental equipment allocation</h1>
+            <p className="mt-0.5 max-w-2xl kanban-body-sm text-[var(--text-secondary)]">
               Rental equipment mapped to global rental_equipment resources, with work package assignments.
             </p>
           </div>
         </div>
       </div>
 
-      <div className="p-4 sm:p-6 lg:p-8 max-w-[1200px] mx-auto">
+      <div className="cp-page-body">
         <Tabs defaultValue="allocation" className="space-y-4">
           <TabsList>
             <TabsTrigger value="allocation">Allocation</TabsTrigger>
             <TabsTrigger value="utilization">Resource utilization</TabsTrigger>
           </TabsList>
           <TabsContent value="allocation" className="space-y-8">
-        <Card className="border-zinc-200 shadow-sm">
+        <Card className="border-[var(--border-subtle)] shadow-[var(--shadow-md)]">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-bold text-zinc-800">Mapped to rental equipment resources</CardTitle>
-            <p className="text-xs text-zinc-500 font-normal">
+            <CardTitle className="cp-heading-md text-[var(--text-primary)]">Mapped to rental equipment resources</CardTitle>
+            <p className="kanban-body-sm font-normal text-[var(--text-secondary)]">
               Assignments come from project resources (rental_equipment) on work packages.
             </p>
           </CardHeader>

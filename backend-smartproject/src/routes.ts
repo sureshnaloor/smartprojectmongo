@@ -17,6 +17,7 @@ import {
   workingDaysBetween,
   workingHoursBetween,
 } from "./work-calendar.js";
+import { runResourceOnboarding, getLatestOnboardingSummary } from "./resource-onboarding.js";
 
 async function normalizeAndValidateGlobalActivity(
   data: {
@@ -339,14 +340,17 @@ type WpAssignmentRollup = {
   wpId: number;
   wpCode: string;
   wpName: string;
+  projectActivityId?: number | null;
+  activityName?: string | null;
   quantity: string;
   plannedStartDate: string | null;
   plannedEndDate: string | null;
-  /** Working days (excludes weekends & holidays per default calendar). */
   durationDays: number | null;
   calendarDays: number | null;
   workingHours: number | null;
   totalResourceHours: number | null;
+  hasDeficiency?: boolean;
+  maxShortfall?: number;
 };
 
 function toIsoDateWp(d: unknown): string | null {
@@ -360,86 +364,9 @@ async function loadWpAssignmentsByGlobalResourceIds(
   resourceIds: number[],
   projectResourceType: string
 ): Promise<Map<number, WpAssignmentRollup[]>> {
-  const assignmentsByResourceId = new Map<number, WpAssignmentRollup[]>();
-  if (resourceIds.length === 0) return assignmentsByResourceId;
-
-  const prRows = await db
-    .select({
-      id: projectResources.id,
-      globalResourceId: projectResources.globalResourceId,
-      projectId: projectResources.projectId,
-      wpId: projectResources.wpId,
-      quantity: projectResources.quantity,
-      plannedStartDate: projectResources.plannedStartDate,
-      plannedEndDate: projectResources.plannedEndDate,
-      projectName: projects.name,
-      wpCode: workPackages.code,
-      wpName: workPackages.name,
-    })
-    .from(projectResources)
-    .innerJoin(projects, eq(projectResources.projectId, projects.id))
-    .innerJoin(workPackages, eq(projectResources.wpId, workPackages.id))
-    .where(
-      and(eq(projectResources.type, projectResourceType), inArray(projectResources.globalResourceId, resourceIds))
-    );
-
-  const defaultCalendar = await storage.getDefaultCalendar();
-  const dateBounds = prRows
-    .map((r) => ({
-      start: toIsoDateWp(r.plannedStartDate),
-      end: toIsoDateWp(r.plannedEndDate),
-    }))
-    .filter((r) => r.start && r.end) as Array<{ start: string; end: string }>;
-  const rangeStart =
-    dateBounds.length > 0
-      ? dateBounds.reduce((min, r) => (r.start < min ? r.start : min), dateBounds[0].start)
-      : null;
-  const rangeEnd =
-    dateBounds.length > 0
-      ? dateBounds.reduce((max, r) => (r.end > max ? r.end : max), dateBounds[0].end)
-      : null;
-  const holidays =
-    rangeStart && rangeEnd
-      ? await storage.getCalendarHolidaysInRange(rangeStart, rangeEnd)
-      : [];
-
-  for (const row of prRows) {
-    const gid = row.globalResourceId;
-    if (gid == null) continue;
-    const start = toIsoDateWp(row.plannedStartDate);
-    const end = toIsoDateWp(row.plannedEndDate);
-    const qty = Number.parseFloat(String(row.quantity ?? "0")) || 0;
-    const hours = start && end ? workingHoursBetween(start, end, defaultCalendar, holidays) : null;
-    const out: WpAssignmentRollup = {
-      projectResourceId: row.id,
-      projectId: row.projectId,
-      projectName: row.projectName,
-      wpId: row.wpId,
-      wpCode: row.wpCode,
-      wpName: row.wpName,
-      quantity: String(row.quantity ?? "0"),
-      plannedStartDate: start,
-      plannedEndDate: end,
-      durationDays:
-        start && end ? workingDaysBetween(start, end, defaultCalendar, holidays) : null,
-      calendarDays: start && end ? calendarDaysBetween(start, end) : null,
-      workingHours: hours,
-      totalResourceHours: hours != null ? hours * qty : null,
-    };
-    const list = assignmentsByResourceId.get(gid) ?? [];
-    list.push(out);
-    assignmentsByResourceId.set(gid, list);
-  }
-
-  for (const [, list] of assignmentsByResourceId) {
-    list.sort((a, b) => {
-      const pc = a.projectName.localeCompare(b.projectName, undefined, { sensitivity: "base" });
-      if (pc !== 0) return pc;
-      return a.wpCode.localeCompare(b.wpCode, undefined, { numeric: true });
-    });
-  }
-
-  return assignmentsByResourceId;
+  return storage.loadWpAssignmentsByGlobalResourceIds(resourceIds, projectResourceType) as Promise<
+    Map<number, WpAssignmentRollup[]>
+  >;
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -6990,17 +6917,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /** Onboard idle employees/equipment from mapped pools onto planned WP/activity resource lines (daily). */
+  app.post("/api/projects/:projectId/onboard-resources", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+      const body = req.body as {
+        wbsItemId?: number;
+        wpId?: number;
+        activityId?: number;
+        clearExisting?: boolean;
+      };
+      const result = await runResourceOnboarding(
+        {
+          projectId,
+          wbsItemId: body.wbsItemId,
+          wpId: body.wpId,
+          activityId: body.activityId,
+        },
+        {
+          clearExisting: body.clearExisting !== false,
+          enteredBy: (req as Request & { user?: { email?: string } }).user?.email ?? "api",
+        }
+      );
+      res.status(201).json(result);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/projects/:projectId/resource-onboarding-summary", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+      const summary = await getLatestOnboardingSummary(projectId);
+      res.json(summary);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
   /** Employees mapped to manpower resources, with WP/project assignments from project resources; unmapped employees listed separately. */
   app.get("/api/allocation/manpower", async (_req: Request, res: Response) => {
     try {
-      const employees = await db.collection(employeeMaster).find().toArray().orderBy(employeeMaster.employeeNumber);
+      const employees = await storage.getEmployeeMasters();
       const mappings = await db.collection(employeeResourceMappings).find().toArray();
       const mappingByEmployeeId = new Map(mappings.map((m) => [m.employeeId, m]));
       const mappedResourceIds = [...new Set(mappings.map((m) => m.resourceId))];
 
       const resourceRows =
         mappedResourceIds.length > 0
-          ? await db.collection(resources).find().toArray().where(inArray(resources.id, mappedResourceIds))
+          ? await db.collection(resources).find({ id: { $in: mappedResourceIds } }).toArray()
           : [];
       const resourceById = new Map(resourceRows.map((r) => [r.id, r]));
 

@@ -4,25 +4,25 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 40 20% 97%;
+    --foreground: 215 28% 17%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 215 28% 17%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --popover-foreground: 215 28% 17%;
+    --primary: 32 79% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 14% 93%;
+    --secondary-foreground: 215 28% 17%;
+    --muted: 40 14% 93%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 32 79% 95%;
+    --accent-foreground: 32 79% 30%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 0% / 0.06;
+    --input: 215 16% 47% / 0.3;
+    --ring: 32 79% 42%;
     --radius: 0.5rem;
   }
 
@@ -521,6 +521,275 @@
   height: 400px;
 }
 
+/* ConstructPro Kanban design tokens */
+:root {
+  --copper-400: #D4903D;
+  --copper-600: #B87333;
+  --copper-50: #FDF6ED;
+  --navy-900: #1E293B;
+  --bg-cream: #F8F6F0;
+  --bg-white: #FFFFFF;
+  --bg-warm-gray: #F0EDE6;
+  --text-primary: #2C3E50;
+  --text-secondary: #64748B;
+  --text-muted: #94A3B8;
+  --status-info: #2563EB;
+  --status-warning: #E85D04;
+  --status-success: #16A34A;
+  --status-danger: #DC2626;
+  --status-warning-bg: #FFF7ED;
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --shadow-copper: 0 4px 14px rgba(193, 120, 23, 0.25);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.12);
+  --radius-md: 8px;
+  --radius-full: 9999px;
+}
+
+.kanban-display-lg {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.kanban-heading-lg {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.kanban-heading-md {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kanban-body-md {
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.kanban-body-sm {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.kanban-caption {
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+@keyframes kanban-column-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kanban-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes kanban-badge-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+@keyframes kanban-limit-pulse {
+  0%, 100% { background-color: var(--status-warning-bg); }
+  50% { background-color: #FFEDD5; }
+}
+
+.kanban-column-enter {
+  animation: kanban-column-in 0.35s ease-out both;
+}
+
+.kanban-card-enter {
+  animation: kanban-card-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.kanban-limit-warning {
+  animation: kanban-limit-pulse 1.5s ease-in-out infinite;
+}
+
+.kanban-badge-pulse {
+  animation: kanban-badge-pulse 1.5s ease-in-out infinite;
+}
+
+.kanban-batch-bar {
+  animation: kanban-batch-slide 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes kanban-batch-slide {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kanban-batch-slide {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* HSE Hub */
+:root {
+  --status-info-bg: #EFF6FF;
+  --status-success-bg: #F0FDF4;
+  --copper-500: #C17817;
+}
+
+.hse-display-md {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.hse-tab-fade {
+  animation: hse-tab-fade 150ms ease-out both;
+}
+
+@keyframes hse-tab-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes hse-stat-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.75; transform: scale(1.05); }
+}
+
+.hse-stat-pulse {
+  animation: hse-stat-pulse 2s ease-in-out infinite;
+}
+
+@keyframes hse-severity-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+.hse-severity-pulse {
+  animation: hse-severity-pulse 2s ease-in-out infinite;
+}
+
+@keyframes hse-score-bounce {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+.hse-score-bounce {
+  animation: hse-score-bounce 300ms ease-out;
+}
+
+@keyframes hse-matrix-dot {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.hse-matrix-dot {
+  animation: hse-matrix-dot 200ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Project Documents */
+.doc-tab-fade {
+  animation: hse-tab-fade 150ms ease-out both;
+}
+
+.doc-card-enter {
+  animation: kanban-card-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.doc-upload-drag {
+  transition: border-color 200ms, background-color 200ms, transform 200ms;
+}
+
+.doc-upload-drag-over {
+  border-color: var(--copper-400) !important;
+  background-color: rgba(253, 246, 237, 0.3) !important;
+  transform: scale(1.005);
+}
+
+.msr-item-enter {
+  animation: kanban-card-in 0.2s ease-out both;
+}
+
+.msr-drop-zone-active {
+  border-color: var(--copper-500) !important;
+  background-color: var(--copper-50) !important;
+  transform: scale(1.01);
+  transition: all 200ms ease;
+}
+
+/* Collaboration Hub */
+:root {
+  --navy-900: #0F1729;
+  --navy-800: #1A2338;
+  --navy-700: #243047;
+  --text-on-dark: #F1F5F9;
+  --text-on-dark-muted: #94A3B8;
+  --border-dark: rgba(255, 255, 255, 0.08);
+}
+
+@keyframes collab-typing-dot {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
+}
+
+@keyframes collab-unread-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.15); }
+}
+
+@keyframes collab-msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.collab-msg-enter {
+  animation: collab-msg-in 0.2s ease-out both;
+}
+
+.collab-unread-dot {
+  animation: collab-unread-pulse 2s ease-in-out infinite;
+}
+
+.collab-typing-dot {
+  animation: collab-typing-dot 1.2s ease-in-out infinite;
+}
+
+.collab-typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.collab-typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+.collab-feed-fade {
+  animation: collab-msg-in 0.2s ease-out;
+}
+
 @media (max-width: 768px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
@@ -542,4 +811,80 @@
   .light-ray {
     display: none;
   }
+}
+
+/* Project Dashboard */
+@keyframes pd-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pd-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pd-kpi-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pd-header-enter {
+  animation: pd-fade-in 0.2s ease-out both;
+}
+
+.pd-wbs-card {
+  animation: pd-slide-up 0.3s ease-out 0.1s both;
+}
+
+.pd-kpi-card {
+  animation: pd-kpi-in 0.25s ease-out both;
+}
+
+.pd-bottom-card {
+  animation: pd-slide-up 0.3s ease-out 0.4s both;
+}
+
+.pd-progress-bar {
+  transition: width 0.8s ease-out;
+}
+
+.pd-tab-indicator {
+  transition: transform 0.2s ease;
+}
+
+/* WBS & Activities */
+@keyframes wa-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wa-tab-content {
+  animation: wa-tab-in 0.2s ease-out both;
+}
+
+.wa-tab-indicator {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wa-progress-bar {
+  transition: width 0.8s ease-out;
 }

@@ -1,147 +1,86 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useRoute } from "wouter";
-import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
+import { DragDropContext, DropResult } from "@hello-pangea/dnd";
 import { useQuery, useMutation, useQueryClient, useQueries } from "@tanstack/react-query";
 import { get, post, patch } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Plus, Archive, Loader2, GripVertical, Pencil } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 import type { ProjectActivity, WbsItem, WorkPackage } from "@shared/schema";
 
-const NONE_WBS = "__none_wbs__";
-const NONE_ACTIVITY = "__none_activity__";
-const NONE_PRIORITY = "__priority_none__" as const;
+import { KanbanSubTabs } from "@/components/kanban/kanban-sub-tabs";
+import { KanbanToolbar } from "@/components/kanban/kanban-toolbar";
+import { KanbanColumn } from "@/components/kanban/kanban-column";
+import { KanbanAddCardModal } from "@/components/kanban/kanban-add-card-modal";
+import { KanbanCardDetailDrawer } from "@/components/kanban/kanban-card-detail-drawer";
+import { KanbanSettingsDialog } from "@/components/kanban/kanban-settings-dialog";
+import { KanbanBatchBar } from "@/components/kanban/kanban-batch-bar";
+import { KanbanPlaceholderTab } from "@/components/kanban/kanban-placeholder-tab";
+import {
+  COLUMNS,
+  NONE_ACTIVITY,
+  NONE_PRIORITY,
+  NONE_WBS,
+  type ColumnId,
+  type GroupByValue,
+  type KanbanPriority,
+  type KanbanSubTab,
+  type PriorityFieldValue,
+} from "@/components/kanban/constants";
+import {
+  DEFAULT_AUTOMATION,
+  type AutomationRules,
+  type ColumnLimits,
+  type KanbanBoard,
+  type KanbanCardItem,
+} from "@/components/kanban/types";
 
-const KANBAN_PRIORITY_OPTIONS = [
-  { value: "immediate_urgent" as const, label: "immediate- urgent" },
-  { value: "before_end_of_today" as const, label: "before end of today" },
-  { value: "normal" as const, label: "normal" },
-] as const;
-
-type KanbanPriority = (typeof KANBAN_PRIORITY_OPTIONS)[number]["value"];
-type PriorityFieldValue = KanbanPriority | typeof NONE_PRIORITY;
-
-const COLUMNS = [
-  { id: "wish" as const, title: "Wish", hint: "Ideas & backlog" },
-  { id: "ready" as const, title: "Ready", hint: "Queued to start" },
-  { id: "doing" as const, title: "Doing", hint: "In progress" },
-  { id: "done" as const, title: "Done", hint: "Complete — archive" },
-];
-
-// 3D column styles: light bg + shadow/depth per lane (outer frame)
-const LANE_STYLES: Record<ColumnId, string> = {
-  wish: "bg-sky-50/95 border-sky-200/80 shadow-[0_4px_0_0_rgba(14,165,233,0.2),0_8px_16px_-4px_rgba(14,165,233,0.15)]",
-  ready: "bg-amber-50/95 border-amber-200/80 shadow-[0_4px_0_0_rgba(245,158,11,0.2),0_8px_16px_-4px_rgba(245,158,11,0.15)]",
-  doing: "bg-emerald-50/95 border-emerald-200/80 shadow-[0_4px_0_0_rgba(16,185,129,0.2),0_8px_16px_-4px_rgba(16,185,129,0.15)]",
-  done: "bg-violet-50/95 border-violet-200/80 shadow-[0_4px_0_0_rgba(139,92,246,0.2),0_8px_16px_-4px_rgba(139,92,246,0.15)]",
-};
-
-// Lane titles: same hue as column but darker text; divider matches lane hue
-const LANE_TITLE_CLASS: Record<ColumnId, string> = {
-  wish: "text-sky-900",
-  ready: "text-amber-900",
-  doing: "text-emerald-900",
-  done: "text-violet-900",
-};
-
-const LANE_HEADER_BORDER: Record<ColumnId, string> = {
-  wish: "border-sky-200/90",
-  ready: "border-amber-200/90",
-  doing: "border-emerald-200/90",
-  done: "border-violet-200/90",
-};
-
-// Light task card fills (sticky body; tape + fold applied separately)
-const TASK_CARD_COLORS = [
-  "bg-rose-50/95 border-rose-200/80",
-  "bg-cyan-50/95 border-cyan-200/80",
-  "bg-lime-50/95 border-lime-200/80",
-  "bg-amber-50/95 border-amber-200/80",
-  "bg-sky-50/95 border-sky-200/80",
-  "bg-fuchsia-50/95 border-fuchsia-200/80",
-  "bg-teal-50/95 border-teal-200/80",
-  "bg-orange-50/95 border-orange-200/80",
-];
-
-// Sticky-note geometry: asymmetric rounded corners + slight inward tilt on inner wrapper (DnD transforms stay on outer)
-const STICKY_NOTE_SHAPES = [
-  "rounded-tl-xl rounded-tr-md rounded-bl-md rounded-br-[2rem]",
-  "rounded-tr-xl rounded-tl-md rounded-br-md rounded-bl-[2rem]",
-  "rounded-xl rounded-br-[6px]",
-  "rounded-xl rounded-bl-[6px]",
-];
-
-const stickyNoteTiltClass = (i: number) =>
-  i % 2 === 0 ? "-rotate-[0.55deg]" : "rotate-[0.65deg]";
-
-function kanbanPriorityLabel(value: string | null | undefined): string {
-  if (value == null || value === "") return "";
-  const v = value as KanbanPriority;
-  const o = KANBAN_PRIORITY_OPTIONS.find((x) => x.value === v);
-  return o?.label ?? "";
+function limitsKey(projectId: string) {
+  return `kanban-limits-${projectId}`;
 }
 
-function kanbanPriorityStripe(value: string | null | undefined): string {
-  if (value == null || value === "") return "bg-slate-300";
-  switch (value) {
-    case "immediate_urgent":
-      return "bg-red-500";
-    case "before_end_of_today":
-      return "bg-amber-500";
-    default:
-      return "bg-emerald-500";
+function automationKey(projectId: string) {
+  return `kanban-automation-${projectId}`;
+}
+
+function filterCard(
+  card: KanbanCardItem,
+  search: string,
+  priorityFilter: string
+): boolean {
+  const q = search.trim().toLowerCase();
+  if (q) {
+    const hay = [card.title, card.description, card.wbsLabel, card.activityLabel]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (!hay.includes(q)) return false;
   }
-}
-
-function kanbanPriorityBadgeClasses(value: string | null | undefined): string {
-  if (value == null || value === "") return "bg-slate-100 text-slate-600 border-slate-200";
-  switch (value) {
-    case "immediate_urgent":
-      return "bg-red-50 text-red-800 border-red-200";
-    case "before_end_of_today":
-      return "bg-amber-50 text-amber-900 border-amber-200";
-    default:
-      return "bg-emerald-50 text-emerald-800 border-emerald-200";
+  if (priorityFilter !== "all") {
+    if (priorityFilter === "unset") {
+      if (card.priority != null && card.priority !== "") return false;
+    } else if (card.priority !== priorityFilter) {
+      return false;
+    }
   }
+  return true;
 }
 
-type ColumnId = "wish" | "ready" | "doing" | "done";
-
-interface KanbanCardItem {
-  id: string;
-  title: string;
-  description?: string;
-  priority?: KanbanPriority | string | null;
-  wbsItemId?: number;
-  wbsLabel?: string;
-  projectActivityId?: number;
-  activityLabel?: string;
-}
-
-interface Lane {
-  id: ColumnId;
-  title: string;
-  cards: KanbanCardItem[];
-}
-
-interface KanbanBoard {
-  lanes: Lane[];
+function groupCards(cards: KanbanCardItem[], groupBy: GroupByValue): KanbanCardItem[] {
+  if (groupBy === "none") return cards;
+  const sorted = [...cards];
+  sorted.sort((a, b) => {
+    switch (groupBy) {
+      case "priority":
+        return (a.priority ?? "zzz").localeCompare(b.priority ?? "zzz");
+      case "wbs":
+        return (a.wbsLabel ?? "zzz").localeCompare(b.wbsLabel ?? "zzz");
+      default:
+        return 0;
+    }
+  });
+  return sorted;
 }
 
 export default function KanbanPage() {
@@ -150,7 +89,37 @@ export default function KanbanPage() {
   const projectIdNum = parseInt(projectId, 10);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useMobile();
+  const [isNarrow, setIsNarrow] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsNarrow(window.innerWidth < 1024);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const [activeTab, setActiveTab] = useState<KanbanSubTab>("board");
+  const [search, setSearch] = useState("");
+  const [groupBy, setGroupBy] = useState<GroupByValue>("none");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [columnsCollapsed, setColumnsCollapsed] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [inlineAddColumn, setInlineAddColumn] = useState<ColumnId | null>(null);
+  const [mobileColumn, setMobileColumn] = useState<ColumnId>("wish");
+
+  const [limits, setLimits] = useState<ColumnLimits>({});
+  const [automation, setAutomation] = useState<AutomationRules>(DEFAULT_AUTOMATION);
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailCard, setDetailCard] = useState<KanbanCardItem | null>(null);
+  const [detailLaneId, setDetailLaneId] = useState<ColumnId | null>(null);
+  const [drawerEditing, setDrawerEditing] = useState(false);
+
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPriority, setNewPriority] = useState<PriorityFieldValue>(NONE_PRIORITY);
@@ -164,10 +133,30 @@ export default function KanbanPage() {
   const [editWbsId, setEditWbsId] = useState<string>(NONE_WBS);
   const [editActivityId, setEditActivityId] = useState<string>(NONE_ACTIVITY);
 
-  const metaDialogOpen = addOpen || editCardId !== null;
+  const metaDialogOpen = addOpen || editCardId !== null || drawerEditing;
+  const linkingWbsId = editCardId !== null || drawerEditing ? editWbsId : addWbsId;
 
-  /** WBS used to load activity options while add/edit dialog is open */
-  const linkingWbsId = editCardId !== null ? editWbsId : addWbsId;
+  useEffect(() => {
+    if (!projectId) return;
+    try {
+      const storedLimits = localStorage.getItem(limitsKey(projectId));
+      if (storedLimits) setLimits(JSON.parse(storedLimits));
+      const storedAuto = localStorage.getItem(automationKey(projectId));
+      if (storedAuto) setAutomation(JSON.parse(storedAuto));
+    } catch {
+      /* ignore */
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    localStorage.setItem(limitsKey(projectId), JSON.stringify(limits));
+  }, [limits, projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    localStorage.setItem(automationKey(projectId), JSON.stringify(automation));
+  }, [automation, projectId]);
 
   const resetAddForm = useCallback(() => {
     setNewTitle("");
@@ -184,6 +173,7 @@ export default function KanbanPage() {
     setEditPriority(NONE_PRIORITY);
     setEditWbsId(NONE_WBS);
     setEditActivityId(NONE_ACTIVITY);
+    setDrawerEditing(false);
   }, []);
 
   const { data, isLoading } = useQuery<KanbanBoard>({
@@ -218,7 +208,7 @@ export default function KanbanPage() {
     })),
   });
 
-  const activityChoices = (() => {
+  const activityChoices = useMemo(() => {
     const list: { id: number; label: string }[] = [];
     (wpsUnderWbs ?? []).forEach((wp, i) => {
       const acts = (wpActivityQueries[i]?.data ?? []) as ProjectActivity[];
@@ -231,7 +221,9 @@ export default function KanbanPage() {
     });
     list.sort((a, b) => a.label.localeCompare(b.label) || a.id - b.id);
     return list;
-  })();
+  }, [wpsUnderWbs, wpActivityQueries]);
+
+  const activitiesLoading = wpActivityQueries.some((q) => q.isLoading);
 
   const moveMutation = useMutation({
     mutationFn: ({
@@ -242,8 +234,7 @@ export default function KanbanPage() {
       cardId: number;
       column: ColumnId;
       position: number;
-    }) =>
-      patch(`/projects/${projectId}/kanban/cards/${cardId}`, { column, position }),
+    }) => patch(`/projects/${projectId}/kanban/cards/${cardId}`, { column, position }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/kanban`] });
     },
@@ -257,6 +248,7 @@ export default function KanbanPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/kanban`] });
       setAddOpen(false);
+      setInlineAddColumn(null);
       resetAddForm();
       toast({ title: "Card added", description: "New card added to Wish." });
     },
@@ -271,6 +263,7 @@ export default function KanbanPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/kanban`] });
       resetEditForm();
+      setDetailOpen(false);
       toast({ title: "Card updated", description: "Changes saved." });
     },
     onError: (err: Error) => {
@@ -283,6 +276,7 @@ export default function KanbanPage() {
       post(`/projects/${projectId}/kanban/cards/${cardId}/archive`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/kanban`] });
+      setDetailOpen(false);
       toast({ title: "Card archived", description: "Card removed from board." });
     },
     onError: (err: Error) => {
@@ -290,529 +284,326 @@ export default function KanbanPage() {
     },
   });
 
-  const lanes = data?.lanes ?? COLUMNS.map((c) => ({ ...c, cards: [] as KanbanCardItem[] }));
+  const rawLanes = data?.lanes ?? COLUMNS.map((c) => ({ id: c.id, title: c.title, cards: [] as KanbanCardItem[] }));
+
+  const lanes = useMemo(
+    () =>
+      rawLanes.map((lane) => ({
+        ...lane,
+        cards: groupCards(
+          lane.cards.filter((c) => filterCard(c, search, priorityFilter)),
+          groupBy
+        ),
+      })),
+    [rawLanes, search, priorityFilter, groupBy]
+  );
+
+  const totalCards = rawLanes.reduce((n, lane) => n + lane.cards.length, 0);
+  const collapsedView = columnsCollapsed || isNarrow;
 
   const onDragEnd = (result: DropResult) => {
     if (!result.destination) return;
     const cardId = parseInt(result.draggableId, 10);
     if (isNaN(cardId)) return;
-    const position = result.destination.index;
     moveMutation.mutate({
       cardId,
       column: result.destination.droppableId as ColumnId,
-      position,
+      position: result.destination.index,
     });
   };
 
-  const openEditCard = (card: KanbanCardItem) => {
+  const openCardDetail = (card: KanbanCardItem, laneId: ColumnId) => {
+    setDetailCard(card);
+    setDetailLaneId(laneId);
+    setDrawerEditing(false);
     const idNum = Number.parseInt(card.id, 10);
-    if (!Number.isFinite(idNum)) return;
-    setEditCardId(idNum);
-    setEditTitle(card.title);
-    setEditDescription(card.description ?? "");
-    const p = card.priority;
-    const isKnown =
-      p != null &&
-      p !== "" &&
-      KANBAN_PRIORITY_OPTIONS.some((o) => o.value === p);
-    setEditPriority(isKnown ? (p as KanbanPriority) : NONE_PRIORITY);
-    setEditWbsId(card.wbsItemId != null ? String(card.wbsItemId) : NONE_WBS);
-    setEditActivityId(card.projectActivityId != null ? String(card.projectActivityId) : NONE_ACTIVITY);
+    if (Number.isFinite(idNum)) {
+      setEditCardId(idNum);
+      setEditTitle(card.title);
+      setEditDescription(card.description ?? "");
+      const p = card.priority;
+      const isKnown = p != null && p !== "" && ["immediate_urgent", "before_end_of_today", "normal"].includes(p);
+      setEditPriority(isKnown ? (p as KanbanPriority) : NONE_PRIORITY);
+      setEditWbsId(card.wbsItemId != null ? String(card.wbsItemId) : NONE_WBS);
+      setEditActivityId(card.projectActivityId != null ? String(card.projectActivityId) : NONE_ACTIVITY);
+    }
+    setDetailOpen(true);
   };
 
   const handleSaveEdit = () => {
     if (editCardId == null || !editTitle.trim()) return;
-    const body: Record<string, unknown> = {
-      title: editTitle.trim(),
-      description: editDescription.trim() ? editDescription.trim() : null,
-      priority: editPriority === NONE_PRIORITY ? null : editPriority,
-      wbsItemId: editWbsId === NONE_WBS ? null : parseInt(editWbsId, 10),
-      projectActivityId: editActivityId === NONE_ACTIVITY ? null : parseInt(editActivityId, 10),
-    };
-    updateCardMutation.mutate({ id: editCardId, body });
+    updateCardMutation.mutate({
+      id: editCardId,
+      body: {
+        title: editTitle.trim(),
+        description: editDescription.trim() ? editDescription.trim() : null,
+        priority: editPriority === NONE_PRIORITY ? null : editPriority,
+        wbsItemId: editWbsId === NONE_WBS ? null : parseInt(editWbsId, 10),
+        projectActivityId: editActivityId === NONE_ACTIVITY ? null : parseInt(editActivityId, 10),
+      },
+    });
   };
 
   const handleAddCard = () => {
     if (!newTitle.trim()) return;
-
-    const body: Record<string, unknown> = {
+    createMutation.mutate({
       title: newTitle.trim(),
       description: newDescription.trim() ? newDescription.trim() : undefined,
       priority: newPriority === NONE_PRIORITY ? null : newPriority,
       wbsItemId: addWbsId === NONE_WBS ? null : parseInt(addWbsId, 10),
       projectActivityId: addActivityId === NONE_ACTIVITY ? null : parseInt(addActivityId, 10),
-    };
-
-    createMutation.mutate(body);
+    });
   };
+
+  const handleInlineAdd = async (title: string, column: ColumnId) => {
+    try {
+      const created = await post<{ id: number }>(`/projects/${projectId}/kanban/cards`, { title });
+      if (column !== "wish" && created?.id) {
+        const destLane = rawLanes.find((l) => l.id === column);
+        await patch(`/projects/${projectId}/kanban/cards/${created.id}`, {
+          column,
+          position: destLane?.cards.length ?? 0,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/kanban`] });
+      setInlineAddColumn(null);
+      toast({ title: "Card added", description: `New card added to ${column.toUpperCase()}.` });
+    } catch (err) {
+      toast({
+        title: "Add failed",
+        description: err instanceof Error ? err.message : "Could not add card",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCardSelect = (cardId: string, e: React.MouseEvent, laneCards: KanbanCardItem[]) => {
+    if (!e.metaKey && !e.ctrlKey && !e.shiftKey) return;
+    e.preventDefault();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (e.shiftKey && lastSelectedId) {
+        const ids = laneCards.map((c) => c.id);
+        const start = ids.indexOf(lastSelectedId);
+        const end = ids.indexOf(cardId);
+        if (start >= 0 && end >= 0) {
+          const [lo, hi] = start < end ? [start, end] : [end, start];
+          ids.slice(lo, hi + 1).forEach((id) => next.add(id));
+        }
+      } else if (next.has(cardId)) {
+        next.delete(cardId);
+      } else {
+        next.add(cardId);
+      }
+      return next;
+    });
+    setLastSelectedId(cardId);
+  };
+
+  const handleMoveNext = () => {
+    if (!detailCard || !detailLaneId || editCardId == null) return;
+    const order: ColumnId[] = ["wish", "ready", "doing", "done"];
+    const idx = order.indexOf(detailLaneId);
+    if (idx < 0 || idx >= order.length - 1) return;
+    const nextCol = order[idx + 1];
+    const destLane = rawLanes.find((l) => l.id === nextCol);
+    moveMutation.mutate({
+      cardId: editCardId,
+      column: nextCol,
+      position: destLane?.cards.length ?? 0,
+    });
+    setDetailLaneId(nextCol);
+  };
+
+  const handleBatchMove = (column: ColumnId) => {
+    const destLane = rawLanes.find((l) => l.id === column);
+    let pos = destLane?.cards.length ?? 0;
+    selectedIds.forEach((id) => {
+      const cardId = parseInt(id, 10);
+      if (!isNaN(cardId)) {
+        moveMutation.mutate({ cardId, column, position: pos });
+        pos += 1;
+      }
+    });
+    setSelectedIds(new Set());
+  };
+
+  const handleBatchArchive = () => {
+    selectedIds.forEach((id) => {
+      const cardId = parseInt(id, 10);
+      if (!isNaN(cardId)) archiveMutation.mutate(cardId);
+    });
+    setSelectedIds(new Set());
+  };
+
+  const visibleColumns = isMobile
+    ? COLUMNS.filter((c) => c.id === mobileColumn)
+    : COLUMNS;
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center min-h-[400px] bg-[var(--bg-cream)]">
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--text-muted)]" />
       </div>
     );
   }
 
-  const totalCards = lanes.reduce((n, lane) => n + lane.cards.length, 0);
-
   return (
-    <div className="p-4 md:p-6 bg-gradient-to-b from-slate-50/80 to-white min-h-full">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Kanban</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {totalCards} active card{totalCards === 1 ? "" : "s"} · drag to move · activity link optional
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            resetAddForm();
-            setAddOpen(true);
-          }}
-          size="sm"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add card
-        </Button>
-      </div>
+    <div className="flex flex-col min-h-full bg-[var(--bg-cream)]">
+      <KanbanSubTabs active={activeTab} onChange={setActiveTab} />
 
-      <DragDropContext onDragEnd={onDragEnd}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-5">
-          {lanes.map((lane) => (
-            <Droppable key={lane.id} droppableId={lane.id}>
-              {(provided, snapshot) => (
-                <div
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  className={`min-h-[360px] flex flex-col rounded-2xl overflow-hidden border-2 transition-all duration-200 ${LANE_STYLES[lane.id]} ${
-                    snapshot.isDraggingOver
-                      ? "scale-[1.01] shadow-[0_6px_0_0_currentColor,0_12px_24px_-4px_rgba(0,0,0,0.12)] ring-2 ring-teal-400/50"
-                      : ""
-                  }`}
+      {activeTab === "board" ? (
+        <>
+          <KanbanToolbar
+            totalCards={totalCards}
+            search={search}
+            onSearchChange={setSearch}
+            groupBy={groupBy}
+            onGroupByChange={setGroupBy}
+            priorityFilter={priorityFilter}
+            onPriorityFilterChange={setPriorityFilter}
+            onAddCard={() => {
+              resetAddForm();
+              setAddOpen(true);
+            }}
+            onOpenSettings={() => setSettingsOpen(true)}
+            columnsCollapsed={columnsCollapsed}
+            onToggleColumns={() => setColumnsCollapsed((v) => !v)}
+          />
+
+          {isMobile && (
+            <div
+              className="flex gap-1 overflow-x-auto border-b px-4 py-2 bg-[var(--bg-white)]"
+              style={{ borderColor: "var(--border-subtle)" }}
+            >
+              {COLUMNS.map((col) => (
+                <button
+                  key={col.id}
+                  type="button"
+                  onClick={() => setMobileColumn(col.id)}
+                  className={cn(
+                    "shrink-0 rounded-full px-3 py-1 kanban-caption font-semibold transition-colors",
+                    mobileColumn === col.id
+                      ? "text-white"
+                      : "text-[var(--text-secondary)]"
+                  )}
+                  style={{
+                    backgroundColor:
+                      mobileColumn === col.id ? "var(--copper-600)" : "var(--bg-warm-gray)",
+                  }}
                 >
-                  <div
-                    className={`shrink-0 bg-white/95 backdrop-blur-sm px-4 py-3 border-b-[3px] ${LANE_HEADER_BORDER[lane.id]}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p
-                        className={`font-extrabold uppercase tracking-[0.16em] text-xs sm:text-sm ${LANE_TITLE_CLASS[lane.id]}`}
-                      >
-                        {lane.title}
-                      </p>
-                      <span
-                        className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-[11px] font-bold tabular-nums ${LANE_TITLE_CLASS[lane.id]} bg-white/90 ring-1 ring-black/5`}
-                      >
-                        {lane.cards.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      {COLUMNS.find((c) => c.id === lane.id)?.hint}
-                    </p>
-                  </div>
+                  {col.title}
+                </button>
+              ))}
+            </div>
+          )}
 
-                  {/* Colored gutter (lane bg) + inset white tray for cards */}
-                  <div className="flex-1 flex flex-col min-h-0 p-3 md:p-4 pt-3">
-                    <div className="flex-1 min-h-[240px] rounded-xl bg-white/90 p-3 md:p-3.5 shadow-[inset_0_1px_2px_rgba(15,23,42,.04)] ring-1 ring-black/[0.06] overflow-y-auto overflow-x-hidden">
-                    {lane.cards.length === 0 && !snapshot.isDraggingOver && (
-                      <div className="flex h-full min-h-[180px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 text-center">
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          Drop cards here
-                          {lane.id === "wish" ? " or use Add card" : ""}
-                        </p>
-                      </div>
-                    )}
-                    {lane.cards.map((card, index) => {
-                      const colorClass = TASK_CARD_COLORS[index % TASK_CARD_COLORS.length];
-                      const stickyShape = STICKY_NOTE_SHAPES[index % STICKY_NOTE_SHAPES.length];
-                      const tiltClass = stickyNoteTiltClass(index);
-                      const restingShadow =
-                        "shadow-[inset_0_1px_1px_rgba(255,255,255,0.75),0_1px_2px_rgba(15,23,42,0.06),0_4px_8px_-2px_rgba(15,23,42,0.08),0_10px_24px_-6px_rgba(15,23,42,0.12)]";
-                      const draggingShadow =
-                        "shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_8px_16px_-4px_rgba(15,23,42,0.12),0_20px_40px_-8px_rgba(15,23,42,0.22)]";
-                      return (
-                      <Draggable
-                        key={card.id}
-                        draggableId={card.id}
-                        index={index}
-                      >
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            className={`mb-4 ${
-                              snapshot.isDragging
-                                ? "z-20 transition-none"
-                                : "transition-[transform] duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] will-change-transform motion-reduce:transition-none"
-                            }`}
-                          >
-                            <div
-                              className={`relative group ${tiltClass} motion-reduce:rotate-0 ${
-                                snapshot.isDragging ? "" : "hover:-translate-y-0.5 transition-transform duration-200"
-                              }`}
-                            >
-                              <div
-                                className={`relative flex overflow-hidden border-2 border-b-[3px] ${stickyShape} ${colorClass} ${
-                                  snapshot.isDragging
-                                    ? `${draggingShadow} ring-2 ring-teal-400/60 ring-offset-1 ring-offset-white/95`
-                                    : `${restingShadow} group-hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.75),0_6px_14px_-4px_rgba(15,23,42,0.14)]`
-                                }`}
-                              >
-                                <div
-                                  className={`w-1.5 shrink-0 ${kanbanPriorityStripe(card.priority)}`}
-                                  title={kanbanPriorityLabel(card.priority) || "No priority"}
-                                />
-                                <div className="flex-1 min-w-0 px-3 py-3">
-                                <div className="flex items-start gap-2">
-                                  <div
-                                    {...provided.dragHandleProps}
-                                    className="mt-0.5 text-muted-foreground/70 cursor-grab active:cursor-grabbing hover:text-muted-foreground"
-                                  >
-                                    <GripVertical className="h-4 w-4" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <p className="font-semibold text-sm text-gray-900 leading-snug line-clamp-2 min-w-0">
-                                        {card.title}
-                                      </p>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 shrink-0 -mr-1 -mt-0.5 text-muted-foreground hover:text-gray-900 opacity-70 group-hover:opacity-100"
-                                        aria-label={`Edit ${card.title}`}
-                                        disabled={snapshot.isDragging}
-                                        onMouseDown={(e) => {
-                                          e.stopPropagation();
-                                        }}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          openEditCard(card);
-                                        }}
-                                      >
-                                        <Pencil className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </div>
-                                    <span
-                                      className={`inline-flex mt-2 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${kanbanPriorityBadgeClasses(card.priority)}`}
-                                    >
-                                      {card.priority != null && String(card.priority) !== ""
-                                        ? kanbanPriorityLabel(card.priority)
-                                        : "No priority"}
-                                    </span>
-                                    {card.description && (
-                                      <p className="text-xs text-muted-foreground mt-2 line-clamp-3 leading-relaxed">
-                                        {card.description}
-                                      </p>
-                                    )}
-                                    {(card.wbsLabel ?? card.activityLabel) ? (
-                                      <div className="mt-2.5 flex flex-wrap gap-1.5">
-                                        {card.wbsLabel ? (
-                                          <span className="inline-flex max-w-full items-center rounded-md bg-white/80 border border-black/10 px-2 py-0.5 text-[10px] text-gray-800 truncate">
-                                            <span className="font-semibold text-gray-500 mr-1">WBS</span>
-                                            {card.wbsLabel}
-                                          </span>
-                                        ) : null}
-                                        {card.activityLabel ? (
-                                          <span className="inline-flex max-w-full items-center rounded-md bg-white/80 border border-black/10 px-2 py-0.5 text-[10px] text-gray-800 truncate">
-                                            <span className="font-semibold text-gray-500 mr-1">Act</span>
-                                            {card.activityLabel}
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    ) : null}
-                                    {lane.id === "done" && (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="mt-2 h-7 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50"
-                                        onClick={() =>
-                                          archiveMutation.mutate(parseInt(card.id, 10))
-                                        }
-                                        disabled={archiveMutation.isPending}
-                                      >
-                                        <Archive className="h-3 w-3 mr-1" />
-                                        Archive
-                                      </Button>
-                                    )}
-                                  </div>
-                                </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </Draggable>
-                      );
-                    })}
-                    {provided.placeholder}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </Droppable>
-          ))}
-        </div>
-      </DragDropContext>
+          <DragDropContext onDragEnd={onDragEnd}>
+            <div className="flex gap-5 overflow-x-auto p-6 lg:p-8 flex-1">
+              {visibleColumns.map((colDef, columnIndex) => {
+                const lane = lanes.find((l) => l.id === colDef.id) ?? {
+                  id: colDef.id,
+                  title: colDef.title,
+                  cards: [],
+                };
+                return (
+                  <KanbanColumn
+                    key={colDef.id}
+                    id={colDef.id}
+                    title={colDef.title}
+                    hint={colDef.hint}
+                    borderColor={colDef.borderColor}
+                    indicatorColor={colDef.indicatorColor}
+                    cards={lane.cards}
+                    limit={limits[colDef.id]}
+                    collapsed={collapsedView}
+                    columnIndex={columnIndex}
+                    selectedIds={selectedIds}
+                    onCardClick={(card) => openCardDetail(card, colDef.id)}
+                    onCardSelect={(cardId, e) => handleCardSelect(cardId, e, lane.cards)}
+                    onInlineAdd={handleInlineAdd}
+                    isAdding={inlineAddColumn === colDef.id}
+                    onStartAdd={() => setInlineAddColumn(colDef.id)}
+                    onCancelAdd={() => setInlineAddColumn(null)}
+                  />
+                );
+              })}
+            </div>
+          </DragDropContext>
 
-      <Dialog
+          <KanbanBatchBar
+            count={selectedIds.size}
+            onMoveTo={handleBatchMove}
+            onSetPriority={() => {}}
+            onArchive={handleBatchArchive}
+            onClear={() => setSelectedIds(new Set())}
+          />
+        </>
+      ) : (
+        <KanbanPlaceholderTab tab={activeTab} />
+      )}
+
+      <KanbanAddCardModal
         open={addOpen}
         onOpenChange={(open) => {
           setAddOpen(open);
           if (!open) resetAddForm();
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add card</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="title">Title</Label>
-              <Input
-                id="title"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="Task title"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="desc">Description (optional)</Label>
-              <Input
-                id="desc"
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                placeholder="Brief description"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Priority</Label>
-              <Select
-                value={newPriority}
-                onValueChange={(v) => setNewPriority(v as PriorityFieldValue)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Priority (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_PRIORITY}>No priority (unset)</SelectItem>
-                  {KANBAN_PRIORITY_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>WBS number (optional)</Label>
-              <Select
-                value={addWbsId}
-                onValueChange={(v) => {
-                  setAddWbsId(v);
-                  setAddActivityId(NONE_ACTIVITY);
-                }}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="No WBS — task without parent activity" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_WBS}>No WBS (standalone task)</SelectItem>
-                  {wbsItems
-                    .slice()
-                    .sort((a, b) =>
-                      `${a.code}`.localeCompare(`${b.code}`, undefined, {
-                        numeric: true,
-                      })
-                    )
-                    .map((w) => (
-                      <SelectItem key={w.id} value={String(w.id)}>
-                        {w.code ? `${w.code} — ${w.name}` : w.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                Optionally link to schedule: choose WBS, then activity under its work packages. Leave both unset for a
-                task with no parent activity.
-              </p>
-            </div>
-            <div>
-              <Label>Activity (optional, by WBS)</Label>
-              <Select
-                value={addActivityId}
-                disabled={addWbsId === NONE_WBS}
-                onValueChange={(v) => setAddActivityId(v)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue
-                    placeholder={
-                      addWbsId === NONE_WBS
-                        ? "Select WBS first"
-                        : wpActivityQueries.some((q) => q.isLoading)
-                          ? "Loading activities…"
-                          : "No linked activity unless selected"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_ACTIVITY}>No linked activity</SelectItem>
-                  {activityChoices.map((a) => (
-                    <SelectItem key={a.id} value={String(a.id)}>
-                      {a.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddCard}
-              disabled={!newTitle.trim() || createMutation.isPending}
-            >
-              {createMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : null}
-              Add to Wish
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={newTitle}
+        onTitleChange={setNewTitle}
+        description={newDescription}
+        onDescriptionChange={setNewDescription}
+        priority={newPriority}
+        onPriorityChange={setNewPriority}
+        wbsId={addWbsId}
+        onWbsIdChange={setAddWbsId}
+        activityId={addActivityId}
+        onActivityIdChange={setAddActivityId}
+        wbsItems={wbsItems}
+        activityChoices={activityChoices}
+        activitiesLoading={activitiesLoading}
+        onSubmit={handleAddCard}
+        isPending={createMutation.isPending}
+      />
 
-      <Dialog
-        open={editCardId !== null}
+      <KanbanCardDetailDrawer
+        open={detailOpen}
         onOpenChange={(open) => {
+          setDetailOpen(open);
           if (!open) resetEditForm();
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit card</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="edit-title">Title</Label>
-              <Input
-                id="edit-title"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                placeholder="Task title"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="edit-desc">Description (optional)</Label>
-              <Input
-                id="edit-desc"
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                placeholder="Brief description"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Priority</Label>
-              <Select
-                value={editPriority}
-                onValueChange={(v) => setEditPriority(v as PriorityFieldValue)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Priority (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_PRIORITY}>No priority (unset)</SelectItem>
-                  {KANBAN_PRIORITY_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>WBS number (optional)</Label>
-              <Select
-                value={editWbsId}
-                onValueChange={(v) => {
-                  setEditWbsId(v);
-                  setEditActivityId(NONE_ACTIVITY);
-                }}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="No WBS — task without parent activity" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_WBS}>No WBS (standalone task)</SelectItem>
-                  {wbsItems
-                    .slice()
-                    .sort((a, b) =>
-                      `${a.code}`.localeCompare(`${b.code}`, undefined, {
-                        numeric: true,
-                      })
-                    )
-                    .map((w) => (
-                      <SelectItem key={w.id} value={String(w.id)}>
-                        {w.code ? `${w.code} — ${w.name}` : w.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                Clear priority, WBS, and activity to leave them unset on the board.
-              </p>
-            </div>
-            <div>
-              <Label>Activity (optional, by WBS)</Label>
-              <Select
-                value={editActivityId}
-                disabled={editWbsId === NONE_WBS}
-                onValueChange={(v) => setEditActivityId(v)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue
-                    placeholder={
-                      editWbsId === NONE_WBS
-                        ? "Select WBS first"
-                        : wpActivityQueries.some((q) => q.isLoading)
-                          ? "Loading activities…"
-                          : "No linked activity unless selected"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_ACTIVITY}>No linked activity</SelectItem>
-                  {activityChoices.map((a) => (
-                    <SelectItem key={`edit-${a.id}`} value={String(a.id)}>
-                      {a.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => resetEditForm()}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveEdit}
-              disabled={!editTitle.trim() || updateCardMutation.isPending}
-            >
-              {updateCardMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : null}
-              Save changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        card={detailCard}
+        laneId={detailLaneId}
+        editing={drawerEditing}
+        onToggleEdit={() => setDrawerEditing((v) => !v)}
+        editTitle={editTitle}
+        onEditTitleChange={setEditTitle}
+        editDescription={editDescription}
+        onEditDescriptionChange={setEditDescription}
+        editPriority={editPriority}
+        onEditPriorityChange={setEditPriority}
+        editWbsId={editWbsId}
+        onEditWbsIdChange={setEditWbsId}
+        editActivityId={editActivityId}
+        onEditActivityIdChange={setEditActivityId}
+        wbsItems={wbsItems}
+        activityChoices={activityChoices}
+        activitiesLoading={activitiesLoading}
+        onSave={handleSaveEdit}
+        onMoveNext={handleMoveNext}
+        onArchive={() => editCardId != null && archiveMutation.mutate(editCardId)}
+        isSaving={updateCardMutation.isPending}
+        isArchiving={archiveMutation.isPending}
+      />
+
+      <KanbanSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        limits={limits}
+        onLimitsChange={setLimits}
+        automation={automation}
+        onAutomationChange={setAutomation}
+      />
     </div>
   );
 }
-

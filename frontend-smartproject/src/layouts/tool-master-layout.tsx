@@ -18,7 +18,7 @@ const tabs = [
 export default function ToolMasterLayout({ children }: ToolMasterLayoutProps) {
   return (
     <MasterLayout>
-      <div className="flex flex-col h-full min-h-0 min-w-0 text-zinc-900 w-full">
+      <div className="flex flex-col h-full min-h-0 min-w-0 w-full text-[var(--text-primary)]">
         <GlobalToolsHeader hubTitle="Global tools hub" tabs={tabs} />
         <div className="flex-1 overflow-auto min-h-0 min-w-0">{children}</div>
       </div>

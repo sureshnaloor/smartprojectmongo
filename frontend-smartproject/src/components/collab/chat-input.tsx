@@ -154,7 +154,7 @@ export function renderMessageContent(content: string): React.ReactNode {
   return parts.map((part, i) => {
     if (part.startsWith("@")) {
       return (
-        <span key={i} className="text-sky-700 font-semibold bg-sky-50 px-0.5 rounded">
+        <span key={i} className="rounded px-0.5" style={{ backgroundColor: "var(--copper-50)", color: "var(--copper-600)" }}>
           {part}
         </span>
       );

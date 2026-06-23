@@ -1,687 +1,586 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { get, post, put, del } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { DateRange } from "react-day-picker";
+import { Calendar } from "lucide-react";
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Trash2, GripVertical, Search, X, Calendar, Pencil, FileUp } from "lucide-react";
-import { SelectValue } from "@/components/ui/select";
-import {
-    Tabs,
-    TabsList,
-    TabsTrigger,
-} from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import { DateRange } from "react-day-picker";
-import { format } from "date-fns";
 import { ImportProjectActivitiesModal } from "@/components/project/import-project-activities-modal";
+import {
+  ActivityFormDialog,
+  type ProjectActivityFormValues,
+} from "@/components/project/activity-form-dialog";
+import { ActivitiesPageHeader } from "@/components/project-activities/activities-page-header";
+import { ActivitiesListPanel } from "@/components/project-activities/activities-list-panel";
+import {
+  ActivitiesWorkPackagesPanel,
+  type ActivityMappingMode,
+} from "@/components/project-activities/activities-work-packages-panel";
+import {
+  fetchProjectWorkPackages,
+  type ActivityCatalogTab,
+  type GlobalActivityItem,
+  type ProjectActivityAssignment,
+  type SortKey,
+} from "@/components/project-activities/constants";
 
-interface Activity {
-    id: number;
-    name: string;
-    description: string | null;
-    unitOfMeasure: string;
-    unitRate: string;
-    remarks: string | null;
-}
-
-interface WorkPackage {
-    id: number;
-    wbsItemId: number;
-    projectId: number;
-    name: string;
-    code: string;
-    description: string | null;
-    budgetedCost: string;
-}
-
-interface ProjectActivity {
-    id: number;
-    projectId: number;
-    wpId: number;
-    globalActivityId: number | null;
-    name: string;
-    description: string | null;
-    unitOfMeasure: string;
-    unitRate: string;
-    quantity: string;
-    remarks: string | null;
-    plannedFromDate: string | null;
-    plannedToDate: string | null;
-    duration: number | null;
-    estimatedStartDate: string | null;
-    estimatedEndDate: string | null;
-    actualStartDate: string | null;
-    actualToDate: string | null;
+function formToGlobalPayload(values: ProjectActivityFormValues) {
+  return {
+    activityType: values.activityType,
+    name: values.name,
+    description: values.description || null,
+    remarks: values.remarks || null,
+    unitOfMeasure: values.activityType === "units" ? values.unitOfMeasure : "ea",
+    unitRate: values.activityType === "units" ? values.unitRate : "0",
+  };
 }
 
 export default function ProjectActivities() {
-    const { projectId } = useParams();
-    const { toast } = useToast();
-    const queryClient = useQueryClient();
-    const [searchTerm, setSearchTerm] = useState("");
-    const [selectedWpId, setSelectedWpId] = useState<number | null>(null);
-    const [draggedActivity, setDraggedActivity] = useState<Activity | null>(null);
-    const [showDatePicker, setShowDatePicker] = useState(false);
-    const [dateRange, setDateRange] = useState<DateRange | null>(null);
-    const [quantity, setQuantity] = useState<string>("1");
-    const [duration, setDuration] = useState<string>("0");
-    const [mappingMode, setMappingMode] = useState<"duration" | "date-range">("duration");
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [editingActivity, setEditingActivity] = useState<ProjectActivity | null>(null);
-    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const { projectId } = useParams();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-    // Fetch global activities
-    const { data: globalActivities = [] } = useQuery<Activity[]>({
-        queryKey: ["activities"],
-        queryFn: () => get("/activities"),
+  const [catalogTab, setCatalogTab] = useState<ActivityCatalogTab>("global");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [selectedWpId, setSelectedWpId] = useState<number | null>(null);
+  const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
+  const [mappingMode, setMappingMode] = useState<ActivityMappingMode>("duration");
+
+  const [draggedActivity, setDraggedActivity] = useState<GlobalActivityItem | null>(null);
+  const [pendingWpId, setPendingWpId] = useState<number | null>(null);
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
+  const [quantity, setQuantity] = useState("1");
+  const [duration, setDuration] = useState("1");
+
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<ProjectActivityAssignment | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [addActivityOpen, setAddActivityOpen] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 200);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setSearchTerm("");
+    setCategoryFilter("All");
+    setSelectedActivityId(null);
+  }, [catalogTab]);
+
+  const { data: project } = useQuery<{ name: string; currency?: string }>({
+    queryKey: [`/api/projects/${projectId}`],
+    enabled: !!projectId,
+  });
+
+  const {
+    data: globalActivities = [],
+    isLoading: globalLoading,
+    refetch: refetchGlobal,
+    isFetching: globalFetching,
+  } = useQuery<GlobalActivityItem[]>({
+    queryKey: ["activities"],
+    queryFn: () => get("/activities"),
+    enabled: !!projectId,
+  });
+
+  const {
+    data: workPackages = [],
+    isLoading: workPackagesLoading,
+    isError: workPackagesError,
+    refetch: refetchWorkPackages,
+    isFetching: workPackagesFetching,
+  } = useQuery({
+    queryKey: ["work-packages", projectId],
+    queryFn: () => fetchProjectWorkPackages(projectId ?? ""),
+    enabled: !!projectId,
+    retry: 2,
+  });
+
+  const { data: allProjectActivities = [], refetch: refetchProjectActivities } = useQuery<
+    ProjectActivityAssignment[]
+  >({
+    queryKey: ["project-activities", projectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${projectId}/activities`);
+      if (!res.ok) throw new Error("Failed to fetch project activities");
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const allocatedGlobalIds = useMemo(() => {
+    const ids = new Set<number>();
+    allProjectActivities.forEach((a) => {
+      if (a.globalActivityId) ids.add(a.globalActivityId);
     });
+    return ids;
+  }, [allProjectActivities]);
 
-    // Fetch work packages for the project
-    const { data: workPackages = [] } = useQuery<WorkPackage[]>({
-        queryKey: ["work-packages", projectId],
-        queryFn: async () => {
-            if (!projectId) return [];
-            // Fetch all WBS items and then get their work packages
-            const wbsResponse = await get(`/projects/${projectId}/wbs`);
-            const allWps: WorkPackage[] = [];
+  const projectCatalog = useMemo(
+    () => globalActivities.filter((a) => allocatedGlobalIds.has(a.id)),
+    [globalActivities, allocatedGlobalIds]
+  );
 
-            for (const wbs of wbsResponse) {
-                try {
-                    const wpResponse = await fetch(`/api/wbs/${wbs.id}/work-packages`).then(r => r.json());
-                    if (Array.isArray(wpResponse)) {
-                        allWps.push(...wpResponse);
-                    }
-                } catch (error) {
-                    // Skip if no work packages found
-                }
-            }
+  const customCatalog = useMemo(() => {
+    const seen = new Set<string>();
+    const items: GlobalActivityItem[] = [];
+    for (const pa of allProjectActivities) {
+      if (pa.globalActivityId != null) continue;
+      const key = pa.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push({
+        id: pa.id,
+        name: pa.name,
+        description: pa.description,
+        unitOfMeasure: pa.unitOfMeasure,
+        unitRate: pa.unitRate,
+        remarks: pa.remarks,
+        activityType: "units",
+      });
+    }
+    return items;
+  }, [allProjectActivities]);
 
-            return allWps;
-        },
-        enabled: !!projectId,
-    });
+  const catalogItems = useMemo(() => {
+    if (catalogTab === "project") return projectCatalog;
+    if (catalogTab === "custom") return customCatalog;
+    return globalActivities;
+  }, [catalogTab, globalActivities, projectCatalog, customCatalog]);
 
-    // Fetch activities for selected work package
-    const { data: wpActivities = [] } = useQuery<ProjectActivity[]>({
-        queryKey: ["wp-activities", selectedWpId],
-        queryFn: async () => {
-            const response = await fetch(`/api/work-packages/${selectedWpId}/activities`);
-            if (!response.ok) throw new Error("Failed to fetch activities");
-            return response.json();
-        },
-        enabled: !!selectedWpId && !!projectId,
-    });
+  const displayedAssignments = useMemo(
+    () => allProjectActivities.filter((a) => selectedWpId == null || a.wpId === selectedWpId),
+    [allProjectActivities, selectedWpId]
+  );
 
-    // Create project activity mutation
-    const createMutation = useMutation({
-        mutationFn: (data: Partial<ProjectActivity>) =>
-            post(`/projects/${projectId}/activities`, data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["wp-activities", selectedWpId] });
-            queryClient.invalidateQueries({ queryKey: ["project-activities", projectId] });
-            toast({ title: "Success", description: "Activity added to work package" });
-            setDraggedActivity(null);
-            setDateRange(null);
-            setShowDatePicker(false);
-        },
-        onError: (error: Error) => {
-            toast({ title: "Error", description: error.message, variant: "destructive" });
-        },
-    });
+  const invalidateAssignments = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["project-activities", projectId] });
+    if (selectedWpId != null) {
+      queryClient.invalidateQueries({ queryKey: ["wp-activities", selectedWpId] });
+    }
+  }, [queryClient, projectId, selectedWpId]);
 
-    // Update project activity mutation
-    const updateMutation = useMutation({
-        mutationFn: ({ id, data }: { id: number; data: Partial<ProjectActivity> }) =>
-            put(`/projects/${projectId}/activities/${id}`, data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["wp-activities", selectedWpId] });
-            queryClient.invalidateQueries({ queryKey: ["project-activities", projectId] });
-            toast({ title: "Success", description: "Activity updated" });
-            setEditingActivity(null);
-            setIsDialogOpen(false);
-        },
-        onError: (error: Error) => {
-            toast({ title: "Error", description: error.message, variant: "destructive" });
-        },
-    });
+  const createMutation = useMutation({
+    mutationFn: (data: Partial<ProjectActivityAssignment>) =>
+      post(`/projects/${projectId}/activities`, data),
+    onSuccess: () => {
+      invalidateAssignments();
+      toast({ title: "Activity assigned", description: "Activity added to work package." });
+      resetAssignState();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
-    // Delete project activity mutation
-    const deleteMutation = useMutation({
-        mutationFn: (id: number) => del(`/api/projects/${projectId}/activities/${id}`),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["wp-activities", selectedWpId] });
-            queryClient.invalidateQueries({ queryKey: ["project-activities", projectId] });
-            toast({ title: "Success", description: "Activity removed from work package" });
-        },
-        onError: (error: Error) => {
-            toast({ title: "Error", description: error.message, variant: "destructive" });
-        },
-    });
+  const createGlobalMutation = useMutation({
+    mutationFn: async (values: ProjectActivityFormValues) => {
+      const res = await fetch("/api/activities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formToGlobalPayload(values)),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message ?? "Failed to create activity");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["activities"] });
+      toast({ title: "Activity created" });
+      setAddActivityOpen(false);
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
-    const handleDragStart = (e: React.DragEvent, activity: Activity) => {
-        e.dataTransfer.setData("activity", JSON.stringify(activity));
-        setDraggedActivity(activity);
-    };
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<ProjectActivityAssignment> }) =>
+      put(`/projects/${projectId}/activities/${id}`, data),
+    onSuccess: () => {
+      invalidateAssignments();
+      toast({ title: "Activity updated" });
+      setEditingActivity(null);
+      setIsEditDialogOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
-    const handleDrop = async (e: React.DragEvent) => {
-        e.preventDefault();
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => del(`/api/projects/${projectId}/activities/${id}`),
+    onSuccess: () => {
+      invalidateAssignments();
+      toast({ title: "Activity removed from work package" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
-        if (!selectedWpId) {
-            toast({
-                title: "Warning",
-                description: "Please select a work package first",
-                variant: "destructive"
-            });
-            return;
-        }
+  const resetAssignState = () => {
+    setDraggedActivity(null);
+    setPendingWpId(null);
+    setShowAssignDialog(false);
+    setDateRange(null);
+    setQuantity("1");
+    setDuration("1");
+  };
 
-        const activityData = e.dataTransfer.getData("activity");
-        if (activityData) {
-            const activity: Activity = JSON.parse(activityData);
+  const handleDragStart = (e: React.DragEvent, activity: GlobalActivityItem) => {
+    e.dataTransfer.setData("application/json", JSON.stringify({ activity, catalogTab }));
+    setDraggedActivity(activity);
+  };
 
-            // Check if already exists in this WP
-            const exists = wpActivities.some(
-                pa => pa.globalActivityId === activity.id && pa.wpId === selectedWpId
-            );
-            if (exists) {
-                toast({
-                    title: "Warning",
-                    description: "Activity already exists in this work package",
-                    variant: "destructive"
-                });
-                return;
-            }
-
-            // Show date picker
-            setDraggedActivity(activity);
-            setShowDatePicker(true);
-        }
-    };
-
-    const handleDateRangeConfirm = () => {
-        if (!draggedActivity || !selectedWpId) {
-            toast({
-                title: "Error",
-                description: "Drag an activity first",
-                variant: "destructive"
-            });
-            return;
-        }
-
-        if (mappingMode === "date-range" && (!dateRange?.from || !dateRange?.to)) {
-            toast({
-                title: "Error",
-                description: "Please select both start and end dates",
-                variant: "destructive"
-            });
-            return;
-        }
-
-        if (mappingMode === "duration" && (!duration || parseInt(duration) <= 0)) {
-            toast({
-                title: "Error",
-                description: "Please enter a valid duration",
-                variant: "destructive"
-            });
-            return;
-        }
-
-        if (!quantity || parseFloat(quantity) <= 0) {
-            toast({
-                title: "Error",
-                description: "Please enter a valid quantity",
-                variant: "destructive"
-            });
-            return;
-        }
-
-        createMutation.mutate({
-            wpId: selectedWpId,
-            globalActivityId: draggedActivity.id,
-            name: draggedActivity.name,
-            description: draggedActivity.description,
-            unitOfMeasure: draggedActivity.unitOfMeasure,
-            unitRate: draggedActivity.unitRate,
-            quantity: quantity,
-            remarks: draggedActivity.remarks,
-            plannedFromDate: mappingMode === "date-range" ? format(dateRange!.from!, "yyyy-MM-dd") : null,
-            plannedToDate: mappingMode === "date-range" ? format(dateRange!.to!, "yyyy-MM-dd") : null,
-            duration: mappingMode === "duration" ? parseInt(duration) : null,
-        });
-    };
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-    };
-
-    const filteredGlobalActivities = globalActivities.filter(activity =>
-        activity.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const beginAssign = (activity: GlobalActivityItem, wpId: number) => {
+    const exists = allProjectActivities.some(
+      (pa) => pa.globalActivityId === activity.id && pa.wpId === wpId && catalogTab !== "custom"
     );
+    if (exists && catalogTab !== "custom") {
+      toast({
+        title: "Already assigned",
+        description: "This activity is already on this work package.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    const selectedWorkPackage = workPackages.find(wp => wp.id === selectedWpId);
+    setSelectedWpId(wpId);
+    setDraggedActivity(activity);
+    setPendingWpId(wpId);
+    setQuantity("1");
+    setDuration("1");
+    setShowAssignDialog(true);
+  };
 
-    return (
-        <div className="flex h-[calc(100vh-4rem)] gap-4 p-4">
-            {/* Left Sidebar - Global Activities */}
-            <Card className="w-80 flex flex-col">
-                <CardHeader>
-                    <CardTitle>Global Activities</CardTitle>
-                    <div className="relative">
-                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Search activities..."
-                            className="pl-8"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden p-0">
-                    <ScrollArea className="h-full px-4 pb-4">
-                        <div className="space-y-2">
-                            {filteredGlobalActivities.map((activity) => (
-                                <div
-                                    key={activity.id}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, activity)}
-                                    className="flex items-center gap-2 rounded-lg border p-3 cursor-move hover:bg-accent hover:text-accent-foreground transition-colors"
-                                >
-                                    <GripVertical className="h-4 w-4 text-muted-foreground" />
-                                    <div className="flex-1 overflow-hidden">
-                                        <p className="font-medium truncate">{activity.name}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {activity.unitRate} / {activity.unitOfMeasure}
-                                        </p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </ScrollArea>
-                </CardContent>
-            </Card>
+  const handleDrop = (e: React.DragEvent, wpId: number) => {
+    e.preventDefault();
+    const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("activity");
+    if (!raw) {
+      if (draggedActivity) beginAssign(draggedActivity, wpId);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      const activity: GlobalActivityItem = parsed.activity ?? parsed;
+      beginAssign(activity, wpId);
+    } catch {
+      /* ignore */
+    }
+  };
 
-            {/* Right Side - Work Packages and Activities */}
-            <div className="flex-1 flex flex-col gap-4">
-                {/* Work Packages List */}
-                <Card className="flex-shrink-0">
-                    <CardHeader className="flex flex-row items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                            <CardTitle>Work Packages</CardTitle>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="ml-2"
-                                onClick={() => setIsImportModalOpen(true)}
-                            >
-                                <FileUp className="h-4 w-4 mr-1" />
-                                Import CSV
-                            </Button>
-                        </div>
-                        <Tabs value={mappingMode} onValueChange={(val) => setMappingMode(val as any)}>
-                            <TabsList>
-                                <TabsTrigger value="duration" className="text-xs">Duration</TabsTrigger>
-                                <TabsTrigger value="date-range" className="text-xs">Date Range</TabsTrigger>
-                            </TabsList>
-                        </Tabs>
-                    </CardHeader>
-                    <CardContent>
-                        <ScrollArea className="h-32">
-                            <div className="flex flex-wrap gap-2">
-                                {workPackages.map((wp) => (
-                                    <Button
-                                        key={wp.id}
-                                        variant={selectedWpId === wp.id ? "default" : "outline"}
-                                        onClick={() => setSelectedWpId(wp.id)}
-                                        className="text-xs"
-                                    >
-                                        {wp.code} - {wp.name}
-                                    </Button>
-                                ))}
-                            </div>
-                        </ScrollArea>
-                    </CardContent>
-                </Card>
+  const handleAssignConfirm = () => {
+    if (!draggedActivity || pendingWpId == null) return;
 
-                {/* Selected WP Activities Window */}
-                <Card
-                    className="flex-1 flex flex-col"
-                    onDrop={handleDrop}
-                    onDragOver={handleDragOver}
-                >
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle>
-                            {selectedWorkPackage
-                                ? `${selectedWorkPackage.code} - ${selectedWorkPackage.name}`
-                                : "Select a Work Package"}
-                        </CardTitle>
-                        {selectedWpId && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => {
-                                    setSelectedWpId(null);
-                                    setShowDatePicker(false);
-                                    setDateRange(null);
-                                }}
-                            >
-                                <X className="h-4 w-4" />
-                            </Button>
-                        )}
-                    </CardHeader>
-                    <CardContent className="flex-1 overflow-auto">
-                        {!selectedWpId ? (
-                            <div className="flex h-full items-center justify-center text-muted-foreground border-2 border-dashed rounded-lg m-4">
-                                <div className="text-center">
-                                    <p>No work package selected.</p>
-                                    <p className="text-sm">Select a work package above to assign activities</p>
-                                </div>
-                            </div>
-                        ) : showDatePicker && draggedActivity ? (
-                            <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
-                                <div className="text-center">
-                                    <p className="font-semibold mb-2">Assign Activity: {draggedActivity.name}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                        {draggedActivity.unitOfMeasure ? `Unit: ${draggedActivity.unitOfMeasure}` : ""}
-                                    </p>
-                                </div>
-                                <div className="w-full max-w-md space-y-6">
-                                    <div>
-                                        <Label className="text-sm font-semibold mb-2 block">Quantity *</Label>
-                                        <Input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={quantity}
-                                            onChange={(e) => setQuantity(e.target.value)}
-                                            placeholder="Enter quantity"
-                                            className="w-full"
-                                        />
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            Rate: {draggedActivity.unitRate} / {draggedActivity.unitOfMeasure}
-                                        </p>
-                                    </div>
-                                    {mappingMode === "duration" ? (
-                                        <div>
-                                            <Label className="text-sm font-semibold mb-2 block">Duration (Days) *</Label>
-                                            <Input
-                                                type="number"
-                                                min="1"
-                                                value={duration}
-                                                onChange={(e) => setDuration(e.target.value)}
-                                                placeholder="Enter duration"
-                                                className="w-full"
-                                            />
-                                        </div>
-                                    ) : (
-                                        <div>
-                                            <Label className="text-sm font-semibold mb-2 block">Date Range *</Label>
-                                            <DateRangePicker
-                                                value={dateRange || undefined}
-                                                onChange={setDateRange}
-                                                placeholder="Select date range"
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button
-                                        onClick={handleDateRangeConfirm}
-                                        disabled={(mappingMode === "date-range" && (!dateRange?.from || !dateRange?.to)) || (mappingMode === "duration" && !duration) || !quantity || createMutation.isPending}
-                                    >
-                                        <Calendar className="h-4 w-4 mr-2" />
-                                        Confirm Assignment
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                            setShowDatePicker(false);
-                                            setDraggedActivity(null);
-                                            setDateRange(null);
-                                            setQuantity("1");
-                                        }}
-                                    >
-                                        Cancel
-                                    </Button>
-                                </div>
-                            </div>
-                        ) : wpActivities.length === 0 ? (
-                            <div className="flex h-full items-center justify-center text-muted-foreground border-2 border-dashed rounded-lg m-4">
-                                <div className="text-center">
-                                    <p>No activities assigned yet.</p>
-                                    <p className="text-sm">Drag activities from the sidebar to assign them</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Unit</TableHead>
-                                        <TableHead className="text-right">Rate</TableHead>
-                                        <TableHead className="text-right">Quantity</TableHead>
-                                        <TableHead className="text-right">Total</TableHead>
-                                        <TableHead>Planned Dates</TableHead>
-                                        <TableHead className="text-right">Dur (Days)</TableHead>
-                                        <TableHead>Remarks</TableHead>
-                                        <TableHead className="w-[100px]">Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {wpActivities.map((activity) => (
-                                        <TableRow key={activity.id}>
-                                            <TableCell className="font-medium">
-                                                <div>
-                                                    {activity.name}
-                                                    {activity.description && (
-                                                        <p className="text-xs text-muted-foreground">{activity.description}</p>
-                                                    )}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>{activity.unitOfMeasure}</TableCell>
-                                            <TableCell className="text-right">{activity.unitRate}</TableCell>
-                                            <TableCell className="text-right">{activity.quantity}</TableCell>
-                                            <TableCell className="text-right">
-                                                {(parseFloat(activity.unitRate) * parseFloat(activity.quantity)).toFixed(2)}
-                                            </TableCell>
-                                            <TableCell>
-                                                {activity.plannedFromDate && activity.plannedToDate ? (
-                                                    <span className="text-xs">
-                                                        {format(new Date(activity.plannedFromDate), "MMM dd, yyyy")} - {format(new Date(activity.plannedToDate), "MMM dd, yyyy")}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-xs text-muted-foreground">Not set</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                {activity.duration ? `${activity.duration}` : "-"}
-                                            </TableCell>
-                                            <TableCell className="max-w-[200px] truncate" title={activity.remarks || ""}>
-                                                {activity.remarks}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => {
-                                                            setEditingActivity(activity);
-                                                            setIsDialogOpen(true);
-                                                        }}
-                                                    >
-                                                        <Pencil className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="text-destructive"
-                                                        onClick={() => {
-                                                            if (confirm("Are you sure you want to delete this activity?")) {
-                                                                deleteMutation.mutate(activity.id);
-                                                            }
-                                                        }}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+    if (mappingMode === "date-range" && (!dateRange?.from || !dateRange?.to)) {
+      toast({ title: "Error", description: "Please select both start and end dates", variant: "destructive" });
+      return;
+    }
+    if (mappingMode === "duration" && (!duration || parseInt(duration, 10) <= 0)) {
+      toast({ title: "Error", description: "Please enter a valid duration", variant: "destructive" });
+      return;
+    }
+    if (!quantity || parseFloat(quantity) <= 0) {
+      toast({ title: "Error", description: "Please enter a valid quantity", variant: "destructive" });
+      return;
+    }
 
-            {/* Edit Activity Dialog */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>Edit Activity</DialogTitle>
-                    </DialogHeader>
-                    {editingActivity && (
-                        <form
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                const formData = new FormData(e.currentTarget);
-                                const data = {
-                                    name: formData.get("name") as string,
-                                    description: formData.get("description") as string,
-                                    unitOfMeasure: formData.get("unitOfMeasure") as string,
-                                    unitRate: formData.get("unitRate") as string,
-                                    quantity: formData.get("quantity") as string,
-                                    remarks: formData.get("remarks") as string,
-                                    duration: formData.get("duration") ? parseInt(formData.get("duration") as string) : null,
-                                    plannedFromDate: editingActivity.plannedFromDate,
-                                    plannedToDate: editingActivity.plannedToDate,
-                                };
-                                updateMutation.mutate({ id: editingActivity.id, data });
-                            }}
-                            className="space-y-4"
-                        >
-                            <div className="space-y-2">
-                                <Label htmlFor="name">Name</Label>
-                                <Input
-                                    id="name"
-                                    name="name"
-                                    defaultValue={editingActivity.name}
-                                    required
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="description">Description</Label>
-                                <Textarea
-                                    id="description"
-                                    name="description"
-                                    defaultValue={editingActivity.description || ""}
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="unitOfMeasure">Unit</Label>
-                                    <Input
-                                        id="unitOfMeasure"
-                                        name="unitOfMeasure"
-                                        defaultValue={editingActivity.unitOfMeasure}
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="unitRate">Rate</Label>
-                                    <Input
-                                        id="unitRate"
-                                        name="unitRate"
-                                        type="number"
-                                        step="0.01"
-                                        defaultValue={editingActivity.unitRate}
-                                        required
-                                    />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="quantity">Quantity</Label>
-                                <Input
-                                    id="quantity"
-                                    name="quantity"
-                                    type="number"
-                                    step="0.01"
-                                    defaultValue={editingActivity.quantity}
-                                    required
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Planned Date Range</Label>
-                                    <DateRangePicker
-                                        value={{
-                                            from: editingActivity.plannedFromDate ? new Date(editingActivity.plannedFromDate) : undefined,
-                                            to: editingActivity.plannedToDate ? new Date(editingActivity.plannedToDate) : undefined,
-                                        }}
-                                        onChange={(range) => {
-                                            setEditingActivity({
-                                                ...editingActivity,
-                                                plannedFromDate: range?.from ? format(range.from, "yyyy-MM-dd") : null,
-                                                plannedToDate: range?.to ? format(range.to, "yyyy-MM-dd") : null,
-                                            });
-                                        }}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit-duration">Duration (Days)</Label>
-                                    <Input
-                                        id="edit-duration"
-                                        name="duration"
-                                        type="number"
-                                        defaultValue={editingActivity.duration || 0}
-                                    />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="remarks">Remarks</Label>
-                                <Textarea
-                                    id="remarks"
-                                    name="remarks"
-                                    defaultValue={editingActivity.remarks || ""}
-                                />
-                            </div>
-                            <div className="flex justify-end gap-2">
-                                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                                    Cancel
-                                </Button>
-                                <Button type="submit">
-                                    Update
-                                </Button>
-                            </div>
-                        </form>
-                    )}
-                </DialogContent>
-            </Dialog>
+    const isCustom = catalogTab === "custom";
+    createMutation.mutate({
+      wpId: pendingWpId,
+      globalActivityId: isCustom ? null : draggedActivity.id,
+      name: draggedActivity.name,
+      description: draggedActivity.description,
+      unitOfMeasure: draggedActivity.unitOfMeasure,
+      unitRate: draggedActivity.unitRate,
+      quantity,
+      remarks: draggedActivity.remarks,
+      plannedFromDate: mappingMode === "date-range" ? format(dateRange!.from!, "yyyy-MM-dd") : null,
+      plannedToDate: mappingMode === "date-range" ? format(dateRange!.to!, "yyyy-MM-dd") : null,
+      duration: mappingMode === "duration" ? parseInt(duration, 10) : null,
+    });
+  };
 
-            <ImportProjectActivitiesModal
-                isOpen={isImportModalOpen}
-                onClose={() => setIsImportModalOpen(false)}
-                projectId={Number(projectId)}
-            />
+  const handleRefresh = () => {
+    refetchWorkPackages();
+    refetchGlobal();
+    refetchProjectActivities();
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirm("Remove this activity from the work package?")) {
+      deleteMutation.mutate(id);
+    }
+  };
+
+  const refreshing = globalFetching || workPackagesFetching;
+
+  return (
+    <div className="flex h-[calc(100vh-12rem)] min-h-[600px] flex-col overflow-hidden bg-[var(--bg-cream)]">
+      <ActivitiesPageHeader
+        projectId={projectId ?? ""}
+        projectName={project?.name}
+        activeTab={catalogTab}
+        onTabChange={setCatalogTab}
+        globalCount={globalActivities.length}
+        projectCount={projectCatalog.length}
+        customCount={customCatalog.length}
+        search={searchTerm}
+        onSearchChange={setSearchTerm}
+        onImportCsv={() => setIsImportModalOpen(true)}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
+      />
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto px-6 pb-6 lg:grid-cols-[3fr_2fr] lg:overflow-hidden lg:px-8">
+        <div className="flex min-h-[360px] min-w-0 flex-col lg:min-h-0 lg:overflow-hidden">
+          <ActivitiesListPanel
+            items={catalogItems}
+            totalCount={catalogItems.length}
+            search={debouncedSearch}
+            categoryFilter={categoryFilter}
+            onCategoryFilter={setCategoryFilter}
+            onClearSearch={() => setSearchTerm("")}
+            sortKey={sortKey}
+            onSortChange={setSortKey}
+            selectedId={selectedActivityId}
+            onSelect={setSelectedActivityId}
+            onAdd={() => setAddActivityOpen(true)}
+            onDragStart={handleDragStart}
+            allocatedIds={allocatedGlobalIds}
+            loading={globalLoading && catalogTab === "global"}
+            emptyMessage={
+              catalogTab === "project"
+                ? "No project activities yet. Assign global activities to work packages."
+                : catalogTab === "custom"
+                  ? "No custom activities yet."
+                  : undefined
+            }
+          />
         </div>
-    );
+
+        <div className="flex min-h-[360px] min-w-0 flex-col lg:min-h-0 lg:overflow-hidden">
+          <ActivitiesWorkPackagesPanel
+            workPackages={workPackages}
+            selectedWpId={selectedWpId}
+            onSelectWp={setSelectedWpId}
+            assignments={displayedAssignments}
+            loading={workPackagesLoading}
+            error={workPackagesError}
+            onRetry={() => refetchWorkPackages()}
+            onDrop={handleDrop}
+            mappingMode={mappingMode}
+            onMappingModeChange={setMappingMode}
+            onEdit={(row) => {
+              setEditingActivity(row);
+              setIsEditDialogOpen(true);
+            }}
+            onDelete={handleDelete}
+            projectId={projectId ?? ""}
+          />
+        </div>
+      </div>
+
+      <Dialog open={showAssignDialog} onOpenChange={(open) => !open && resetAssignState()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign activity</DialogTitle>
+          </DialogHeader>
+          {draggedActivity && (
+            <div className="space-y-4 py-2">
+              <div>
+                <p className="kanban-body-md font-medium text-[var(--text-primary)]">{draggedActivity.name}</p>
+                <p className="kanban-body-sm text-[var(--text-secondary)]">
+                  {draggedActivity.unitRate} / {draggedActivity.unitOfMeasure}
+                </p>
+              </div>
+              <div>
+                <Label>Quantity</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              {mappingMode === "duration" ? (
+                <div>
+                  <Label>Duration (days)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label>Date range</Label>
+                  <DateRangePicker
+                    value={dateRange ?? undefined}
+                    onChange={setDateRange}
+                    placeholder="Select date range"
+                    className="mt-1"
+                  />
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button onClick={handleAssignConfirm} disabled={createMutation.isPending}>
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Confirm
+                </Button>
+                <Button variant="outline" onClick={resetAssignState}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit assignment</DialogTitle>
+          </DialogHeader>
+          {editingActivity && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                updateMutation.mutate({
+                  id: editingActivity.id,
+                  data: {
+                    name: formData.get("name") as string,
+                    description: formData.get("description") as string,
+                    unitOfMeasure: formData.get("unitOfMeasure") as string,
+                    unitRate: formData.get("unitRate") as string,
+                    quantity: formData.get("quantity") as string,
+                    remarks: formData.get("remarks") as string,
+                    duration: formData.get("duration") ? parseInt(formData.get("duration") as string, 10) : null,
+                    plannedFromDate: editingActivity.plannedFromDate,
+                    plannedToDate: editingActivity.plannedToDate,
+                  },
+                });
+              }}
+              className="space-y-4"
+            >
+              <div className="space-y-2">
+                <Label htmlFor="name">Name</Label>
+                <Input id="name" name="name" defaultValue={editingActivity.name} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea id="description" name="description" defaultValue={editingActivity.description || ""} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="unitOfMeasure">Unit</Label>
+                  <Input id="unitOfMeasure" name="unitOfMeasure" defaultValue={editingActivity.unitOfMeasure} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="unitRate">Rate</Label>
+                  <Input
+                    id="unitRate"
+                    name="unitRate"
+                    type="number"
+                    step="0.01"
+                    defaultValue={editingActivity.unitRate}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="quantity">Quantity</Label>
+                <Input
+                  id="quantity"
+                  name="quantity"
+                  type="number"
+                  step="0.01"
+                  defaultValue={editingActivity.quantity}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Planned date range</Label>
+                  <DateRangePicker
+                    value={{
+                      from: editingActivity.plannedFromDate ? new Date(editingActivity.plannedFromDate) : undefined,
+                      to: editingActivity.plannedToDate ? new Date(editingActivity.plannedToDate) : undefined,
+                    }}
+                    onChange={(range) => {
+                      setEditingActivity({
+                        ...editingActivity,
+                        plannedFromDate: range?.from ? format(range.from, "yyyy-MM-dd") : null,
+                        plannedToDate: range?.to ? format(range.to, "yyyy-MM-dd") : null,
+                      });
+                    }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-duration">Duration (days)</Label>
+                  <Input
+                    id="edit-duration"
+                    name="duration"
+                    type="number"
+                    defaultValue={editingActivity.duration || 0}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="remarks">Remarks</Label>
+                <Textarea id="remarks" name="remarks" defaultValue={editingActivity.remarks || ""} />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateMutation.isPending}>
+                  Update
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ActivityFormDialog
+        open={addActivityOpen}
+        onOpenChange={setAddActivityOpen}
+        mode="global"
+        onSubmit={async (values) => {
+          await createGlobalMutation.mutateAsync(values);
+        }}
+        isSubmitting={createGlobalMutation.isPending}
+      />
+
+      <ImportProjectActivitiesModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        projectId={Number(projectId)}
+      />
+    </div>
+  );
 }
