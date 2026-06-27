@@ -30,6 +30,26 @@ function googleConfigured() {
   return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 }
 
+// Developer Bypass login route for local testing/dev
+router.get("/bypass", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const devUser = await findOrCreateOAuthUser(db, {
+      email: "dev@example.com",
+      name: "Developer Guest",
+      provider: "bypass",
+      providerId: "bypass-dev-user",
+      picture: "https://api.dicebear.com/7.x/adventurer/svg?seed=dev"
+    });
+
+    req.login(devUser as Express.User, (err) => {
+      if (err) return next(err);
+      return res.redirect(`${FRONTEND}/`);
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Google OAuth routes (strategy registered only when GOOGLE_* env is set).
 router.get("/google", (req: Request, res: Response, next: NextFunction) => {
   if (!googleConfigured()) {

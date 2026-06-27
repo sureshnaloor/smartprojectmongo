@@ -12,7 +12,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   authenticated: boolean;
-  login: (provider: "google" | "linkedin") => void;
+  login: (provider: "google" | "linkedin" | "bypass") => void;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
 }
@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = (provider: "google" | "linkedin") => {
+  const login = (provider: "google" | "linkedin" | "bypass") => {
     // OAuth callback runs on the backend (8080). Start the flow there so the session
     // cookie is set on the same host; after auth the backend redirects to FRONTEND_URL.
     const backendOrigin =
