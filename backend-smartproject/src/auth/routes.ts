@@ -4,14 +4,10 @@ import passport from "./passport";
 import { isAuthenticated } from "./middleware";
 import { db } from "../db";
 import { findOrCreateOAuthUser } from "./oauth-helpers";
+import { postAuthRedirectPath, resolveFrontendUrl } from "./frontend-url";
 
 const router = Router();
-/** Where the browser lands after OAuth. In production, default to BASE_URL (single server on :8080). */
-const FRONTEND =
-  process.env.FRONTEND_URL ||
-  (process.env.NODE_ENV === "production"
-    ? process.env.BASE_URL || "http://localhost:8080"
-    : "http://localhost:5173");
+const FRONTEND = resolveFrontendUrl();
 
 const backendOrigin = process.env.BASE_URL || "http://localhost:8080";
 
@@ -43,7 +39,7 @@ router.get("/bypass", async (req: Request, res: Response, next: NextFunction) =>
 
     req.login(devUser as Express.User, (err) => {
       if (err) return next(err);
-      return res.redirect(`${FRONTEND}/`);
+      return res.redirect(postAuthRedirectPath("/"));
     });
   } catch (error) {
     next(error);
@@ -66,7 +62,7 @@ router.get(
     }
     passport.authenticate("google", {
       failureRedirect: `${FRONTEND}/login?error=google_failed`,
-      successRedirect: `${FRONTEND}/`,
+      successRedirect: postAuthRedirectPath("/"),
     })(req, res, next);
   }
 );
@@ -154,7 +150,7 @@ router.get(
 
       req.login(user as Express.User, (err) => {
         if (err) return next(err);
-        return res.redirect(`${FRONTEND}/`);
+        return res.redirect(postAuthRedirectPath("/"));
       });
     } catch (e) {
       next(e);
