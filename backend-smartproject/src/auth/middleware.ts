@@ -16,6 +16,7 @@ declare global {
       picture?: string | null;
       provider: string;
       providerId: string;
+      role?: "admin" | "user";
     }
   }
 }

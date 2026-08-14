@@ -18,6 +18,9 @@ import { ResourcesAssignedTab } from "@/components/wbs-activities/resources-assi
 import { ScheduleTab } from "@/components/wbs-activities/schedule-tab";
 import type { WbsActivitiesRightTab } from "@/components/wbs-activities/constants";
 import { Loader2 } from "lucide-react";
+import { AmendProjectButton } from "@/components/project/amend-project-button";
+import { ImportWbsModal } from "@/components/project/import-wbs-modal";
+import { WbsVersionsPanel } from "@/components/wbs-activities/wbs-versions-panel";
 
 export default function ProjectWbsWorkPackages() {
   const { projectId } = useParams();
@@ -41,6 +44,7 @@ export default function ProjectWbsWorkPackages() {
   const [selectedWpEditId, setSelectedWpEditId] = useState<number | null>(null);
   const [selectedWbsForWp, setSelectedWbsForWp] = useState<{ id: number; name: string } | null>(null);
   const [isEditAllocationOpen, setIsEditAllocationOpen] = useState(false);
+  const [isImportWbsOpen, setIsImportWbsOpen] = useState(false);
 
   const { data: project, isLoading: loadingProject } = useQuery<Project>({
     queryKey: [`/api/projects/${pid}`],
@@ -68,6 +72,7 @@ export default function ProjectWbsWorkPackages() {
   });
 
   const isWbsFinalized = Boolean((project as Project & { wbsFinalized?: boolean })?.wbsFinalized);
+  const projectCreatedById = (project as Project & { createdById?: number | null })?.createdById ?? null;
   const projectBudgetNum = Number(project?.budget) || 0;
   const topLevelWbs = useMemo(() => wbsItems.filter((w) => !w.parentId), [wbsItems]);
   const allocatedToWbs = useMemo(
@@ -161,10 +166,39 @@ export default function ProjectWbsWorkPackages() {
   });
 
   const handleDeleteWbs = (id: number) => {
+    if (isWbsFinalized) {
+      toast({
+        title: "WBS is finalized",
+        description: "Create a project amendment to revise the structure.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (confirm("Delete this WBS item and all sub-items?")) deleteWbsMutation.mutate(id);
   };
 
   const handleDeleteWp = (id: number) => {
+    if (isWbsFinalized) {
+      toast({
+        title: "WBS is finalized",
+        description: "Create a project amendment to revise the structure.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const targetWp = workPackages.find((wp) => wp.id === id);
+    if (targetWp) {
+      const siblings = workPackages.filter((wp) => wp.wbsItemId === targetWp.wbsItemId);
+      if (siblings.length <= 1) {
+        toast({
+          title: "Cannot Delete Work Package",
+          description:
+            "Cannot delete lone Work Package. Please delete the parent WBS item instead, or add another sibling Work Package before deleting this one.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     if (confirm("Delete this work package?")) deleteWpMutation.mutate(id);
   };
 
@@ -179,7 +213,7 @@ export default function ProjectWbsWorkPackages() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col gap-0">
       <WbsActivitiesSplitView
         left={
           <WbsTreePanel
@@ -200,23 +234,42 @@ export default function ProjectWbsWorkPackages() {
             onSelectWbs={setSelectedWbsId}
             onSelectWp={setSelectedWpId}
             onAddRoot={() => {
+              if (isWbsFinalized) return;
               setSelectedWbsItem(null);
               setIsAddModalOpen(true);
             }}
             onAddChild={(item) => {
+              if (isWbsFinalized) return;
               setSelectedWbsItem({ id: item.id, name: item.name, level: item.level });
               setIsAddModalOpen(true);
             }}
             onEdit={(id) => {
+              if (isWbsFinalized) {
+                toast({
+                  title: "WBS is finalized",
+                  description: "Create a project amendment to revise the structure.",
+                  variant: "destructive",
+                });
+                return;
+              }
               setEditWbsId(id);
               setIsEditModalOpen(true);
             }}
             onDelete={handleDeleteWbs}
             onAddWorkPackage={(wbs) => {
+              if (isWbsFinalized) return;
               setSelectedWbsForWp(wbs);
               setIsAddWpOpen(true);
             }}
             onEditWorkPackage={(id) => {
+              if (isWbsFinalized) {
+                toast({
+                  title: "WBS is finalized",
+                  description: "Create a project amendment to revise the structure.",
+                  variant: "destructive",
+                });
+                return;
+              }
               setSelectedWpEditId(id);
               setIsEditWpOpen(true);
             }}
@@ -225,6 +278,17 @@ export default function ProjectWbsWorkPackages() {
               setFlashingWbsIds(new Set(ids));
               setExpandedIds((prev) => new Set([...prev, ...ids]));
             }}
+            amendAction={
+              project ? (
+                <AmendProjectButton
+                  projectId={pid}
+                  projectName={project.name}
+                  wbsFinalized={isWbsFinalized}
+                  createdById={projectCreatedById}
+                />
+              ) : null
+            }
+            onImportWbs={() => setIsImportWbsOpen(true)}
           />
         }
         right={
@@ -273,6 +337,11 @@ export default function ProjectWbsWorkPackages() {
           </div>
         }
       />
+
+      {/* WBS Version History — shown below the split view */}
+      <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-cream)] px-4 py-5">
+        <WbsVersionsPanel projectId={pid} />
+      </div>
 
       <AddWbsModal
         isOpen={isAddModalOpen}
@@ -325,6 +394,12 @@ export default function ProjectWbsWorkPackages() {
           queryClient.invalidateQueries({ queryKey: [`/api/projects/${pid}/work-packages`] });
         }}
         readOnly={allocationComplete}
+      />
+
+      <ImportWbsModal
+        isOpen={isImportWbsOpen}
+        onClose={() => setIsImportWbsOpen(false)}
+        projectId={pid}
       />
     </div>
   );

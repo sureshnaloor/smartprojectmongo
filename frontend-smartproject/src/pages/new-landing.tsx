@@ -446,21 +446,29 @@ export default function NewLanding() {
                                 </span>
                               )}
                             </div>
-                            <div className="absolute top-4 right-4">
-                              <span className={cn(
-                                "px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md",
-                                displayStatus === 'active' ? 'bg-emerald-500/20 text-emerald-600' :
-                                  displayStatus === 'in progress' ? 'bg-emerald-500/20 text-emerald-600' :
-                                    displayStatus === 'planning' ? 'bg-amber-500/20 text-amber-600' :
-                                      displayStatus === 'concept' ? 'bg-slate-500/20 text-slate-600' :
-                                        displayStatus === 'on-hold' ? 'bg-orange-500/20 text-orange-600' :
-                                          displayStatus === 'completed' ? 'bg-blue-500/20 text-blue-600' :
-                                            displayStatus === 'aborted' ? 'bg-red-500/20 text-red-600' :
-                                              'bg-blue-500/20 text-blue-600'
-                              )}>
-                                {displayStatus.toUpperCase()}
-                              </span>
-                            </div>
+                             <div className="absolute top-4 right-4 flex items-center gap-1.5">
+                               <span className={cn(
+                                 "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border",
+                                 (project as any).projectVersion === "estimation" ? "bg-purple-500/20 text-purple-700 border-purple-300" :
+                                   (project as any).projectVersion === "planning" ? "bg-blue-500/20 text-blue-700 border-blue-300" :
+                                     "bg-emerald-500/20 text-emerald-700 border-emerald-300"
+                               )}>
+                                 {(project as any).projectVersion || "execution"}
+                               </span>
+                               <span className={cn(
+                                 "px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md",
+                                 displayStatus === 'active' ? 'bg-emerald-500/20 text-emerald-600' :
+                                   displayStatus === 'in progress' ? 'bg-emerald-500/20 text-emerald-600' :
+                                     displayStatus === 'planning' ? 'bg-amber-500/20 text-amber-600' :
+                                       displayStatus === 'concept' ? 'bg-slate-500/20 text-slate-600' :
+                                         displayStatus === 'on-hold' ? 'bg-orange-500/20 text-orange-600' :
+                                           displayStatus === 'completed' ? 'bg-blue-500/20 text-blue-600' :
+                                             displayStatus === 'aborted' ? 'bg-red-500/20 text-red-600' :
+                                               'bg-blue-500/20 text-blue-600'
+                               )}>
+                                 {displayStatus.toUpperCase()}
+                               </span>
+                             </div>
                           </div>
                           <div className="p-6">
                             <h3 className="text-xl font-bold text-slate-900 mb-2 truncate">{project.name}</h3>

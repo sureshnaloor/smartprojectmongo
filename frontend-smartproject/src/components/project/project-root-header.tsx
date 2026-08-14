@@ -31,6 +31,7 @@ export function ProjectRootHeader({ projectId, activeTab = "activities" }: Proje
         project={project}
         activeTab={activeTab}
         onImportWbs={() => setImportOpen(true)}
+        wbsFinalized={Boolean((project as Project & { wbsFinalized?: boolean }).wbsFinalized)}
       />
       <ImportWbsModal isOpen={importOpen} onClose={() => setImportOpen(false)} projectId={project.id} />
     </div>

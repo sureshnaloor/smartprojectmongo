@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ChevronDown, CloudUpload, Hand, Package, Pencil, RefreshCw, Trash2, UserPlus, Calendar as CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatCurrency } from "@/lib/utils";
 import { format } from "date-fns";
 import { resourceTypeLabel, type WorkPackageItem } from "./constants";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface MsAssignmentRow {
   id: number;
@@ -34,9 +41,18 @@ interface ResourceAssignmentRow {
 
 type AssignmentRow = MsAssignmentRow | ResourceAssignmentRow;
 
+export interface WbsItemSimple {
+  id: number;
+  code: string;
+  name: string;
+  level?: number;
+  parentId?: number | null;
+}
+
 interface WorkPackagesPanelProps {
   mode: "materials" | "services" | "resources";
   workPackages: WorkPackageItem[];
+  wbsItems?: WbsItemSimple[];
   selectedWpId: number | null;
   onSelectWp: (id: number | null) => void;
   assignments: AssignmentRow[];
@@ -59,6 +75,7 @@ function isResourceRow(row: AssignmentRow): row is ResourceAssignmentRow {
 export function WorkPackagesPanel({
   mode,
   workPackages,
+  wbsItems = [],
   selectedWpId,
   onSelectWp,
   assignments,
@@ -75,6 +92,83 @@ export function WorkPackagesPanel({
 }: WorkPackagesPanelProps) {
   const [showWpList, setShowWpList] = useState(true);
   const [dropActive, setDropActive] = useState(false);
+  const [selectedWbsId, setSelectedWbsId] = useState<number | "all">("all");
+
+  const wbsTree = useMemo(() => {
+    // Count work packages per WBS item
+    const wpCounts = new Map<number, number>();
+    for (const wp of workPackages) {
+      if (wp.wbsItemId != null) {
+        wpCounts.set(wp.wbsItemId, (wpCounts.get(wp.wbsItemId) || 0) + 1);
+      }
+    }
+
+    if (!wbsItems || wbsItems.length === 0) {
+      const map = new Map<number, { id: number; code: string; name: string; level: number; wpCount: number; isLeafHasWp: boolean }>();
+      for (const wp of workPackages) {
+        if (wp.wbsItemId != null && !map.has(wp.wbsItemId)) {
+          map.set(wp.wbsItemId, {
+            id: wp.wbsItemId,
+            code: `WBS #${wp.wbsItemId}`,
+            name: "WBS Branch",
+            level: 1,
+            wpCount: wpCounts.get(wp.wbsItemId) || 0,
+            isLeafHasWp: true,
+          });
+        }
+      }
+      return Array.from(map.values());
+    }
+
+    const itemMap = new Map<number, WbsItemSimple>();
+    const codeMap = new Map<string, WbsItemSimple>();
+    for (const w of wbsItems) {
+      itemMap.set(w.id, w);
+      if (w.code) codeMap.set(w.code.trim(), w);
+    }
+
+    // Collect leaf WBS items with WPs + all of their parent/ancestor WBS items
+    const includedIds = new Set<number>();
+    for (const [wbsId, count] of Array.from(wpCounts.entries())) {
+      if (count > 0) {
+        let curr: WbsItemSimple | undefined = itemMap.get(wbsId);
+        while (curr) {
+          includedIds.add(curr.id);
+          if (curr.parentId != null) {
+            curr = itemMap.get(curr.parentId);
+          } else if (curr.code && curr.code.includes(".")) {
+            const parentCode = curr.code.substring(0, curr.code.lastIndexOf("."));
+            curr = codeMap.get(parentCode);
+          } else {
+            curr = undefined;
+          }
+        }
+      }
+    }
+
+    const items = Array.from(includedIds)
+      .map((id) => itemMap.get(id)!)
+      .filter(Boolean)
+      .sort((a, b) => (a.code || "").localeCompare(b.code || "", undefined, { numeric: true }));
+
+    return items.map((w) => {
+      const count = wpCounts.get(w.id) || 0;
+      const level = w.level ?? (w.code ? w.code.split(".").length : 1);
+      return {
+        id: w.id,
+        code: w.code || `WBS #${w.id}`,
+        name: w.name || "WBS Item",
+        level,
+        wpCount: count,
+        isLeafHasWp: count > 0,
+      };
+    });
+  }, [workPackages, wbsItems]);
+
+  const displayedWorkPackages = useMemo(() => {
+    if (selectedWbsId === "all") return workPackages;
+    return workPackages.filter((wp) => wp.wbsItemId === selectedWbsId);
+  }, [workPackages, selectedWbsId]);
 
   const selectedWP = workPackages.find((wp) => wp.id === selectedWpId);
   const budget = Number(selectedWP?.budgetedCost ?? 0);
@@ -138,45 +232,110 @@ export function WorkPackagesPanel({
           </div>
         </div>
 
-        {/* WP pills — always visible when loaded */}
+        {/* WBS filter & WP pills */}
         {!loading && !error && workPackages.length > 0 && showWpList && (
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            <button
-              type="button"
-              onClick={() => onSelectWp(null)}
-              className={cn(
-                "shrink-0 rounded-full px-3 py-1.5 kanban-caption font-medium transition-all",
-                selectedWpId === null
-                  ? "bg-[var(--copper-500)] text-white"
-                  : "bg-[var(--bg-warm-gray)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              )}
-            >
-              All
-            </button>
-            {workPackages.map((wp) => (
+          <div className="mt-3 space-y-2.5">
+            {wbsTree.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="kanban-caption font-semibold text-[var(--text-secondary)] shrink-0">
+                  WBS Branch:
+                </span>
+                <Select
+                  value={selectedWbsId === "all" ? "all" : String(selectedWbsId)}
+                  onValueChange={(val) => {
+                    if (val === "all") {
+                      setSelectedWbsId("all");
+                      onSelectWp(null);
+                    } else {
+                      const id = Number(val);
+                      setSelectedWbsId(id);
+                      const firstWp = workPackages.find((wp) => wp.wbsItemId === id);
+                      if (firstWp) onSelectWp(firstWp.id);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-8 text-xs bg-[var(--bg-cream)] border-[var(--border-subtle)] font-medium">
+                    <SelectValue placeholder="Select WBS Item" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[350px]">
+                    <SelectItem value="all" className="font-medium text-xs">
+                      All WBS Branches ({workPackages.length} Work Packages)
+                    </SelectItem>
+                    {wbsTree.map((wbs) => {
+                      const isParent = !wbs.isLeafHasWp;
+                      return (
+                        <SelectItem
+                          key={wbs.id}
+                          value={String(wbs.id)}
+                          disabled={isParent}
+                          className={cn(
+                            "text-xs transition-colors py-1.5",
+                            isParent
+                              ? "opacity-60 text-muted-foreground font-normal bg-muted/10 cursor-default select-none pointer-events-none"
+                              : "font-semibold text-amber-950 cursor-pointer"
+                          )}
+                        >
+                          <div
+                            className="flex items-center gap-1.5 truncate"
+                            style={{ paddingLeft: `${(wbs.level - 1) * 14}px` }}
+                          >
+                            <span className={cn("font-mono text-[11px]", isParent ? "text-muted-foreground" : "text-amber-800 font-bold")}>
+                              {wbs.code}
+                            </span>
+                            <span className="opacity-40">•</span>
+                            <span className="truncate">{wbs.name}</span>
+                            {wbs.isLeafHasWp && (
+                              <span className="ml-auto text-[10px] font-normal text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded shrink-0">
+                                {wbs.wpCount} WP
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="flex gap-2 overflow-x-auto pb-1">
               <button
-                key={wp.id}
                 type="button"
-                onClick={() => onSelectWp(wp.id)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onDrop(e, wp.id);
-                }}
-                onDragOver={handleDragOver}
+                onClick={() => onSelectWp(null)}
                 className={cn(
                   "shrink-0 rounded-full px-3 py-1.5 kanban-caption font-medium transition-all",
-                  selectedWpId === wp.id
+                  selectedWpId === null
                     ? "bg-[var(--copper-500)] text-white"
                     : "bg-[var(--bg-warm-gray)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 )}
-                title={`${wp.code} – ${wp.name}`}
               >
-                <span className="font-mono">{wp.code}</span>
-                <span className="mx-1 opacity-60">·</span>
-                {wp.name}
+                All WP ({displayedWorkPackages.length})
               </button>
-            ))}
+              {displayedWorkPackages.map((wp) => (
+                <button
+                  key={wp.id}
+                  type="button"
+                  onClick={() => onSelectWp(wp.id)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDrop(e, wp.id);
+                  }}
+                  onDragOver={handleDragOver}
+                  className={cn(
+                    "shrink-0 rounded-full px-3 py-1.5 kanban-caption font-medium transition-all",
+                    selectedWpId === wp.id
+                      ? "bg-[var(--copper-500)] text-white"
+                      : "bg-[var(--bg-warm-gray)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  )}
+                  title={`${wp.code} – ${wp.name}`}
+                >
+                  <span className="font-mono">{wp.code}</span>
+                  <span className="mx-1 opacity-60">·</span>
+                  {wp.name}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>

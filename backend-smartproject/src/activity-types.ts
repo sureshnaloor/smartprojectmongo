@@ -27,6 +27,26 @@ export const ACTIVITY_TYPE_DESCRIPTIONS: Record<ProjectActivityType, string> = {
   progress_0_50_100: "Not started (0%), in progress (50%), or complete (100%)",
 };
 
+export const ACTIVITY_CATEGORY_TAGS = [
+  "materials-heavy",
+  "subcontract-heavy",
+  "resource-heavy",
+] as const;
+
+export type ActivityCategoryTag = (typeof ACTIVITY_CATEGORY_TAGS)[number];
+
+export const ACTIVITY_CATEGORY_TAG_LABELS: Record<ActivityCategoryTag, string> = {
+  "materials-heavy": "Materials Heavy",
+  "subcontract-heavy": "Subcontract Heavy",
+  "resource-heavy": "Resource Heavy",
+};
+
+export const ACTIVITY_CATEGORY_TAG_DESCRIPTIONS: Record<ActivityCategoryTag, string> = {
+  "materials-heavy": "High-value materials & equipment (Compressor, Motor, Transformer, Switchgear, SCADA, RTU, DCS)",
+  "subcontract-heavy": "External services & subcontracts (Specialized installation or outsourced scopes)",
+  "resource-heavy": "Normal installation & construction (Manpower, tools, and construction equipment)",
+};
+
 export function computeActivityBudget(activity: {
   activityType?: ProjectActivityType | string | null;
   quantity?: string | number | null;
@@ -94,6 +114,7 @@ export function validateProjectActivityPayload(data: {
   unitOfMeasure?: string | null;
   unitRate?: string | number | null;
   quantity?: string | number | null;
+  duration?: number | string | null;
   totalBudget?: string | number | null;
   milestones?: Array<{ name?: string; weightPercent?: number; achieved?: boolean }> | null;
   progressState?: number | null;
@@ -101,6 +122,13 @@ export function validateProjectActivityPayload(data: {
   const type = (data.activityType ?? "units") as ProjectActivityType;
 
   if (!data.name?.trim()) return "Activity name is required";
+
+  if (type === "lumpsum") {
+    data.unitOfMeasure = "LOT";
+    data.quantity = "1";
+    if (Number(data.totalBudget) <= 0) return "Total budget is required for lump sum activities";
+    return null;
+  }
 
   if (type === "units") {
     if (!data.unitOfMeasure?.trim()) return "Unit of measure is required for units activities";
@@ -110,16 +138,17 @@ export function validateProjectActivityPayload(data: {
   }
 
   if (type === "milestone") {
+    if (!data.duration || Number(data.duration) <= 0) {
+      return "Duration (number of days) is mandatory for milestone activities";
+    }
     if (Number(data.totalBudget) <= 0) return "Total budget is required for milestone activities";
     return validateMilestones(data.milestones);
   }
 
-  if (type === "lumpsum") {
-    if (Number(data.totalBudget) <= 0) return "Total budget is required for lump sum activities";
-    return null;
-  }
-
   if (type === "progress_0_50_100") {
+    if (!data.duration || Number(data.duration) <= 0) {
+      return "Duration (number of days) is mandatory for 0/50/100 activities";
+    }
     if (Number(data.totalBudget) <= 0) return "Total budget is required for 0/50/100 activities";
     const state = Number(data.progressState ?? 0);
     if (![0, 50, 100].includes(state)) {
@@ -131,16 +160,23 @@ export function validateProjectActivityPayload(data: {
   return "Invalid activity type";
 }
 
+/** Global activity master — budget is assigned per project when the activity is used. */
 export function validateGlobalActivityPayload(data: {
   activityType?: ProjectActivityType | string | null;
   name?: string;
   unitOfMeasure?: string | null;
   unitRate?: string | number | null;
+  duration?: number | string | null;
   milestones?: Array<{ name?: string; weightPercent?: number; achieved?: boolean }> | null;
 }): string | null {
   const type = (data.activityType ?? "units") as ProjectActivityType;
 
   if (!data.name?.trim()) return "Activity name is required";
+
+  if (type === "lumpsum") {
+    data.unitOfMeasure = "LOT";
+    return null;
+  }
 
   if (type === "units") {
     if (!data.unitOfMeasure?.trim()) return "Unit of measure is required for units activities";
@@ -148,11 +184,11 @@ export function validateGlobalActivityPayload(data: {
     return null;
   }
 
-  if (type === "milestone") {
-    return validateMilestones(data.milestones);
-  }
-
-  if (type === "lumpsum" || type === "progress_0_50_100") {
+  if (type === "milestone" || type === "progress_0_50_100") {
+    if (!data.duration || Number(data.duration) <= 0) {
+      return "Duration (number of days) is mandatory for " + (type === "milestone" ? "milestone" : "0/50/100") + " activities";
+    }
+    if (type === "milestone") return validateMilestones(data.milestones);
     return null;
   }
 

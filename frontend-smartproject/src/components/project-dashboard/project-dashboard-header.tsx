@@ -20,6 +20,7 @@ interface ProjectDashboardHeaderProps {
   activeTab?: DashboardTabKey;
   onImportWbs: () => void;
   scheduleStatus?: "on-track" | "behind" | "ahead";
+  wbsFinalized?: boolean;
 }
 
 export function ProjectDashboardHeader({
@@ -27,6 +28,7 @@ export function ProjectDashboardHeader({
   activeTab = "home",
   onImportWbs,
   scheduleStatus = "behind",
+  wbsFinalized = false,
 }: ProjectDashboardHeaderProps) {
   const [, setLocation] = useLocation();
   const [editOpen, setEditOpen] = useState(false);
@@ -75,11 +77,46 @@ export function ProjectDashboardHeader({
               <span className={cn("rounded-full px-2.5 py-0.5 kanban-caption font-semibold", statusBadge.className)}>
                 {statusBadge.label}
               </span>
+              <span className="h-1 w-1 rounded-full bg-[var(--text-muted)]" />
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 kanban-caption font-semibold border",
+                  (project as any).projectVersion === "estimation"
+                    ? "bg-purple-50 text-purple-700 border-purple-200"
+                    : (project as any).projectVersion === "planning"
+                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                )}
+              >
+                {((project as any).projectVersion || "execution").toUpperCase()} VERSION
+              </span>
             </div>
+            {((project as any).mappedEstimationProjectId || (project as any).mappedPlanningProjectId) && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
+                <span className="font-medium text-[var(--text-secondary)]">Mapped Versions:</span>
+                {(project as any).mappedEstimationProjectId && (
+                  <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 font-medium text-purple-700 border border-purple-100">
+                    Estimation Project #{(project as any).mappedEstimationProjectId}
+                  </span>
+                )}
+                {(project as any).mappedPlanningProjectId && (
+                  <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 font-medium text-blue-700 border border-blue-100">
+                    Planning Project #{(project as any).mappedPlanningProjectId}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex shrink-0 items-center gap-3">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={onImportWbs}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={onImportWbs}
+              disabled={wbsFinalized}
+              title={wbsFinalized ? "WBS is finalized — create an amendment to import" : "Import WBS from CSV or Excel"}
+            >
               <Upload className="h-4 w-4" />
               Import WBS
             </Button>

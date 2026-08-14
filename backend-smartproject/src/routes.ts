@@ -18,6 +18,62 @@ import {
   workingHoursBetween,
 } from "./work-calendar.js";
 import { runResourceOnboarding, getLatestOnboardingSummary } from "./resource-onboarding.js";
+import {
+  canAmendProject,
+  copyProjectAsAmendment,
+  getProjectBaseName,
+  nextAmendmentName,
+} from "./project-amendment";
+
+const WBS_FINALIZED_MESSAGE =
+  "WBS structure is finalized. Create a project amendment to revise the structure.";
+
+async function assertProjectWbsEditable(
+  projectId: number,
+  res: Response
+): Promise<boolean> {
+  const project = await storage.getProject(projectId);
+  if (!project) {
+    res.status(404).json({ message: "Project not found" });
+    return false;
+  }
+  if ((project as { wbsFinalized?: boolean }).wbsFinalized) {
+    res.status(400).json({ message: WBS_FINALIZED_MESSAGE });
+    return false;
+  }
+  return true;
+}
+
+export async function getLatestProjectInFamily(projectId: number) {
+  const project = await storage.getProject(projectId);
+  if (!project) return null;
+
+  const allProjects = await storage.getProjects();
+  let root = project;
+  while ((root as any).amendedFromId != null) {
+    const parent = allProjects.find((p) => p.id === (root as any).amendedFromId);
+    if (!parent) break;
+    root = parent;
+  }
+
+  const baseName = (root.name as string).replace(/_amd_\d+$/i, "");
+  const amdRe = new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}_amd_(\\d+)$`, "i");
+  let latest = root;
+  let maxVer = 0;
+
+  for (const p of allProjects) {
+    const m = (p.name as string).match(amdRe);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > maxVer) {
+        maxVer = n;
+        latest = p;
+      }
+    }
+  }
+
+  return latest;
+}
 
 async function normalizeAndValidateGlobalActivity(
   data: {
@@ -412,7 +468,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/projects", async (req: Request, res: Response) => {
     try {
       const projectData = projectSchema.parse(req.body);
-      const project = await storage.createProject(projectData);
+      const creatorId = req.user?.id ?? null;
+      const project = await storage.createProject({
+        ...projectData,
+        createdById: creatorId,
+        amendedFromId: null,
+        amendmentNumber: null,
+      } as any);
 
       // Single project root + 3 default phase WBS children
       const totalBudget = Number(project.budget);
@@ -488,6 +550,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Use the project schema in partial mode for validation
       const projectData = projectSchema.partial().parse(req.body);
+
+      // WBS finalize flag is controlled only via /wbs/finalize (and never un-finalized)
+      if ("wbsFinalized" in projectData) {
+        delete (projectData as { wbsFinalized?: boolean }).wbsFinalized;
+      }
 
       // Check if budget is being changed
       if (projectData.budget !== undefined && Number(projectData.budget) !== Number(project.budget)) {
@@ -723,12 +790,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid project ID" });
       }
 
-      const project = await storage.getProject(projectId);
-      if (!project) {
+      const targetProject = await getLatestProjectInFamily(projectId);
+      if (!targetProject) {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const activities = await storage.getProjectActivities(projectId);
+      const activities = await storage.getProjectActivities(targetProject.id);
       res.json(activities);
     } catch (err) {
       handleError(err, res);
@@ -2022,13 +2089,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid project ID" });
       }
 
+      const targetProject = await getLatestProjectInFamily(projectId);
+      if (!targetProject) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      const wbsItems = await storage.getWbsItems(targetProject.id);
+      res.json(wbsItems);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  /**
+   * GET /api/projects/:projectId/wbs-versions
+   * Returns all projects in the amendment family of the given project,
+   * ordered by version number (0 = original, 1 = amd_1, etc.).
+   * Each entry includes: id, name, amendmentNumber, wbsFinalized, createdAt,
+   * versionNumber (0-based), versionLabel, isCurrent.
+   */
+  app.get("/api/projects/:projectId/wbs-versions", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) {
+        return res.status(400).json({ message: "Invalid project ID" });
+      }
+
       const project = await storage.getProject(projectId);
       if (!project) {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const wbsItems = await storage.getWbsItems(projectId);
-      res.json(wbsItems);
+      const allProjects = await storage.getProjects();
+
+      // Walk backward to find the root (original) project
+      let root: typeof project = project as typeof project;
+      while ((root as any).amendedFromId != null) {
+        const parent = allProjects.find((p) => p.id === (root as any).amendedFromId);
+        if (!parent) break;
+        root = parent as typeof project;
+      }
+
+      // The base name is the root's name (no _amd_ suffix)
+      const baseName = (root.name as string).replace(/_amd_\d+$/i, "");
+
+      // Collect all projects in this family: root + any _amd_ siblings
+      const family: Array<{
+        id: number;
+        name: string;
+        amendmentNumber: number | null;
+        wbsFinalized: boolean;
+        createdAt: Date | string | null;
+        versionNumber: number;
+        versionLabel: string;
+        isCurrent: boolean;
+      }> = [];
+
+      // Add root (version 0)
+      family.push({
+        id: root.id,
+        name: root.name as string,
+        amendmentNumber: null,
+        wbsFinalized: Boolean((root as any).wbsFinalized),
+        createdAt: (root as any).createdAt ?? null,
+        versionNumber: 0,
+        versionLabel: "v0 — Original",
+        isCurrent: false,
+      });
+
+      // Add all amendments
+      const amdRe = new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}_amd_(\\d+)$`, "i");
+      for (const p of allProjects) {
+        const m = (p.name as string).match(amdRe);
+        if (m && p.id !== root.id) {
+          const n = parseInt(m[1], 10);
+          family.push({
+            id: p.id,
+            name: p.name as string,
+            amendmentNumber: (p as any).amendmentNumber ?? n,
+            wbsFinalized: Boolean((p as any).wbsFinalized),
+            createdAt: (p as any).createdAt ?? null,
+            versionNumber: n,
+            versionLabel: `v${n} — Amendment ${n}`,
+            isCurrent: false,
+          });
+        }
+      }
+
+      // Sort by versionNumber
+      family.sort((a, b) => a.versionNumber - b.versionNumber);
+
+      // Mark the most recent version as current
+      if (family.length > 0) {
+        family[family.length - 1].isCurrent = true;
+      }
+
+      res.json(family);
     } catch (err) {
       handleError(err, res);
     }
@@ -2069,8 +2225,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/projects/:projectId/work-packages", async (req: Request, res: Response) => {
+  /**
+   * Create a WBS amendment: deep-copy project + WBS + work packages into
+   * `{baseName}_amd_{n}` with wbsFinalized=false. Admin or project creator only.
+   */
+  app.post("/api/projects/:projectId/amend", async (req: Request, res: Response) => {
     try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Authentication required to create a project amendment" });
+      }
+
       const projectId = parseInt(req.params.projectId);
       if (isNaN(projectId)) {
         return res.status(400).json({ message: "Invalid project ID" });
@@ -2081,7 +2245,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const workPackages = await storage.getWorkPackagesByProject(projectId);
+      if (!(project as { wbsFinalized?: boolean }).wbsFinalized) {
+        return res.status(400).json({
+          message: "Project WBS must be finalized before creating an amendment",
+        });
+      }
+
+      if (!canAmendProject(req.user, project as { createdById?: number | null })) {
+        return res.status(403).json({
+          message: "Only the project creator or an admin can create a project amendment",
+        });
+      }
+
+      const allProjects = await storage.getProjects();
+      const baseName = getProjectBaseName(project.name);
+      const { name, amendmentNumber } = nextAmendmentName(
+        baseName,
+        allProjects.map((p) => p.name)
+      );
+
+      const result = await copyProjectAsAmendment(storage, project, {
+        createdById: req.user.id,
+        name,
+        amendmentNumber,
+      });
+
+      res.status(201).json({
+        ok: true,
+        project: result.project,
+        wbsCount: result.wbsCount,
+        wpCount: result.wpCount,
+        message: `Created amendment "${name}"`,
+      });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/projects/:projectId/work-packages", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) {
+        return res.status(400).json({ message: "Invalid project ID" });
+      }
+
+      const targetProject = await getLatestProjectInFamily(projectId);
+      if (!targetProject) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      const workPackages = await storage.getWorkPackagesByProject(targetProject.id);
       res.json(workPackages);
     } catch (err) {
       handleError(err, res);
@@ -2116,11 +2329,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const allWbsItems = await storage.getWbsItems(wbsItemData.projectId);
+      if ((project as { wbsFinalized?: boolean }).wbsFinalized) {
+        return res.status(400).json({ message: WBS_FINALIZED_MESSAGE });
+      }
+
       let level = 1;
       let code = "";
       let type: "Summary" | "WBS" | "Activity" | "WorkPackage" = wbsItemData.type;
       let isTopLevel = false;
+
+      // Helper function to get all projects in this project's amendment family
+      const getFamilyProjects = async (pId: number) => {
+        const p = await storage.getProject(pId);
+        if (!p) return [];
+        const allProjects = await storage.getProjects();
+        let root = p;
+        while ((root as any).amendedFromId != null) {
+          const parent = allProjects.find((x) => x.id === (root as any).amendedFromId);
+          if (!parent) break;
+          root = parent;
+        }
+        const baseName = (root.name as string).replace(/_amd_\d+$/i, "");
+        const amdRe = new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}_amd_(\\d+)$`, "i");
+        return allProjects.filter((x) => x.id === root.id || x.name === baseName || amdRe.test(x.name as string));
+      };
+
+      const familyProjects = await getFamilyProjects(wbsItemData.projectId);
 
       if (!wbsItemData.parentId) {
         // Root level
@@ -2128,9 +2362,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type = "Summary";
         isTopLevel = true;
 
-        // Count existing top-level items to determine next number
-        const topLevelItems = allWbsItems.filter(item => !item.parentId);
-        code = (topLevelItems.length + 1).toString();
+        // Scan all family projects for maximum root-level code number
+        let maxSeq = 0;
+        for (const fp of familyProjects) {
+          const fpWbs = await storage.getWbsItems(fp.id);
+          for (const item of fpWbs) {
+            if (!item.parentId || item.level === 1) {
+              if (item.code) {
+                const match = item.code.match(/^(\d+)$/);
+                if (match) {
+                  maxSeq = Math.max(maxSeq, parseInt(match[1], 10));
+                }
+              }
+            }
+          }
+        }
+        maxSeq = Math.max(maxSeq, (project as any).maxRootWbsIndex || 0);
+        const nextSeq = maxSeq + 1;
+        code = nextSeq.toString();
+
+        await storage.updateProject(project.id, { maxRootWbsIndex: nextSeq } as any);
       } else {
         // Child level
         const parentWbsItem = await storage.getWbsItem(wbsItemData.parentId);
@@ -2154,21 +2405,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type = "WBS";
         isTopLevel = false;
 
-        // Count existing siblings to determine next sub-number
-        const siblings = allWbsItems.filter(item => item.parentId === wbsItemData.parentId);
-        code = `${parentWbsItem.code}.${siblings.length + 1}`;
+        const parentCode = parentWbsItem.code;
+        const childCodeRe = new RegExp(`^${parentCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(\\d+)$`);
+
+        let maxSeq = 0;
+        for (const fp of familyProjects) {
+          const fpWbs = await storage.getWbsItems(fp.id);
+          for (const item of fpWbs) {
+            if (item.code) {
+              const match = item.code.match(childCodeRe);
+              if (match) {
+                maxSeq = Math.max(maxSeq, parseInt(match[1], 10));
+              }
+            }
+          }
+        }
+        maxSeq = Math.max(maxSeq, (parentWbsItem as any).maxChildIndex || 0);
+        const nextSeq = maxSeq + 1;
+        code = `${parentCode}.${nextSeq}`;
+
+        await storage.updateWbsItem(parentWbsItem.id, { maxChildIndex: nextSeq } as any);
 
         // BUDGET VALIDATION
+        const allWbsItems = await storage.getWbsItems(wbsItemData.projectId);
+        const siblings = allWbsItems.filter((item) => item.parentId === wbsItemData.parentId);
         if (wbsItemData.budgetedCost && Number(wbsItemData.budgetedCost) > Number(parentWbsItem.budgetedCost)) {
           return res.status(400).json({
-            message: `Budget cannot exceed parent's budget of ${parentWbsItem.budgetedCost}`
+            message: `Budget cannot exceed parent's budget of ${parentWbsItem.budgetedCost}`,
           });
         }
 
         const siblingsSum = siblings.reduce((sum, sibling) => sum + Number(sibling.budgetedCost), 0);
-        if (wbsItemData.budgetedCost && (siblingsSum + Number(wbsItemData.budgetedCost)) > Number(parentWbsItem.budgetedCost)) {
+        if (wbsItemData.budgetedCost && siblingsSum + Number(wbsItemData.budgetedCost) > Number(parentWbsItem.budgetedCost)) {
           return res.status(400).json({
-            message: `Sum of all child budgets (${siblingsSum + wbsItemData.budgetedCost}) cannot exceed parent's budget (${parentWbsItem.budgetedCost})`
+            message: `Sum of all child budgets (${siblingsSum + Number(wbsItemData.budgetedCost)}) cannot exceed parent's budget (${parentWbsItem.budgetedCost})`,
           });
         }
       }
@@ -2201,6 +2471,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!wbsItem) {
         return res.status(404).json({ message: "WBS item not found" });
       }
+
+      if (!(await assertProjectWbsEditable(wbsItem.projectId, res))) return;
 
       const partialWbsSchema = baseWbsSchema.partial();
       const wbsItemData = partialWbsSchema.parse(req.body);
@@ -2343,13 +2615,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "WBS item not found" });
       }
 
-      // Don't allow deletion of top-level WBS items
-      if (wbsItem.isTopLevel) {
-        return res.status(400).json({ message: "Cannot delete top-level WBS items" });
+      if (!(await assertProjectWbsEditable(wbsItem.projectId, res))) return;
+
+      // Get all WBS items in this project to traverse the hierarchy
+      const allWbs = await storage.getWbsItems(wbsItem.projectId);
+
+      // Recursively collect all descendant WBS item IDs
+      const getDescendantIds = (parentId: number): number[] => {
+        const children = allWbs.filter((c) => c.parentId === parentId);
+        let ids = children.map((c) => c.id);
+        for (const child of children) {
+          ids = [...ids, ...getDescendantIds(child.id)];
+        }
+        return ids;
+      };
+
+      const descendantIds = getDescendantIds(id);
+      const allWbsIdsToDelete = [id, ...descendantIds];
+
+      // Delete all Work Packages and WBS items in reverse order (bottom up)
+      for (const wbsId of allWbsIdsToDelete.reverse()) {
+        const wps = await storage.getWorkPackagesByWbsItem(wbsId);
+        for (const wp of wps) {
+          await storage.deleteWorkPackage(wp.id);
+        }
+        await storage.deleteWbsItem(wbsId);
       }
 
-      await storage.deleteWbsItem(id);
-      res.status(204).end();
+      res.status(200).json({ message: "WBS item, all sub-items, and associated work packages deleted successfully" });
     } catch (err) {
       handleError(err, res);
     }
@@ -2416,6 +2709,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
+      if ((project as { wbsFinalized?: boolean }).wbsFinalized) {
+        return res.status(400).json({ message: WBS_FINALIZED_MESSAGE });
+      }
+
       const parentWbsChildren = (await storage.getWbsItems(workPackageData.projectId)).filter(
         (child) =>
           child.parentId === wbsItem.id &&
@@ -2430,18 +2727,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let code = workPackageData.code;
       if (!code) {
-        const existingWorkPackages = await storage.getWorkPackagesByWbsItem(workPackageData.wbsItemId);
-        const sequentialIndex = existingWorkPackages.length + 1;
-        // Code format: {wbsCode}.{sequentialIndex}
-        // e.g., if WBS code is "1.2.1.1", WP codes will be "1.2.1.1.1", "1.2.1.1.2", etc.
-        code = `${wbsItem.code}.${sequentialIndex}`;
+        // Helper function to get all projects in this project's amendment family
+        const getFamilyProjects = async (pId: number) => {
+          const p = await storage.getProject(pId);
+          if (!p) return [];
+          const allProjects = await storage.getProjects();
+          let root = p;
+          while ((root as any).amendedFromId != null) {
+            const parent = allProjects.find((x) => x.id === (root as any).amendedFromId);
+            if (!parent) break;
+            root = parent;
+          }
+          const baseName = (root.name as string).replace(/_amd_\d+$/i, "");
+          const amdRe = new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}_amd_(\\d+)$`, "i");
+          return allProjects.filter((x) => x.id === root.id || x.name === baseName || amdRe.test(x.name as string));
+        };
+
+        const familyProjects = await getFamilyProjects(workPackageData.projectId);
+        const parentCode = wbsItem.code;
+        const wpCodeRe = new RegExp(`^${parentCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(\\d+)$`);
+
+        let maxSeq = 0;
+        for (const fp of familyProjects) {
+          const fpWps = await storage.getWorkPackagesByProject(fp.id);
+          for (const wp of fpWps) {
+            if (wp.code) {
+              const match = wp.code.match(wpCodeRe);
+              if (match) {
+                maxSeq = Math.max(maxSeq, parseInt(match[1], 10));
+              }
+            }
+          }
+        }
+        maxSeq = Math.max(maxSeq, (wbsItem as any).maxWpIndex || 0);
+        const nextSeq = maxSeq + 1;
+        code = `${parentCode}.${nextSeq}`;
+
+        await storage.updateWbsItem(wbsItem.id, { maxWpIndex: nextSeq } as any);
       } else {
         // Validate code uniqueness within project
         const allProjectWorkPackages = await storage.getWorkPackagesByProject(workPackageData.projectId);
-        const codeExists = allProjectWorkPackages.some(wp => wp.code === code);
+        const codeExists = allProjectWorkPackages.some((wp) => wp.code === code);
         if (codeExists) {
           return res.status(400).json({
-            message: `Work Package code "${code}" already exists in this project. Code must be unique within a project.`
+            message: `Work Package code "${code}" already exists in this project. Code must be unique within a project.`,
           });
         }
       }
@@ -2487,6 +2816,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!workPackage) {
         return res.status(404).json({ message: "Work package not found" });
       }
+
+      if (!(await assertProjectWbsEditable(workPackage.projectId, res))) return;
 
       const partialWorkPackageSchema = insertWorkPackageSchema.partial();
       const workPackageData = partialWorkPackageSchema.parse(req.body);
@@ -2548,6 +2879,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const workPackage = await storage.getWorkPackage(id);
       if (!workPackage) {
         return res.status(404).json({ message: "Work package not found" });
+      }
+
+      if (!(await assertProjectWbsEditable(workPackage.projectId, res))) return;
+
+      // Validate that this Work Package is not a "lone" Work Package
+      const siblings = await storage.getWorkPackagesByWbsItem(workPackage.wbsItemId);
+      if (siblings.length <= 1) {
+        return res.status(400).json({
+          message:
+            "Cannot delete lone Work Package. Please delete the parent WBS item instead, or add another sibling Work Package before deleting this one.",
+        });
       }
 
       await storage.deleteWorkPackage(id);
@@ -2797,6 +3139,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
+      if ((project as { wbsFinalized?: boolean }).wbsFinalized) {
+        return res.status(400).json({ message: WBS_FINALIZED_MESSAGE });
+      }
+
       const normalizeWbsTypeCsv = (raw: unknown): string | null => {
         if (raw == null) return null;
         const s = String(raw)
@@ -2804,12 +3150,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .replace(/[\u200B-\u200D\uFEFF]/g, "")
           .normalize("NFKC")
           .trim();
+        if (!s) return null;
         const compact = s.replace(/\s+/g, "");
         if (["SUMMARY", "WBS", "WorkPackage"].includes(compact)) return compact;
         const key = s.toLowerCase().replace(/[\s_-]+/g, "");
-        if (key === "summary") return "SUMMARY";
-        if (key === "wbs") return "WBS";
-        if (key === "workpackage") return "WorkPackage";
+        if (key === "summary" || key === "project" || key === "root") return "SUMMARY";
+        if (key === "wbs" || key === "wbsitem" || key === "phase") return "WBS";
+        if (key === "workpackage" || key === "wp" || key === "leaf" || key === "activity" || key === "task") {
+          return "WorkPackage";
+        }
         return null;
       };
 
@@ -2839,9 +3188,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return 0;
       });
 
+      // Infer types when blank: L1=SUMMARY, has children=WBS, leaf depth>=3=WorkPackage
+      const codesInFile = new Set(sortedRows.map((r: { wbsCode: string }) => r.wbsCode));
+      const parentsWithChildren = new Set<string>();
+      for (const code of codesInFile) {
+        const parts = String(code).split(".");
+        if (parts.length > 1) parentsWithChildren.add(parts.slice(0, -1).join("."));
+      }
+
       for (const row of sortedRows) {
         const n = normalizeWbsTypeCsv((row as { wbsType?: unknown }).wbsType);
-        if (n) (row as { wbsType: string }).wbsType = n;
+        if (n) {
+          (row as { wbsType: string }).wbsType = n;
+          continue;
+        }
+        const code = String(row.wbsCode || "");
+        const level = code.split(".").length;
+        if (level === 1) (row as { wbsType: string }).wbsType = CSV_TYPE_SUMMARY;
+        else if (parentsWithChildren.has(code) || level < 3) (row as { wbsType: string }).wbsType = CSV_TYPE_WBS;
+        else (row as { wbsType: string }).wbsType = CSV_TYPE_WP;
       }
 
       // First pass: validate hierarchy (aligned with wbs-validation.ts, up to MAX_WBS_LEVEL)
@@ -2883,11 +3248,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           continue;
         }
 
-        const budgetVal = row.budget != null ? row.budget : row.amount;
-        const budgetNum = Number(budgetVal);
-        if (budgetVal === undefined || budgetVal === null || budgetVal === "" || isNaN(budgetNum) || budgetNum < 0) {
-          errors.push(`Row ${code}: Valid budget (number >= 0) required`);
-          continue;
+        // Budget optional — empty defaults to 0 (structure import before budgeting)
+        const budgetVal = row.budget != null && row.budget !== "" ? row.budget : row.amount;
+        if (budgetVal !== undefined && budgetVal !== null && budgetVal !== "") {
+          const budgetNum = Number(String(budgetVal).replace(/,/g, ""));
+          if (isNaN(budgetNum) || budgetNum < 0) {
+            errors.push(`Row ${code}: Valid budget (number >= 0) required when provided`);
+            continue;
+          }
         }
 
         if (level > 1) {
@@ -2939,8 +3307,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const codeParts = code.split(".");
         const level = codeParts.length;
         const csvType = (row.wbsType || "").trim();
-        const budgetVal = row.budget != null ? row.budget : row.amount;
-        const budgetStr = String(Number(budgetVal));
+        const budgetRaw = row.budget != null && row.budget !== "" ? row.budget : row.amount;
+        const budgetStr =
+          budgetRaw === undefined || budgetRaw === null || budgetRaw === ""
+            ? "0"
+            : String(Number(String(budgetRaw).replace(/,/g, "")));
 
         if (csvType === CSV_TYPE_WP) {
           // WorkPackage: insert into work_packages table; parent must be a WBS (Summary) node
@@ -4875,44 +5246,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerCorrespondenceRoutes(app, db, "subcontract-correspondence", "subcontract-correspondence", handleError);
   registerCorrespondenceRoutes(app, db, "internal-correspondence", "internal-correspondence", handleError);
   registerWikiRecordRoutes(app, handleError);
-
-  // DELETE a WBS item (recursively deletes children)
-  app.delete("/api/wbs/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-
-      const wbsItem = await storage.getWbsItem(id);
-      if (!wbsItem) {
-        return res.status(404).json({ message: "WBS item not found" });
-      }
-
-      // Recursive function to get all child IDs
-      const getAllChildIds = async (parentId: number): Promise<number[]> => {
-        const children = await storage.getWbsItemsByParentId(parentId);
-        let ids = children.map(c => c.id);
-        for (const child of children) {
-          const subChildIds = await getAllChildIds(child.id);
-          ids = [...ids, ...subChildIds];
-        }
-        return ids;
-      };
-
-      const childIds = await getAllChildIds(id);
-
-      // Delete all children first
-      for (const childId of childIds.reverse()) { // Reverse to delete from bottom up
-        await storage.deleteWbsItem(childId);
-      }
-
-      // Finally delete the item itself
-      await storage.deleteWbsItem(id);
-
-      res.json({ message: "WBS item and all children deleted successfully" });
-    } catch (error: any) {
-      console.error("Error deleting WBS item:", error);
-      res.status(500).json({ message: error.message });
-    }
-  });
 
   // Request For Inspection routes
   app.post("/api/projects/:projectId/request-for-inspection/upload", async (req: Request, res: Response) => {
@@ -7282,7 +7615,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const projectId = parseInt(req.params.projectId);
       if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
-      const rows = await storage.getWorkPackageMaterials({ projectId });
+      const targetProject = await getLatestProjectInFamily(projectId);
+      const rows = await storage.getWorkPackageMaterials({ projectId: targetProject ? targetProject.id : projectId });
       const result = await enrichWorkPackageMaterials(rows as unknown as Array<Record<string, unknown>>);
       res.json(result);
     } catch (err) {

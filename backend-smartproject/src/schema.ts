@@ -66,8 +66,9 @@ export const insertUserSchema = z.object({
   email: z.string().email(),
   name: z.string(),
   picture: z.string().optional().nullable(),
-  provider: z.enum(['google', 'linkedin', 'email']),
+  provider: z.enum(['google', 'linkedin', 'email', 'bypass']),
   providerId: z.string(),
+  role: z.enum(['admin', 'user']).optional().default('user'),
 });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = InsertUser & { id: number; createdAt: Date; updatedAt: Date };
@@ -92,6 +93,18 @@ export const insertProjectSchema = z.object({
   wbsFinalized: z.boolean().optional().default(false),
   planVersion: z.number().default(0),
   sequenceVersion: z.number().default(0),
+  /** User id of the project creator (may amend WBS after finalize) */
+  createdById: z.number().optional().nullable(),
+  /** Source project id when this project is a WBS amendment copy */
+  amendedFromId: z.number().optional().nullable(),
+  /** N in name suffix `_amd_N` */
+  amendmentNumber: z.number().optional().nullable(),
+  /** Project version: 'estimation' | 'planning' | 'execution' (defaults to 'execution') */
+  projectVersion: z.enum(["estimation", "planning", "execution"]).optional().nullable().default("execution"),
+  /** Mapped estimation project ID (optional, when projectVersion is 'execution') */
+  mappedEstimationProjectId: z.number().optional().nullable(),
+  /** Mapped planning project ID (optional, when projectVersion is 'execution') */
+  mappedPlanningProjectId: z.number().optional().nullable(),
 });
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Project = InsertProject & { id: number; createdAt: Date };
@@ -328,6 +341,7 @@ export const insertProjectActivitySchema = z.object({
   wpId: z.number(),
   globalActivityId: z.number().optional().nullable(),
   activityType: projectActivityTypeEnum.default("units"),
+  categoryTag: z.enum(["materials-heavy", "subcontract-heavy", "resource-heavy"]).optional().nullable(),
   name: z.string(),
   description: z.string().optional().nullable(),
   unitOfMeasure: z.string().optional().nullable(),

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ChevronDown, CloudUpload, Hand, Package, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatCurrency } from "@/lib/utils";
-import type { ProjectActivityAssignment, WorkPackageItem } from "./constants";
+import { getCategoryTagBadge, type ProjectActivityAssignment, type WorkPackageItem } from "./constants";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export type ActivityMappingMode = "duration" | "date-range";
@@ -224,7 +224,20 @@ export function ActivitiesWorkPackagesPanel({
                             {wp ? `${wp.code} – ${wp.name}` : "—"}
                           </td>
                         )}
-                        <td className="px-3 py-2.5 kanban-body-sm text-[var(--text-primary)]">{row.name}</td>
+                        <td className="px-3 py-2.5 kanban-body-sm text-[var(--text-primary)]">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium">{row.name}</span>
+                            {(() => {
+                              const tagBadge = getCategoryTagBadge(row.categoryTag);
+                              if (!tagBadge) return null;
+                              return (
+                                <span className={cn("inline-flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded font-medium border w-fit", tagBadge.className)}>
+                                  {tagBadge.icon} {tagBadge.label}
+                                </span>
+                              );
+                            })()}
+                          </div>
+                        </td>
                         <td className="px-3 py-2.5 text-right kanban-body-sm font-mono">{row.quantity}</td>
                         <td className="px-3 py-2.5 kanban-body-sm text-[var(--text-secondary)]">{row.unitOfMeasure}</td>
                         <td className="px-3 py-2.5 text-right kanban-body-sm font-mono text-[var(--text-secondary)]">

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import * as XLSX from "xlsx";
 import { csvImportSchema } from "@/types";
 
 export async function parseCsvFile(file: File): Promise<{ data: any[]; errors: string[] }> {
@@ -172,9 +173,18 @@ export function validateCsvData(data: any[]): any {
 const WBS_TYPES = ["SUMMARY", "WBS", "WorkPackage"] as const;
 const MAX_WBS_LEVEL = 9;
 
+export type WbsImportRow = {
+  wbsCode: string;
+  wbsName: string;
+  wbsType: (typeof WBS_TYPES)[number];
+  wbsDescription: string;
+  budget: string;
+  amount: string;
+};
+
 /** Strip BOM, zero-width chars, normalize unicode (Excel often emits odd spaces). */
 function cleanCsvCell(raw: string): string {
-  let s = raw
+  let s = String(raw ?? "")
     .replace(/^\uFEFF/g, "")
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .normalize("NFKC")
@@ -187,7 +197,6 @@ function cleanCsvCell(raw: string): string {
 
 /**
  * Parse one CSV line respecting quoted fields (commas inside "..." do not split).
- * Naive split(",") breaks when wbsDescription contains commas and shifts wbsType.
  */
 function parseCsvRowLine(line: string, delimiter: string): string[] {
   const out: string[] = [];
@@ -221,86 +230,208 @@ function detectWbsDelimiter(headerLine: string): string {
   return ",";
 }
 
+/** Map spreadsheet / P6 / ERP header labels onto canonical field names. */
+function canonicalizeWbsHeader(raw: string): string {
+  const key = cleanCsvCell(raw)
+    .toLowerCase()
+    .replace(/[\s_\-./]+/g, "");
+  const map: Record<string, string> = {
+    wbscode: "wbsCode",
+    code: "wbsCode",
+    wbs: "wbsCode",
+    wbsid: "wbsCode",
+    activityid: "wbsCode",
+    activitycode: "wbsCode",
+    taskcode: "wbsCode",
+    outlinecode: "wbsCode",
+    wbsname: "wbsName",
+    name: "wbsName",
+    activityname: "wbsName",
+    taskname: "wbsName",
+    title: "wbsName",
+    description: "wbsDescription",
+    wbsdescription: "wbsDescription",
+    desc: "wbsDescription",
+    remarks: "wbsDescription",
+    wbstype: "wbsType",
+    type: "wbsType",
+    nodetype: "wbsType",
+    itemtype: "wbsType",
+    budget: "budget",
+    amount: "budget",
+    budgetedcost: "budget",
+    originalbudget: "budget",
+    plannedbudget: "budget",
+    cost: "budget",
+  };
+  return map[key] ?? cleanCsvCell(raw);
+}
+
 /** Accept common spreadsheet variants (case, camelCase, spaces). */
 function normalizeWbsType(raw: string): (typeof WBS_TYPES)[number] | null {
   const s = cleanCsvCell(raw || "");
+  if (!s) return null;
   const compact = s.replace(/\s+/g, "");
   if (WBS_TYPES.includes(compact as (typeof WBS_TYPES)[number])) {
     return compact as (typeof WBS_TYPES)[number];
   }
   const key = s.toLowerCase().replace(/[\s_-]+/g, "");
-  if (key === "summary") return "SUMMARY";
-  if (key === "wbs") return "WBS";
-  if (key === "workpackage") return "WorkPackage";
+  if (key === "summary" || key === "project" || key === "root") return "SUMMARY";
+  if (key === "wbs" || key === "wbsitem" || key === "phase" || key === "summarywbs") return "WBS";
+  if (
+    key === "workpackage" ||
+    key === "wp" ||
+    key === "leaf" ||
+    key === "activity" || // P6 leaf activities map to our work packages
+    key === "task"
+  ) {
+    return "WorkPackage";
+  }
   return null;
 }
 
-export function parseWbsCsvText(text: string): { data: any[]; errors: string[] } {
+/**
+ * When wbsType is blank: level 1 → SUMMARY; nodes with children → WBS; leaves (depth ≥ 3) → WorkPackage.
+ */
+export function inferWbsTypes(
+  rows: { wbsCode: string; wbsType?: string | null }[]
+): { wbsCode: string; wbsType: (typeof WBS_TYPES)[number] }[] {
+  const codes = new Set(rows.map((r) => r.wbsCode));
+  const hasChild = new Set<string>();
+  Array.from(codes).forEach((code) => {
+    const parts = code.split(".");
+    if (parts.length > 1) {
+      hasChild.add(parts.slice(0, -1).join("."));
+    }
+  });
+
+  return rows.map((row) => {
+    const explicit = normalizeWbsType(String(row.wbsType ?? ""));
+    if (explicit) return { wbsCode: row.wbsCode, wbsType: explicit };
+
+    const level = row.wbsCode.split(".").length;
+    if (level === 1) return { wbsCode: row.wbsCode, wbsType: "SUMMARY" };
+    if (hasChild.has(row.wbsCode)) return { wbsCode: row.wbsCode, wbsType: "WBS" };
+    // Leaf under root (1.x) cannot be WP (min depth 3) — treat as WBS needing children
+    if (level < 3) return { wbsCode: row.wbsCode, wbsType: "WBS" };
+    return { wbsCode: row.wbsCode, wbsType: "WorkPackage" };
+  });
+}
+
+function parseBudgetCell(raw: string): { ok: boolean; value: string; error?: string } {
+  const s = cleanCsvCell(raw);
+  if (!s) return { ok: true, value: "0" }; // optional — structure first
+  const cleaned = s.replace(/,/g, "").replace(/[^\d.-]/g, "");
+  const n = Number(cleaned);
+  if (isNaN(n) || n < 0) return { ok: false, value: "0", error: "budget must be a number >= 0" };
+  return { ok: true, value: String(n) };
+}
+
+function rowsFromHeaderAndMatrix(
+  headersRaw: string[],
+  matrix: string[][]
+): { data: WbsImportRow[]; errors: string[] } {
+  const headers = headersRaw.map(canonicalizeWbsHeader);
+  const codeIdx = headers.indexOf("wbsCode");
+  const nameIdx = headers.indexOf("wbsName");
+  if (codeIdx < 0 || nameIdx < 0) {
+    return {
+      data: [],
+      errors: [
+        "Missing required columns for code and name. Use headers like: wbsCode, wbsName, wbsType, wbsDescription, budget (aliases: Code, Name, Type, Description, Budget).",
+      ],
+    };
+  }
+
+  const typeIdx = headers.indexOf("wbsType");
+  const descIdx = headers.indexOf("wbsDescription");
+  const budgetIdx = headers.indexOf("budget");
+
+  const draft: {
+    wbsCode: string;
+    wbsName: string;
+    wbsType?: string;
+    wbsDescription: string;
+    budget: string;
+    line: number;
+  }[] = [];
+  const errors: string[] = [];
+
+  for (let i = 0; i < matrix.length; i++) {
+    const values = matrix[i];
+    const line = i + 2; // header is line 1
+    const wbsCode = cleanCsvCell(values[codeIdx] ?? "");
+    const wbsName = cleanCsvCell(values[nameIdx] ?? "");
+    if (!wbsCode && !wbsName) continue;
+    if (!wbsCode) {
+      errors.push(`Line ${line}: Missing WBS code`);
+      continue;
+    }
+    if (!wbsName) {
+      errors.push(`Line ${line}: Missing WBS name`);
+      continue;
+    }
+    const budgetRaw = budgetIdx >= 0 ? values[budgetIdx] ?? "" : "";
+    const budgetParsed = parseBudgetCell(budgetRaw);
+    if (!budgetParsed.ok) {
+      errors.push(`Line ${line}: ${budgetParsed.error}`);
+      continue;
+    }
+    draft.push({
+      wbsCode,
+      wbsName,
+      wbsType: typeIdx >= 0 ? values[typeIdx] : "",
+      wbsDescription: descIdx >= 0 ? cleanCsvCell(values[descIdx] ?? "") : "",
+      budget: budgetParsed.value,
+      line,
+    });
+  }
+
+  const inferred = inferWbsTypes(draft);
+  const inferredByCode = new Map(inferred.map((r) => [r.wbsCode, r.wbsType]));
+
+  const data: WbsImportRow[] = [];
+  for (const row of draft) {
+    const wbsType = inferredByCode.get(row.wbsCode);
+    if (!wbsType) {
+      errors.push(`Line ${row.line}: Could not determine type for ${row.wbsCode}`);
+      continue;
+    }
+    // If user supplied an invalid non-empty type, flag it
+    if (row.wbsType && cleanCsvCell(row.wbsType) && !normalizeWbsType(row.wbsType)) {
+      errors.push(
+        `Line ${row.line}: Invalid wbsType '${row.wbsType}' — use SUMMARY, WBS, WorkPackage, or leave blank to auto-detect leaves as WorkPackage`
+      );
+      continue;
+    }
+    data.push({
+      wbsCode: row.wbsCode,
+      wbsName: row.wbsName,
+      wbsType,
+      wbsDescription: row.wbsDescription,
+      budget: row.budget,
+      amount: row.budget,
+    });
+  }
+
+  if (data.length > 0) {
+    errors.push(...validateWbsCsvHierarchy(data));
+  }
+
+  return { data, errors };
+}
+
+export function parseWbsCsvText(text: string): { data: WbsImportRow[]; errors: string[] } {
   try {
     const cleanText = text.replace(/^\uFEFF/, "");
     const lines = cleanText.split(/\r?\n/).filter((line) => line.trim() !== "");
     if (lines.length === 0) {
-      return { data: [], errors: ["CSV file is empty or contains no valid data"] };
+      return { data: [], errors: ["File is empty or contains no valid data"] };
     }
     const delimiter = detectWbsDelimiter(lines[0]);
-    const headers = parseCsvRowLine(lines[0], delimiter).map((h) => cleanCsvCell(h));
-    const requiredColumns = ["wbsCode", "wbsName", "wbsType"];
-    const missingColumns = requiredColumns.filter((col) => !headers.includes(col));
-    if (missingColumns.length > 0) {
-      return {
-        data: [],
-        errors: [`Missing required columns: ${missingColumns.join(", ")}. Use: wbsCode, wbsName, wbsType, wbsDescription, budget`],
-      };
-    }
-    const budgetCol = headers.includes("budget") ? "budget" : "amount";
-    const data: any[] = [];
-    const errors: string[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      const values = parseCsvRowLine(line, delimiter);
-      if (values.length !== headers.length) {
-        errors.push(`Line ${i + 1}: Column count mismatch (expected ${headers.length}, got ${values.length})`);
-        continue;
-      }
-      const row: Record<string, string> = {};
-      headers.forEach((header, index) => {
-        row[header] = values[index] ?? "";
-      });
-      if (!row.wbsCode) {
-        errors.push(`Line ${i + 1}: Missing WBS code`);
-        continue;
-      }
-      if (!row.wbsName) {
-        errors.push(`Line ${i + 1}: Missing WBS name`);
-        continue;
-      }
-      const normalizedType = normalizeWbsType(row.wbsType ?? "");
-      if (!normalizedType) {
-        errors.push(`Line ${i + 1}: Invalid wbsType - must be SUMMARY, WBS, or WorkPackage`);
-        continue;
-      }
-      row.wbsType = normalizedType;
-      const budgetVal = row[budgetCol] ?? row.amount ?? row.budget ?? "";
-      if (row.wbsType === "SUMMARY" || row.wbsType === "WBS" || row.wbsType === "WorkPackage") {
-        if (!budgetVal || isNaN(Number(budgetVal)) || Number(budgetVal) < 0) {
-          errors.push(`Line ${i + 1}: ${row.wbsType} must have a valid budget (number >= 0)`);
-          continue;
-        }
-      }
-      data.push({
-        ...row,
-        amount: budgetVal,
-        wbsDescription: row.wbsDescription ?? "",
-      });
-    }
-
-    if (data.length > 0) {
-      const hierarchyErrors = validateWbsCsvHierarchy(data);
-      errors.push(...hierarchyErrors);
-    }
-
-    return { data, errors };
+    const headers = parseCsvRowLine(lines[0], delimiter);
+    const matrix = lines.slice(1).map((line) => parseCsvRowLine(line, delimiter));
+    return rowsFromHeaderAndMatrix(headers, matrix);
   } catch (error) {
     return {
       data: [],
@@ -309,7 +440,11 @@ export function parseWbsCsvText(text: string): { data: any[]; errors: string[] }
   }
 }
 
-export async function parseWbsCsvFile(file: File): Promise<{ data: any[]; errors: string[] }> {
+export async function parseWbsCsvFile(file: File): Promise<{ data: WbsImportRow[]; errors: string[] }> {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    return parseWbsSpreadsheetFile(file);
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -322,6 +457,44 @@ export async function parseWbsCsvFile(file: File): Promise<{ data: any[]; errors
     };
     reader.onerror = () => reject(new Error("Failed to read file"));
     reader.readAsText(file);
+  });
+}
+
+export async function parseWbsSpreadsheetFile(file: File): Promise<{ data: WbsImportRow[]; errors: string[] }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = event.target?.result;
+        if (!data) {
+          resolve({ data: [], errors: ["Failed to read spreadsheet"] });
+          return;
+        }
+        const wb = XLSX.read(data, { type: "array" });
+        const sheetName = wb.SheetNames[0];
+        if (!sheetName) {
+          resolve({ data: [], errors: ["Spreadsheet has no sheets"] });
+          return;
+        }
+        const ws = wb.Sheets[sheetName];
+        const matrix = XLSX.utils.sheet_to_json<(string | number | null | undefined)[]>(ws, {
+          header: 1,
+          defval: "",
+          raw: false,
+        }) as (string | number | null | undefined)[][];
+        if (!matrix.length) {
+          resolve({ data: [], errors: ["Spreadsheet is empty"] });
+          return;
+        }
+        const headers = (matrix[0] ?? []).map((c) => String(c ?? ""));
+        const body = matrix.slice(1).map((row) => (row ?? []).map((c) => String(c ?? "")));
+        resolve(rowsFromHeaderAndMatrix(headers, body));
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error("Failed to parse spreadsheet"));
+      }
+    };
+    reader.onerror = () => reject(new Error("Failed to read spreadsheet"));
+    reader.readAsArrayBuffer(file);
   });
 }
 
@@ -364,8 +537,8 @@ export function validateWbsCsvHierarchy(rows: { wbsCode: string; wbsType: string
     }
   }
 
-  for (const [parentCode, children] of childrenByParent) {
-    const types = new Set(children.map((c) => c.wbsType));
+  Array.from(childrenByParent.entries()).forEach(([parentCode, children]) => {
+    const types = new Set(children.map((c: { wbsType: string }) => c.wbsType));
     if (types.has("WBS") && types.has("WorkPackage")) {
       errors.push(`Parent ${parentCode}: Cannot mix WBS and WorkPackage children`);
     }
@@ -373,54 +546,61 @@ export function validateWbsCsvHierarchy(rows: { wbsCode: string; wbsType: string
     if (parent?.wbsType === "SUMMARY" && types.has("WorkPackage")) {
       errors.push(`Parent ${parentCode}: SUMMARY cannot have WorkPackage children directly`);
     }
-  }
+  });
 
   for (const row of rows) {
     if (row.wbsType !== "WBS") continue;
     const children = childrenByParent.get(row.wbsCode) ?? [];
-    const hasWbsChild = children.some((c) => c.wbsType === "WBS");
-    const hasWpChild = children.some((c) => c.wbsType === "WorkPackage");
     if (children.length === 0) {
-      errors.push(`Row ${row.wbsCode}: WBS must have child rows`);
+      errors.push(`Row ${row.wbsCode}: WBS must have child rows (or mark leaf as WorkPackage)`);
     }
   }
 
   return errors;
 }
 
-/** Template: SUMMARY root → nested WBS (up to 6+ levels) → WorkPackage leaves. */
-export function generateWbsCsvTemplate(): string {
+/** Template rows shared by CSV and XLSX downloads. */
+export function getWbsTemplateRows(): Record<string, string | number>[] {
   return [
-    "wbsCode,wbsName,wbsType,wbsDescription,budget",
-    "1,Sample Project,SUMMARY,Project root,120000",
-    "1.1,Engineering,WBS,Engineering branch,60000",
-    "1.1.1,Design,WBS,Design sub-branch,35000",
-    "1.1.1.1,Detailed Design,WBS,Deep structural WBS,22000",
-    "1.1.1.1.1,Mechanical Design,WBS,Deepest WBS before work packages,12000",
-    "1.1.1.1.1.1,Piping Drawings,WorkPackage,Leaf work package,4000",
-    "1.1.1.1.1.2,Equipment Layout,WorkPackage,Leaf work package,4000",
-    "1.1.1.1.1.3,Stress Analysis,WorkPackage,Leaf work package,4000",
-    "1.1.1.1.2,Electrical Design,WBS,Sibling branch ends in work packages,10000",
-    "1.1.1.1.2.1,Single Line Diagrams,WorkPackage,Leaf work package,3500",
-    "1.1.1.1.2.2,Cable Schedules,WorkPackage,Leaf work package,3500",
-    "1.1.1.1.2.3,Load Studies,WorkPackage,Leaf work package,3000",
-    "1.1.2,Procurement,WBS,Shorter branch,15000",
-    "1.1.2.1,Long Lead Items,WorkPackage,Direct work packages under WBS,5000",
-    "1.1.2.2,Standard Items,WorkPackage,Direct work packages under WBS,5000",
-    "1.1.2.3,Spare Parts,WorkPackage,Direct work packages under WBS,5000",
-    "1.2,Construction,WBS,Construction branch,40000",
-    "1.2.1,Civil Works,WBS,Civil sub-branch,25000",
-    "1.2.1.1,Foundation,WorkPackage,Leaf work package,9000",
-    "1.2.1.2,Structure,WorkPackage,Leaf work package,8000",
-    "1.2.1.3,Finishing,WorkPackage,Leaf work package,8000",
-    "1.2.2,Mechanical Install,WBS,Mechanical install branch,15000",
-    "1.2.2.1,Equipment Setting,WorkPackage,Leaf work package,7500",
-    "1.2.2.2,Piping Install,WorkPackage,Leaf work package,7500",
-    "1.3,Commissioning,WBS,Shallow branch,20000",
-    "1.3.1,Cold Commissioning,WorkPackage,Leaf work package,7000",
-    "1.3.2,Hot Commissioning,WorkPackage,Leaf work package,7000",
-    "1.3.3,Handover,WorkPackage,Leaf work package,6000",
-  ].join("\n");
+    { wbsCode: "1", wbsName: "Sample Project", wbsType: "SUMMARY", wbsDescription: "Project root", budget: 120000 },
+    { wbsCode: "1.1", wbsName: "Engineering", wbsType: "WBS", wbsDescription: "Engineering branch", budget: 60000 },
+    { wbsCode: "1.1.1", wbsName: "Design", wbsType: "WBS", wbsDescription: "Design sub-branch", budget: 35000 },
+    { wbsCode: "1.1.1.1", wbsName: "Detailed Design", wbsType: "WBS", wbsDescription: "Deep structural WBS", budget: 22000 },
+    { wbsCode: "1.1.1.1.1", wbsName: "Mechanical Design", wbsType: "WBS", wbsDescription: "Deepest WBS before work packages", budget: 12000 },
+    { wbsCode: "1.1.1.1.1.1", wbsName: "Piping Drawings", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 4000 },
+    { wbsCode: "1.1.1.1.1.2", wbsName: "Equipment Layout", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 4000 },
+    { wbsCode: "1.1.1.1.1.3", wbsName: "Stress Analysis", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 4000 },
+    { wbsCode: "1.1.1.1.2", wbsName: "Electrical Design", wbsType: "WBS", wbsDescription: "Sibling branch ends in work packages", budget: 10000 },
+    { wbsCode: "1.1.1.1.2.1", wbsName: "Single Line Diagrams", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 3500 },
+    { wbsCode: "1.1.1.1.2.2", wbsName: "Cable Schedules", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 3500 },
+    { wbsCode: "1.1.1.1.2.3", wbsName: "Load Studies", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 3000 },
+    { wbsCode: "1.1.2", wbsName: "Procurement", wbsType: "WBS", wbsDescription: "Shorter branch", budget: 15000 },
+    { wbsCode: "1.1.2.1", wbsName: "Long Lead Items", wbsType: "WorkPackage", wbsDescription: "Direct work packages under WBS", budget: 5000 },
+    { wbsCode: "1.1.2.2", wbsName: "Standard Items", wbsType: "WorkPackage", wbsDescription: "Direct work packages under WBS", budget: 5000 },
+    { wbsCode: "1.1.2.3", wbsName: "Spare Parts", wbsType: "WorkPackage", wbsDescription: "Direct work packages under WBS", budget: 5000 },
+    { wbsCode: "1.2", wbsName: "Construction", wbsType: "WBS", wbsDescription: "Construction branch", budget: 40000 },
+    { wbsCode: "1.2.1", wbsName: "Civil Works", wbsType: "WBS", wbsDescription: "Civil sub-branch", budget: 25000 },
+    { wbsCode: "1.2.1.1", wbsName: "Foundation", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 9000 },
+    { wbsCode: "1.2.1.2", wbsName: "Structure", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 8000 },
+    { wbsCode: "1.2.1.3", wbsName: "Finishing", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 8000 },
+    { wbsCode: "1.2.2", wbsName: "Mechanical Install", wbsType: "WBS", wbsDescription: "Mechanical install branch", budget: 15000 },
+    { wbsCode: "1.2.2.1", wbsName: "Equipment Setting", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 7500 },
+    { wbsCode: "1.2.2.2", wbsName: "Piping Install", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 7500 },
+    { wbsCode: "1.3", wbsName: "Commissioning", wbsType: "WBS", wbsDescription: "Shallow branch", budget: 20000 },
+    { wbsCode: "1.3.1", wbsName: "Cold Commissioning", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 7000 },
+    { wbsCode: "1.3.2", wbsName: "Hot Commissioning", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 7000 },
+    { wbsCode: "1.3.3", wbsName: "Handover", wbsType: "WorkPackage", wbsDescription: "Leaf work package", budget: 6000 },
+  ];
+}
+
+/** Template: SUMMARY root → nested WBS → WorkPackage leaves. */
+export function generateWbsCsvTemplate(): string {
+  const rows = getWbsTemplateRows();
+  const header = "wbsCode,wbsName,wbsType,wbsDescription,budget";
+  const lines = rows.map((r) =>
+    [r.wbsCode, r.wbsName, r.wbsType, `"${String(r.wbsDescription).replace(/"/g, '""')}"`, r.budget].join(",")
+  );
+  return [header, ...lines].join("\n");
 }
 
 export function downloadWbsCsvTemplate(): void {
@@ -435,5 +615,35 @@ export function downloadWbsCsvTemplate(): void {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+export function downloadWbsXlsxTemplate(): void {
+  const rows = getWbsTemplateRows();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "WBS");
+  // Instructions sheet for P6 / ERP exports
+  const help = XLSX.utils.aoa_to_sheet([
+    ["WBS Import Template"],
+    [""],
+    ["Required columns"],
+    ["wbsCode", "Hierarchical code using dots (1, 1.1, 1.1.1). Required."],
+    ["wbsName", "Display name. Required."],
+    [""],
+    ["Optional columns"],
+    ["wbsType", "SUMMARY | WBS | WorkPackage. Leave blank to auto-detect: leaves become WorkPackage."],
+    ["wbsDescription", "Free text description."],
+    ["budget", "Number >= 0. Optional (defaults to 0). Can finalize structure before budgeting."],
+    [""],
+    ["Rules"],
+    ["1", "Level 1 must be SUMMARY (project root)."],
+    ["2", "WBS nodes are structural; every branch must end in WorkPackage leaves."],
+    ["3", "Do not mix WBS and WorkPackage under the same parent."],
+    ["4", "WorkPackage minimum depth is 3 (e.g. 1.1.1)."],
+    ["5", "Compatible with exports from Primavera P6 / ERP after mapping Code & Name columns."],
+    ["6", "Import is blocked after WBS is finalized — create a project amendment to revise."],
+  ]);
+  XLSX.utils.book_append_sheet(wb, help, "Instructions");
+  XLSX.writeFile(wb, "WBS_upload_template.xlsx");
 }
 

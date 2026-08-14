@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import {
   ACTIVITY_TYPE_LABELS,
   computeActivityBudget,
@@ -10,6 +10,7 @@ import {
   type ProjectActivityType,
   type ActivityMilestone,
 } from "@shared/activity-types";
+import { getCategoryTagBadge } from "@/components/project-activities/constants";
 import {
   Card,
   CardContent,
@@ -45,6 +46,7 @@ export interface WpProjectActivity {
   projectId: number;
   wpId: number;
   activityType?: ProjectActivityType | string | null;
+  categoryTag?: string | null;
   name: string;
   description?: string | null;
   unitOfMeasure?: string | null;
@@ -77,6 +79,7 @@ function activityToFormValues(a: WpProjectActivity): ProjectActivityFormValues {
   return {
     id: a.id,
     activityType: (a.activityType ?? "units") as ProjectActivityType,
+    categoryTag: a.categoryTag ?? "resource-heavy",
     name: a.name,
     description: a.description ?? "",
     remarks: a.remarks ?? "",
@@ -356,7 +359,18 @@ export function WorkPackageActivitiesPanel({
                     <TableRow key={a.id}>
                       <TableCell className="font-medium">{a.name}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{ACTIVITY_TYPE_LABELS[type]}</Badge>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1.5">
+                          <Badge variant="secondary">{ACTIVITY_TYPE_LABELS[type]}</Badge>
+                          {(() => {
+                            const tagBadge = getCategoryTagBadge(a.categoryTag);
+                            if (!tagBadge) return null;
+                            return (
+                              <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-medium border shrink-0", tagBadge.className)}>
+                                {tagBadge.icon} {tagBadge.label}
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatActivityDetail(a)}
@@ -392,7 +406,7 @@ export function WorkPackageActivitiesPanel({
                           <Button
                             variant="ghost"
                             size="icon"
-                            disabled={a.finalized || deleteMutation.isLoading}
+                            disabled={a.finalized || deleteMutation.isPending}
                             onClick={() => {
                               if (confirm(`Delete activity "${a.name}"?`)) {
                                 deleteMutation.mutate(a.id);

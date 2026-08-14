@@ -48,6 +48,7 @@ import {
 import { ImportActivityModal } from "./import-activity-modal";
 import { ImportWbsModal } from "./import-wbs-modal";
 import { FinalizeWbsButton } from "./finalize-wbs-button";
+import { AmendProjectButton } from "./amend-project-button";
 import { MAX_WBS_LEVEL } from "@shared/wbs-validation";
 
 interface WbsTreeProps {
@@ -367,6 +368,14 @@ export function WbsTree({ projectId }: WbsTreeProps) {
   };
 
   const handleAddTopLevel = () => {
+    if (isWbsFinalized) {
+      toast({
+        title: "WBS is finalized",
+        description: "Create a project amendment to revise the structure.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSelectedParentId(null);
     setIsAddModalOpen(true);
   };
@@ -392,6 +401,14 @@ export function WbsTree({ projectId }: WbsTreeProps) {
   };
 
   const handleEditWbsItem = (item: WbsItem) => {
+    if (isWbsFinalized) {
+      toast({
+        title: "WBS is finalized",
+        description: "Create a project amendment to revise the structure.",
+        variant: "destructive",
+      });
+      return;
+    }
     // Skip if budget is finalized
     if (isBudgetFinalized) {
       toast({
@@ -500,6 +517,14 @@ export function WbsTree({ projectId }: WbsTreeProps) {
               });
             }}
           />
+          {project && (
+            <AmendProjectButton
+              projectId={projectId}
+              projectName={(project as ProjectData).name}
+              wbsFinalized={isWbsFinalized}
+              createdById={(project as ProjectData & { createdById?: number | null }).createdById}
+            />
+          )}
           <Button 
             variant="outline" 
             size="sm"
@@ -525,7 +550,7 @@ export function WbsTree({ projectId }: WbsTreeProps) {
             size="sm"
             className="text-xs px-2 py-1 h-7"
             onClick={handleAddTopLevel}
-            disabled={isLoading || isBudgetFinalized}
+            disabled={isLoading || isBudgetFinalized || isWbsFinalized}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
             Add Top-Level
@@ -535,7 +560,7 @@ export function WbsTree({ projectId }: WbsTreeProps) {
             size="sm"
             className="text-xs px-2 py-1 h-7"
             onClick={() => setIsImportWbsModalOpen(true)}
-            disabled={isLoading || isBudgetFinalized}
+            disabled={isLoading || isBudgetFinalized || isWbsFinalized}
           >
             <FileUp className="h-3.5 w-3.5 mr-1" />
             Import WBS
@@ -1078,9 +1103,9 @@ function TreeItem({
             </TooltipProvider>
           )}
           
-          {isBudgetFinalized ? (
+          {isBudgetFinalized || isWbsFinalized ? (
             <span>
-              {/* Keep space for layout consistency */}
+              {/* Keep space for layout consistency — structure locked */}
             </span>
           ) : (
             <>
@@ -1240,7 +1265,7 @@ function TreeItem({
                           });
                         }
                       }}
-                      isBudgetFinalized={isBudgetFinalized}
+                      isBudgetFinalized={isBudgetFinalized || isWbsFinalized}
                     />
                   ))}
                 </div>

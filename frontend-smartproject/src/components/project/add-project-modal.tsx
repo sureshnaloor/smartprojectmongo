@@ -54,6 +54,9 @@ const formSchema = z.object({
   status: z.enum(["concept", "planning", "active", "in progress", "aborted", "on-hold", "completed"]).optional(),
   startDate: z.date(),
   endDate: z.date(),
+  projectVersion: z.enum(["estimation", "planning", "execution"]).default("execution"),
+  mappedEstimationProjectId: z.number().optional().nullable(),
+  mappedPlanningProjectId: z.number().optional().nullable(),
 });
 
 type ProjectFormData = z.infer<typeof formSchema>;
@@ -85,6 +88,11 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
   const globalDefaultCurrency = resolveCurrencyCode(globalDefaults?.defaultCurrencyCode);
   globalDefaultCurrencyRef.current = globalDefaultCurrency;
 
+  const { data: allProjects = [] } = useQuery<any[]>({
+    queryKey: ["/api/projects"],
+    enabled: isOpen,
+  });
+
   const buildDefaultValues = (currency: CurrencyCode): ProjectFormData => ({
     name: "",
     description: "",
@@ -94,6 +102,9 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
     currency,
     projectType: undefined,
     status: "concept",
+    projectVersion: "execution",
+    mappedEstimationProjectId: null,
+    mappedPlanningProjectId: null,
   });
 
   // Form definition with frontend schema
@@ -122,6 +133,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
 
   // Get form values
   const { startDate, endDate } = form.watch();
+  const selectedVersion = form.watch("projectVersion") || "execution";
 
   // Update dates and duration when one changes
   const updateEndDate = (newStartDate: Date) => {
@@ -147,6 +159,9 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
         status: data.status || null,
         startDate: data.startDate.toISOString().split('T')[0],
         endDate: data.endDate.toISOString().split('T')[0],
+        projectVersion: data.projectVersion || "execution",
+        mappedEstimationProjectId: data.mappedEstimationProjectId || null,
+        mappedPlanningProjectId: data.mappedPlanningProjectId || null,
       };
       const response = await apiRequest("POST", "/api/projects", apiData);
       return response.json();
@@ -178,7 +193,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add New Project</DialogTitle>
           <DialogDescription>
@@ -187,7 +202,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="name"
@@ -258,9 +273,69 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      Pre-filled from global default ({globalDefaultCurrency}). Once set,
-                      currency cannot be changed after WBS items are added.
+                      Pre-filled from global default ({globalDefaultCurrency}).
                     </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="projectType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Project Type</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select project type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Highway">Highway</SelectItem>
+                        <SelectItem value="Infrastructure">Infrastructure</SelectItem>
+                        <SelectItem value="Power">Power</SelectItem>
+                        <SelectItem value="Commercial">Commercial</SelectItem>
+                        <SelectItem value="Petrochem">Petrochem</SelectItem>
+                        <SelectItem value="Oil&Gas">Oil & Gas</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="concept">Concept</SelectItem>
+                        <SelectItem value="planning">Planning</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="in progress">In Progress</SelectItem>
+                        <SelectItem value="on-hold">On Hold</SelectItem>
+                        <SelectItem value="aborted">Aborted</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -269,62 +344,110 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
 
             <FormField
               control={form.control}
-              name="projectType"
+              name="projectVersion"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Project Type</FormLabel>
+                  <FormLabel>Project Version</FormLabel>
                   <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
+                    onValueChange={(val) => {
+                      field.onChange(val);
+                      if (val !== "execution") {
+                        form.setValue("mappedEstimationProjectId", null);
+                        form.setValue("mappedPlanningProjectId", null);
+                      }
+                    }}
+                    value={field.value || "execution"}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select project type" />
+                        <SelectValue placeholder="Select project version" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="Highway">Highway</SelectItem>
-                      <SelectItem value="Infrastructure">Infrastructure</SelectItem>
-                      <SelectItem value="Power">Power</SelectItem>
-                      <SelectItem value="Commercial">Commercial</SelectItem>
-                      <SelectItem value="Petrochem">Petrochem</SelectItem>
-                      <SelectItem value="Oil&Gas">Oil & Gas</SelectItem>
+                      <SelectItem value="estimation">Estimation</SelectItem>
+                      <SelectItem value="planning">Planning</SelectItem>
+                      <SelectItem value="execution">Execution</SelectItem>
                     </SelectContent>
                   </Select>
+                  <FormDescription>
+                    Select Estimation, Planning, or Execution (default).
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="status"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Status</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="concept">Concept</SelectItem>
-                      <SelectItem value="planning">Planning</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="in progress">In Progress</SelectItem>
-                      <SelectItem value="on-hold">On Hold</SelectItem>
-                      <SelectItem value="aborted">Aborted</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {selectedVersion === "execution" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-md border border-slate-200 bg-slate-50/50 p-3">
+                <FormField
+                  control={form.control}
+                  name="mappedEstimationProjectId"
+                  render={({ field }) => {
+                    const estimationProjects = allProjects.filter(
+                      (p) => (p as any).projectVersion === "estimation"
+                    );
+                    return (
+                      <FormItem>
+                        <FormLabel className="text-xs">Mapped Estimation Project (Optional)</FormLabel>
+                        <Select
+                          onValueChange={(val) => field.onChange(val === "none" ? null : Number(val))}
+                          value={field.value ? String(field.value) : "none"}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select estimation project" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {estimationProjects.map((p) => (
+                              <SelectItem key={p.id} value={String(p.id)}>
+                                {p.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="mappedPlanningProjectId"
+                  render={({ field }) => {
+                    const planningProjects = allProjects.filter(
+                      (p) => (p as any).projectVersion === "planning"
+                    );
+                    return (
+                      <FormItem>
+                        <FormLabel className="text-xs">Mapped Planning Project (Optional)</FormLabel>
+                        <Select
+                          onValueChange={(val) => field.onChange(val === "none" ? null : Number(val))}
+                          value={field.value ? String(field.value) : "none"}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select planning project" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {planningProjects.map((p) => (
+                              <SelectItem key={p.id} value={String(p.id)}>
+                                {p.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField

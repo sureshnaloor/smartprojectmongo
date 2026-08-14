@@ -168,13 +168,19 @@ router.get("/status", (req: Request, res: Response) => {
           email: req.user.email,
           name: req.user.name,
           picture: req.user.picture,
+          role: (req.user as Express.User).role ?? "user",
         }
       : null,
   });
 });
 
 router.get("/me", isAuthenticated, (req: Request, res: Response) => {
-  res.json({ user: req.user });
+  res.json({
+    user: {
+      ...req.user,
+      role: (req.user as Express.User).role ?? "user",
+    },
+  });
 });
 
 router.post("/logout", (req: Request, res: Response, next: NextFunction) => {

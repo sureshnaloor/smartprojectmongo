@@ -33,12 +33,14 @@ import {
 export interface ProjectActivityFormValues {
   id?: number;
   activityType: ProjectActivityType;
+  categoryTag?: string;
   name: string;
   description: string;
   remarks: string;
   unitOfMeasure: string;
   unitRate: string;
   quantity: string;
+  duration?: number;
   totalBudget: string;
   percentComplete: number;
   progressState: 0 | 50 | 100;
@@ -60,12 +62,14 @@ const emptyMilestone = (): ActivityMilestone => ({ name: "", weightPercent: 0 })
 
 const defaultValues = (): ProjectActivityFormValues => ({
   activityType: "units",
+  categoryTag: "resource-heavy",
   name: "",
   description: "",
   remarks: "",
   unitOfMeasure: "",
   unitRate: "0",
   quantity: "1",
+  duration: 1,
   totalBudget: "0",
   percentComplete: 0,
   progressState: 0,
@@ -104,10 +108,14 @@ export function ActivityFormDialog({
     if (!open) return;
     setError(null);
     if (initial) {
+      const initialType = (initial.activityType as ProjectActivityType) ?? "units";
       setForm({
         ...defaultValues(),
         ...initial,
-        activityType: (initial.activityType as ProjectActivityType) ?? "units",
+        activityType: initialType,
+        unitOfMeasure: initialType === "lumpsum" ? "LOT" : (initial.unitOfMeasure ?? ""),
+        quantity: initialType === "lumpsum" ? "1" : (initial.quantity ?? "1"),
+        duration: initial.duration ?? 1,
         milestones: initial.milestones?.length
           ? initial.milestones.map((m) => ({ ...m }))
           : defaultValues().milestones,
@@ -133,6 +141,9 @@ export function ActivityFormDialog({
     setForm((prev) => ({
       ...prev,
       activityType: type,
+      unitOfMeasure: type === "lumpsum" ? "LOT" : type === "units" ? prev.unitOfMeasure : "",
+      quantity: type === "lumpsum" ? "1" : type === "units" ? prev.quantity : "",
+      duration: (type === "milestone" || type === "progress_0_50_100") ? (prev.duration || 1) : prev.duration,
       milestones:
         type === "milestone" && prev.milestones.length === 0
           ? defaultValues().milestones
@@ -146,7 +157,11 @@ export function ActivityFormDialog({
       setError("Activity name is required");
       return;
     }
-    if (form.activityType === "units") {
+
+    if (form.activityType === "lumpsum") {
+      form.unitOfMeasure = "LOT";
+      form.quantity = "1";
+    } else if (form.activityType === "units") {
       if (!form.unitOfMeasure.trim()) {
         setError("Unit of measure is required — select from UOM master");
         return;
@@ -159,7 +174,13 @@ export function ActivityFormDialog({
         setError("Quantity must be greater than zero");
         return;
       }
+    } else if (form.activityType === "milestone" || form.activityType === "progress_0_50_100") {
+      if (!form.duration || Number(form.duration) <= 0) {
+        setError("Duration (number of days) is mandatory");
+        return;
+      }
     }
+
     if (form.activityType === "milestone") {
       const milestoneError = validateMilestones(form.milestones);
       if (milestoneError) {
@@ -171,6 +192,7 @@ export function ActivityFormDialog({
         return;
       }
     }
+
     if (
       !isGlobal &&
       (form.activityType === "lumpsum" || form.activityType === "progress_0_50_100") &&
@@ -188,7 +210,9 @@ export function ActivityFormDialog({
     const submitValues: ProjectActivityFormValues = {
       ...form,
       totalBudget: isGlobal ? "" : form.totalBudget,
-      quantity: isGlobal ? "1" : form.quantity,
+      quantity: form.activityType === "lumpsum" ? "1" : isGlobal ? "1" : form.quantity,
+      unitOfMeasure: form.activityType === "lumpsum" ? "LOT" : form.unitOfMeasure,
+      duration: (form.activityType === "milestone" || form.activityType === "progress_0_50_100") ? Number(form.duration || 1) : form.duration,
       // Progress is never set at create/edit time — only via separate progress logging later
       percentComplete: isEdit ? (initial?.percentComplete ?? 0) : 0,
       progressState: isEdit ? ((initial?.progressState ?? 0) as 0 | 50 | 100) : 0,
@@ -220,7 +244,7 @@ export function ActivityFormDialog({
         <div className="space-y-4 py-2">
           {!initial?.id && (
             <div className="space-y-2">
-              <Label>Activity Type</Label>
+              <Label>Activity Type *</Label>
               <Select
                 value={form.activityType}
                 onValueChange={(v) => handleTypeChange(v as ProjectActivityType)}
@@ -259,6 +283,29 @@ export function ActivityFormDialog({
           </div>
 
           <div className="space-y-2">
+            <Label>Activity Tag / Cost Category *</Label>
+            <Select
+              value={form.categoryTag || "resource-heavy"}
+              onValueChange={(v) => update("categoryTag", v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select Category Tag" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="materials-heavy">
+                  📦 Materials Heavy (High-value equipment like Compressor, Motors, SCADA)
+                </SelectItem>
+                <SelectItem value="subcontract-heavy">
+                  🤝 Subcontract Heavy (External services & subcontracts)
+                </SelectItem>
+                <SelectItem value="resource-heavy">
+                  🚜 Resource Heavy (Normal installation, manpower, tools & equipment)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
             <Label>Description</Label>
             <Textarea
               value={form.description}
@@ -266,6 +313,40 @@ export function ActivityFormDialog({
               rows={2}
             />
           </div>
+
+          {form.activityType === "lumpsum" && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Unit of Measure</Label>
+                  <Input value="LOT" disabled className="bg-muted text-muted-foreground font-medium" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Quantity</Label>
+                  <Input value="1" disabled className="bg-muted text-muted-foreground font-medium" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                For Lump Sum activities, Unit of Measure is fixed to <strong>LOT</strong> and Quantity is fixed to <strong>1</strong>.
+              </p>
+              {!isGlobal ? (
+                <div className="space-y-2">
+                  <Label>Total Budget (lump sum) *</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={form.totalBudget}
+                    onChange={(e) => update("totalBudget", e.target.value)}
+                  />
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Lump-sum scope template. Budget is set per project when assigned to a work package.
+                </p>
+              )}
+            </>
+          )}
 
           {form.activityType === "units" && (
             <>
@@ -324,8 +405,20 @@ export function ActivityFormDialog({
             </>
           )}
 
-          {form.activityType === "milestone" && (
+          {(form.activityType === "milestone" || form.activityType === "progress_0_50_100") && (
             <>
+              <div className="space-y-2">
+                <Label>Duration (number of days) *</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.duration ?? 1}
+                  onChange={(e) => update("duration", Math.max(1, parseInt(e.target.value, 10) || 1))}
+                  placeholder="Enter duration in days"
+                />
+              </div>
+
               {!isGlobal && (
                 <div className="space-y-2">
                   <Label>Total Budget *</Label>
@@ -338,127 +431,77 @@ export function ActivityFormDialog({
                   />
                 </div>
               )}
-              {isGlobal && (
-                <p className="text-xs text-muted-foreground">
-                  Define milestone phases here. Budget is assigned per project when this activity is used.
-                </p>
-              )}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Milestones (weights must total 100%)</Label>
-                  <span
-                    className={`text-xs font-medium ${
-                      Math.abs(milestoneSum - 100) < 0.01 ? "text-emerald-600" : "text-amber-600"
-                    }`}
-                  >
-                    Total: {milestoneSum.toFixed(1)}%
-                  </span>
-                </div>
+
+              {form.activityType === "milestone" && (
                 <div className="space-y-2">
-                  {form.milestones.map((m, idx) => (
-                    <div key={idx} className="flex gap-2 items-center">
-                      <Input
-                        className="flex-1"
-                        placeholder="Milestone name"
-                        value={m.name}
-                        onChange={(e) => {
-                          const next = [...form.milestones];
-                          next[idx] = { ...next[idx], name: e.target.value };
-                          update("milestones", next);
-                        }}
-                      />
-                      <Input
-                        type="number"
-                        className="w-20"
-                        min="0"
-                        max="100"
-                        value={m.weightPercent}
-                        onChange={(e) => {
-                          const next = [...form.milestones];
-                          next[idx] = {
-                            ...next[idx],
-                            weightPercent: Number(e.target.value),
-                          };
-                          update("milestones", next);
-                        }}
-                      />
-                      <span className="text-xs text-muted-foreground w-4">%</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        disabled={form.milestones.length <= 1}
-                        onClick={() =>
-                          update(
-                            "milestones",
-                            form.milestones.filter((_, i) => i !== idx)
-                          )
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
+                  <div className="flex items-center justify-between">
+                    <Label>Milestones (weights must total 100%)</Label>
+                    <span
+                      className={`text-xs font-medium ${
+                        Math.abs(milestoneSum - 100) < 0.01 ? "text-emerald-600" : "text-amber-600"
+                      }`}
+                    >
+                      Total: {milestoneSum.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {form.milestones.map((m, idx) => (
+                      <div key={idx} className="flex gap-2 items-center">
+                        <Input
+                          className="flex-1"
+                          placeholder="Milestone name"
+                          value={m.name}
+                          onChange={(e) => {
+                            const next = [...form.milestones];
+                            next[idx] = { ...next[idx], name: e.target.value };
+                            update("milestones", next);
+                          }}
+                        />
+                        <Input
+                          type="number"
+                          className="w-20"
+                          min="0"
+                          max="100"
+                          value={m.weightPercent}
+                          onChange={(e) => {
+                            const next = [...form.milestones];
+                            next[idx] = {
+                              ...next[idx],
+                              weightPercent: Number(e.target.value),
+                            };
+                            update("milestones", next);
+                          }}
+                        />
+                        <span className="text-xs text-muted-foreground w-4">%</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          disabled={form.milestones.length <= 1}
+                          onClick={() =>
+                            update(
+                              "milestones",
+                              form.milestones.filter((_, i) => i !== idx)
+                            )
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => update("milestones", [...form.milestones, emptyMilestone()])}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Milestone
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => update("milestones", [...form.milestones, emptyMilestone()])}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add Milestone
-                </Button>
-              </div>
+              )}
             </>
-          )}
-
-          {form.activityType === "lumpsum" && (
-            <div className="space-y-2">
-              {!isGlobal ? (
-                <>
-                  <Label>Total Budget (lump sum) *</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={form.totalBudget}
-                    onChange={(e) => update("totalBudget", e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Progress is logged separately after the activity is created.
-                  </p>
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Lump-sum scope template. Budget and progress are set per project when this activity is assigned to a work package.
-                </p>
-              )}
-            </div>
-          )}
-
-          {form.activityType === "progress_0_50_100" && (
-            <div className="space-y-2">
-              {!isGlobal ? (
-                <>
-                  <Label>Total Budget *</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={form.totalBudget}
-                    onChange={(e) => update("totalBudget", e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Starts at 0% (not started). Progress state is updated separately after creation.
-                  </p>
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  0/50/100 activity template. Budget is assigned per project when pulled into a work package.
-                </p>
-              )}
-            </div>
           )}
 
           <div className="space-y-2">

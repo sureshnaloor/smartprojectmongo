@@ -1,14 +1,17 @@
 import { FolderTree } from "lucide-react";
 import { FinalizeWbsButton } from "@/components/project/finalize-wbs-button";
+import { AmendProjectButton } from "@/components/project/amend-project-button";
 import type { WbsItem, WorkPackage } from "@shared/schema";
 import { WorkPackageDetailPanel } from "./work-package-detail-panel";
 
 interface WbsWorkPackagesCardProps {
   projectId: number;
+  projectName: string;
   currency: string;
   wbsItems: WbsItem[];
   workPackages: WorkPackage[];
   wbsFinalized: boolean;
+  createdById?: number | null;
   selectedWpId: number | null;
   onInvalidWbsIds: (ids: number[]) => void;
   tree: React.ReactNode;
@@ -16,10 +19,12 @@ interface WbsWorkPackagesCardProps {
 
 export function WbsWorkPackagesCard({
   projectId,
+  projectName,
   currency,
   wbsItems,
   workPackages,
   wbsFinalized,
+  createdById,
   selectedWpId,
   onInvalidWbsIds,
   tree,
@@ -36,15 +41,23 @@ export function WbsWorkPackagesCard({
             </span>
           )}
         </h2>
-        <FinalizeWbsButton
-          projectId={projectId}
-          wbsItems={wbsItems}
-          workPackages={workPackages}
-          wbsFinalized={wbsFinalized}
-          onInvalidIds={onInvalidWbsIds}
-          size="default"
-          className="gap-1.5 bg-[var(--copper-500)] shadow-[var(--shadow-copper)] hover:bg-[var(--copper-600)]"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <FinalizeWbsButton
+            projectId={projectId}
+            wbsItems={wbsItems}
+            workPackages={workPackages}
+            wbsFinalized={wbsFinalized}
+            onInvalidIds={onInvalidWbsIds}
+            size="default"
+            className="gap-1.5 bg-[var(--copper-500)] shadow-[var(--shadow-copper)] hover:bg-[var(--copper-600)]"
+          />
+          <AmendProjectButton
+            projectId={projectId}
+            projectName={projectName}
+            wbsFinalized={wbsFinalized}
+            createdById={createdById}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[55fr_45fr]">

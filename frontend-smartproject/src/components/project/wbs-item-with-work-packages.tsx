@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { WorkPackage } from "@shared/schema";
-import { Package, Edit2, Trash2, MoreVertical } from "lucide-react";
+import { Edit2, Trash2, MoreVertical } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -15,6 +15,7 @@ interface WbsItemWithWorkPackagesProps {
     wbsItemId: number;
     level: number;
     isExpanded: boolean;
+    wbsFinalized?: boolean;
     onEditWorkPackage: (id: number) => void;
     onDeleteWorkPackage: (id: number) => void;
     onWorkPackageClick?: (wpId: number) => void;
@@ -24,6 +25,7 @@ export function WbsItemWithWorkPackages({
     wbsItemId,
     level,
     isExpanded,
+    wbsFinalized = false,
     onEditWorkPackage,
     onDeleteWorkPackage,
     onWorkPackageClick,
@@ -70,44 +72,45 @@ export function WbsItemWithWorkPackages({
                     </div>
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold text-blue-600 uppercase">WP</span>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <button
-                                    className="p-1.5 hover:bg-blue-100 rounded-lg transition-all text-slate-400 hover:text-blue-500"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    <MoreVertical size={12} />
-                                </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent className="bg-white border-slate-200 shadow-xl min-w-40">
-                                <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-400 px-3 py-2">Actions</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onEditWorkPackage(wp.id);
-                                    }}
-                                    className="text-xs font-semibold text-slate-700 focus:bg-slate-50 cursor-pointer px-3 py-2"
-                                >
-                                    <Edit2 size={14} className="mr-2" />
-                                    Edit Work Package
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onDeleteWorkPackage(wp.id);
-                                    }}
-                                    className="text-xs font-semibold text-red-600 focus:bg-red-50 cursor-pointer px-3 py-2"
-                                >
-                                    <Trash2 size={14} className="mr-2" />
-                                    Delete Work Package
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                        {!wbsFinalized && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <button
+                                        className="p-1.5 hover:bg-blue-100 rounded-lg transition-all text-slate-400 hover:text-blue-500"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <MoreVertical size={12} />
+                                    </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="bg-white border-slate-200 shadow-xl min-w-40">
+                                    <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-400 px-3 py-2">Actions</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onEditWorkPackage(wp.id);
+                                        }}
+                                        className="text-xs font-semibold text-slate-700 focus:bg-slate-50 cursor-pointer px-3 py-2"
+                                    >
+                                        <Edit2 size={14} className="mr-2" />
+                                        Edit Work Package
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onDeleteWorkPackage(wp.id);
+                                        }}
+                                        className="text-xs font-semibold text-red-600 focus:bg-red-50 cursor-pointer px-3 py-2"
+                                    >
+                                        <Trash2 size={14} className="mr-2" />
+                                        Delete Work Package
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
                     </div>
                 </div>
             ))}
         </>
     );
 }
-

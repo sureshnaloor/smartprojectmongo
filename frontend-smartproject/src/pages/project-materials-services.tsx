@@ -124,6 +124,16 @@ export default function ProjectMaterialsServices() {
     retry: 2,
   });
 
+  const { data: wbsItems = [] } = useQuery<any[]>({
+    queryKey: ["/api/projects", projectId, "wbs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${projectId}/wbs`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
   const { data: materialsList = [], isLoading: materialsLoading, refetch: refetchMaterials, isFetching: materialsFetching } =
     useQuery<MaterialItem[]>({
       queryKey: ["/api/material-masters"],
@@ -629,6 +639,7 @@ export default function ProjectMaterialsServices() {
           <WorkPackagesPanel
             mode={activeTab}
             workPackages={workPackages}
+            wbsItems={wbsItems}
             selectedWpId={selectedWpId}
             onSelectWp={setSelectedWpId}
             assignments={panelAssignments}
@@ -638,7 +649,7 @@ export default function ProjectMaterialsServices() {
             onDrop={handleDrop}
             onEditQty={(r) => handleOpenEdit(activeTab === "materials" ? "material" : "service", r)}
             onEditResource={(r) => {
-              setEditingResource(r);
+              setEditingResource(r as any);
               setResourceEditOpen(true);
             }}
             onDelete={(id) => {

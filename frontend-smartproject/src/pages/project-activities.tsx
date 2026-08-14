@@ -16,6 +16,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ImportProjectActivitiesModal } from "@/components/project/import-project-activities-modal";
 import {
@@ -67,6 +74,8 @@ export default function ProjectActivities() {
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [duration, setDuration] = useState("1");
+  const [totalBudget, setTotalBudget] = useState("0");
+  const [categoryTag, setCategoryTag] = useState<string>("resource-heavy");
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<ProjectActivityAssignment | null>(null);
@@ -126,17 +135,30 @@ export default function ProjectActivities() {
   });
 
   const allocatedGlobalIds = useMemo(() => {
-    const ids = new Set<number>();
+    const set = new Set<number>();
     allProjectActivities.forEach((a) => {
-      if (a.globalActivityId) ids.add(a.globalActivityId);
+      if (a.globalActivityId != null) set.add(a.globalActivityId);
     });
-    return ids;
+    return set;
   }, [allProjectActivities]);
 
-  const projectCatalog = useMemo(
-    () => globalActivities.filter((a) => allocatedGlobalIds.has(a.id)),
-    [globalActivities, allocatedGlobalIds]
-  );
+  const projectCatalog = useMemo(() => {
+    const map = new Map<string, GlobalActivityItem>();
+    for (const pa of allProjectActivities) {
+      if (!map.has(pa.name)) {
+        map.set(pa.name, {
+          id: pa.globalActivityId ?? pa.id,
+          name: pa.name,
+          description: pa.description,
+          unitOfMeasure: pa.unitOfMeasure,
+          unitRate: pa.unitRate,
+          remarks: pa.remarks,
+          activityType: pa.activityType ?? "units",
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [allProjectActivities]);
 
   const customCatalog = useMemo(() => {
     const seen = new Set<string>();
@@ -153,7 +175,7 @@ export default function ProjectActivities() {
         unitOfMeasure: pa.unitOfMeasure,
         unitRate: pa.unitRate,
         remarks: pa.remarks,
-        activityType: "units",
+        activityType: pa.activityType ?? "units",
       });
     }
     return items;
@@ -198,17 +220,18 @@ export default function ProjectActivities() {
         body: JSON.stringify(formToGlobalPayload(values)),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message ?? "Failed to create activity");
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message ?? "Failed to create activity");
       }
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["activities"] });
-      toast({ title: "Activity created" });
-      setAddActivityOpen(false);
+      refetchGlobal();
+      toast({ title: "Global activity created" });
     },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
   });
 
   const updateMutation = useMutation({
@@ -217,8 +240,8 @@ export default function ProjectActivities() {
     onSuccess: () => {
       invalidateAssignments();
       toast({ title: "Activity updated" });
-      setEditingActivity(null);
       setIsEditDialogOpen(false);
+      setEditingActivity(null);
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -243,6 +266,8 @@ export default function ProjectActivities() {
     setDateRange(null);
     setQuantity("1");
     setDuration("1");
+    setTotalBudget("0");
+    setCategoryTag("resource-heavy");
   };
 
   const handleDragStart = (e: React.DragEvent, activity: GlobalActivityItem) => {
@@ -263,11 +288,14 @@ export default function ProjectActivities() {
       return;
     }
 
+    const type = activity.activityType ?? "units";
     setSelectedWpId(wpId);
     setDraggedActivity(activity);
     setPendingWpId(wpId);
     setQuantity("1");
     setDuration("1");
+    setTotalBudget(activity.unitRate ? String(activity.unitRate) : "0");
+    setCategoryTag(activity.categoryTag ?? "resource-heavy");
     setShowAssignDialog(true);
   };
 
@@ -289,33 +317,44 @@ export default function ProjectActivities() {
 
   const handleAssignConfirm = () => {
     if (!draggedActivity || pendingWpId == null) return;
+    const type = draggedActivity.activityType ?? "units";
 
     if (mappingMode === "date-range" && (!dateRange?.from || !dateRange?.to)) {
       toast({ title: "Error", description: "Please select both start and end dates", variant: "destructive" });
       return;
     }
-    if (mappingMode === "duration" && (!duration || parseInt(duration, 10) <= 0)) {
-      toast({ title: "Error", description: "Please enter a valid duration", variant: "destructive" });
+    if ((type === "milestone" || type === "progress_0_50_100" || mappingMode === "duration") && (!duration || parseInt(duration, 10) <= 0)) {
+      toast({ title: "Error", description: "Duration (number of days) is mandatory", variant: "destructive" });
       return;
     }
-    if (!quantity || parseFloat(quantity) <= 0) {
+    if (type === "units" && (!quantity || parseFloat(quantity) <= 0)) {
       toast({ title: "Error", description: "Please enter a valid quantity", variant: "destructive" });
+      return;
+    }
+    if ((type === "milestone" || type === "lumpsum" || type === "progress_0_50_100") && (!totalBudget || parseFloat(totalBudget) <= 0)) {
+      toast({ title: "Error", description: "Estimated cost / budget value is mandatory", variant: "destructive" });
       return;
     }
 
     const isCustom = catalogTab === "custom";
+    const finalUom = type === "lumpsum" ? "LOT" : draggedActivity.unitOfMeasure;
+    const finalQty = type === "lumpsum" ? "1" : type === "units" ? quantity : "1";
+
     createMutation.mutate({
       wpId: pendingWpId,
       globalActivityId: isCustom ? null : draggedActivity.id,
+      activityType: type,
+      categoryTag: categoryTag || "resource-heavy",
       name: draggedActivity.name,
       description: draggedActivity.description,
-      unitOfMeasure: draggedActivity.unitOfMeasure,
+      unitOfMeasure: finalUom,
       unitRate: draggedActivity.unitRate,
-      quantity,
+      quantity: finalQty,
+      totalBudget: (type === "milestone" || type === "lumpsum" || type === "progress_0_50_100") ? totalBudget : null,
       remarks: draggedActivity.remarks,
       plannedFromDate: mappingMode === "date-range" ? format(dateRange!.from!, "yyyy-MM-dd") : null,
       plannedToDate: mappingMode === "date-range" ? format(dateRange!.to!, "yyyy-MM-dd") : null,
-      duration: mappingMode === "duration" ? parseInt(duration, 10) : null,
+      duration: (type === "milestone" || type === "progress_0_50_100" || mappingMode === "duration") ? parseInt(duration, 10) : null,
     });
   };
 
@@ -363,7 +402,7 @@ export default function ProjectActivities() {
             onSortChange={setSortKey}
             selectedId={selectedActivityId}
             onSelect={setSelectedActivityId}
-            onAdd={() => setAddActivityOpen(true)}
+            onAdd={catalogTab === "custom" ? () => setAddActivityOpen(true) : undefined}
             onDragStart={handleDragStart}
             allocatedIds={allocatedGlobalIds}
             loading={globalLoading && catalogTab === "global"}
@@ -409,23 +448,67 @@ export default function ProjectActivities() {
               <div>
                 <p className="kanban-body-md font-medium text-[var(--text-primary)]">{draggedActivity.name}</p>
                 <p className="kanban-body-sm text-[var(--text-secondary)]">
-                  {draggedActivity.unitRate} / {draggedActivity.unitOfMeasure}
+                  Type: <span className="font-semibold">{draggedActivity.activityType ?? "units"}</span>
+                  {draggedActivity.activityType === "lumpsum" ? " (LOT)" : draggedActivity.unitOfMeasure ? ` · ${draggedActivity.unitOfMeasure}` : ""}
                 </p>
               </div>
-              <div>
-                <Label>Quantity</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              {mappingMode === "duration" ? (
+
+              {draggedActivity.activityType === "lumpsum" ? (
+                <div className="rounded-md border p-3 bg-muted/40 text-xs text-muted-foreground">
+                  For Lump Sum activities, Unit of Measure is fixed to <strong>LOT</strong> and Quantity is fixed to <strong>1</strong>.
+                </div>
+              ) : draggedActivity.activityType === "units" ? (
                 <div>
-                  <Label>Duration (days)</Label>
+                  <Label>Quantity *</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              ) : null}
+
+              {(draggedActivity.activityType === "milestone" || draggedActivity.activityType === "lumpsum" || draggedActivity.activityType === "progress_0_50_100") && (
+                <div>
+                  <Label>Estimated Budget / Value *</Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    min="0.01"
+                    value={totalBudget}
+                    onChange={(e) => setTotalBudget(e.target.value)}
+                    placeholder="Enter budget value"
+                    className="mt-1"
+                  />
+                </div>
+              )}
+
+              <div>
+                <Label>Activity Tag / Cost Category *</Label>
+                <Select value={categoryTag} onValueChange={setCategoryTag}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select Category Tag" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="materials-heavy">
+                      📦 Materials Heavy (High-value equipment like Compressor, Motors, SCADA)
+                    </SelectItem>
+                    <SelectItem value="subcontract-heavy">
+                      🤝 Subcontract Heavy (External services & subcontracts)
+                    </SelectItem>
+                    <SelectItem value="resource-heavy">
+                      🚜 Resource Heavy (Normal installation, manpower, tools)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {(draggedActivity.activityType === "milestone" || draggedActivity.activityType === "progress_0_50_100" || mappingMode === "duration") ? (
+                <div>
+                  <Label>Duration (number of days) *</Label>
                   <Input
                     type="number"
                     min="1"
@@ -477,6 +560,7 @@ export default function ProjectActivities() {
                     unitOfMeasure: formData.get("unitOfMeasure") as string,
                     unitRate: formData.get("unitRate") as string,
                     quantity: formData.get("quantity") as string,
+                    categoryTag: (formData.get("categoryTag") as string) || "resource-heavy",
                     remarks: formData.get("remarks") as string,
                     duration: formData.get("duration") ? parseInt(formData.get("duration") as string, 10) : null,
                     plannedFromDate: editingActivity.plannedFromDate,
@@ -489,6 +573,25 @@ export default function ProjectActivities() {
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
                 <Input id="name" name="name" defaultValue={editingActivity.name} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="categoryTag">Activity Tag / Cost Category *</Label>
+                <Select name="categoryTag" defaultValue={editingActivity.categoryTag || "resource-heavy"}>
+                  <SelectTrigger id="categoryTag" className="mt-1">
+                    <SelectValue placeholder="Select Category Tag" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="materials-heavy">
+                      📦 Materials Heavy (High-value equipment & materials)
+                    </SelectItem>
+                    <SelectItem value="subcontract-heavy">
+                      🤝 Subcontract Heavy (External services & subcontracts)
+                    </SelectItem>
+                    <SelectItem value="resource-heavy">
+                      🚜 Resource Heavy (Normal installation, manpower, tools)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>

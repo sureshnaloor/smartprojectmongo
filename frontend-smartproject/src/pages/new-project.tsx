@@ -42,6 +42,7 @@ import { KpiStatsRow } from "@/components/project-dashboard/kpi-stats-row";
 import { RecentActivity } from "@/components/project-dashboard/recent-activity";
 import { QuickActions } from "@/components/project-dashboard/quick-actions";
 import type { QuickActionItem } from "@/components/project-dashboard/constants";
+import { WbsVersionsPanel } from "@/components/wbs-activities/wbs-versions-panel";
 
 // Types for the hierarchical WBS tree used in the UI
 interface WbsTreeNode extends WbsItem {
@@ -215,7 +216,7 @@ export default function NewProject() {
                                 setSelectedWbsForWorkPackage({ id: item.id, name: item.name });
                                 setIsAddWorkPackageModalOpen(true);
                             }}
-                            disabled={hasChildWbs}
+                            disabled={isWbsFinalized || hasChildWbs}
                             className="text-xs font-semibold text-slate-700 focus:bg-slate-50 cursor-pointer px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <Package size={14} className="mr-2" />
@@ -228,7 +229,8 @@ export default function NewProject() {
                             setEditWbsId(item.id);
                             setIsEditModalOpen(true);
                         }}
-                        className="text-xs font-semibold text-slate-700 focus:bg-slate-50 cursor-pointer px-3 py-2"
+                        disabled={isWbsFinalized}
+                        className="text-xs font-semibold text-slate-700 focus:bg-slate-50 cursor-pointer px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Edit2 size={14} className="mr-2" />
                         Edit Details
@@ -238,7 +240,8 @@ export default function NewProject() {
                             e.stopPropagation();
                             handleDeleteWbs(item.id);
                         }}
-                        className="text-xs font-semibold text-red-600 focus:bg-red-50 cursor-pointer px-3 py-2"
+                        disabled={isWbsFinalized}
+                        className="text-xs font-semibold text-red-600 focus:bg-red-50 cursor-pointer px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Trash2 size={14} className="mr-2" />
                         Delete Item
@@ -414,6 +417,19 @@ export default function NewProject() {
     });
 
     const handleDeleteWorkPackage = (id: number) => {
+        const targetWp = projectWorkPackages.find((wp) => wp.id === id);
+        if (targetWp) {
+            const siblings = projectWorkPackages.filter((wp) => wp.wbsItemId === targetWp.wbsItemId);
+            if (siblings.length <= 1) {
+                toast({
+                    title: "Cannot Delete Work Package",
+                    description:
+                        "Cannot delete lone Work Package. Please delete the parent WBS item instead, or add another sibling Work Package before deleting this one.",
+                    variant: "destructive",
+                });
+                return;
+            }
+        }
         if (confirm("Are you sure you want to delete this Work Package?")) {
             deleteWorkPackageMutation.mutate(id);
         }
@@ -489,7 +505,9 @@ export default function NewProject() {
                                 wbsItemId={item.id}
                                 level={level}
                                 isExpanded={item.expanded}
+                                wbsFinalized={isWbsFinalized}
                                 onEditWorkPackage={(id) => {
+                                    if (isWbsFinalized) return;
                                     setSelectedWorkPackageId(id);
                                     setIsEditWorkPackageModalOpen(true);
                                 }}
@@ -545,14 +563,17 @@ export default function NewProject() {
                         activeTab="home"
                         onImportWbs={() => setIsImportWbsOpen(true)}
                         scheduleStatus={timelineMetrics.scheduleStatus}
+                        wbsFinalized={isWbsFinalized}
                     />
 
                     <WbsWorkPackagesCard
                         projectId={project.id}
+                        projectName={project.name}
                         currency={project.currency ?? "INR"}
                         wbsItems={flatWbsItems}
                         workPackages={projectWorkPackages}
                         wbsFinalized={isWbsFinalized}
+                        createdById={(project as Project & { createdById?: number | null }).createdById}
                         selectedWpId={selectedWpId}
                         onInvalidWbsIds={(ids) => {
                             setFlashingWbsIds(new Set(ids));
@@ -564,6 +585,9 @@ export default function NewProject() {
                             </p>
                         )}
                     />
+
+                    {/* WBS Version History — inner tab panel within the WBS section */}
+                    <WbsVersionsPanel projectId={project.id} />
 
                     <KpiStatsRow
                         currency={project.currency ?? "INR"}

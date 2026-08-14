@@ -10,6 +10,7 @@ export const users = pgTable("users", {
   picture: text("picture"), // Profile picture URL
   provider: text("provider").notNull(), // 'google', 'linkedin', 'email'
   providerId: text("provider_id").notNull(), // OAuth provider ID or email for email auth
+  role: text("role").default("user").notNull(), // 'admin' | 'user'
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -29,6 +30,18 @@ export const projects = pgTable("projects", {
   allocationVersion: integer("allocation_version"),
   /** True after user successfully finalizes the WBS tree structure */
   wbsFinalized: boolean("wbs_finalized").default(false),
+  /** User id of the project creator (may amend WBS after finalize) */
+  createdById: integer("created_by_id"),
+  /** Source project id when this project is a WBS amendment copy */
+  amendedFromId: integer("amended_from_id"),
+  /** N in name suffix `_amd_N` */
+  amendmentNumber: integer("amendment_number"),
+  /** Project version: 'estimation' | 'planning' | 'execution' (defaults to 'execution') */
+  projectVersion: text("project_version").default("execution"),
+  /** Mapped estimation project ID (optional, when projectVersion is 'execution') */
+  mappedEstimationProjectId: integer("mapped_estimation_project_id"),
+  /** Mapped planning project ID (optional, when projectVersion is 'execution') */
+  mappedPlanningProjectId: integer("mapped_planning_project_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -184,6 +197,7 @@ export const projectActivities = pgTable("project_activities", {
   wpId: integer("wp_id").notNull().references(() => workPackages.id, { onDelete: "cascade" }), // Work Package ID - required
   globalActivityId: integer("global_activity_id").references(() => activities.id, { onDelete: "set null" }), // nullable for project-specific activities
   activityType: text("activity_type").notNull().default("units"), // units | milestone | lumpsum | progress_0_50_100
+  categoryTag: text("category_tag"), // materials-heavy | subcontract-heavy | resource-heavy
   name: text("name").notNull(),
   description: text("description"),
   unitOfMeasure: text("unit_of_measure"),
@@ -272,6 +286,9 @@ export const insertProjectSchema = createInsertSchema(projects)
       return val.toISOString().split('T')[0];
     }).optional().nullable(),
     allocationVersion: z.number().int().min(0).optional().nullable(),
+    projectVersion: z.enum(["estimation", "planning", "execution"]).optional().nullable().default("execution"),
+    mappedEstimationProjectId: z.number().optional().nullable(),
+    mappedPlanningProjectId: z.number().optional().nullable(),
   });
 
 // Base WBS schema - a simpler version without all the refinements
@@ -399,6 +416,7 @@ export const insertProjectActivitySchema = createInsertSchema(projectActivities)
     wpId: z.number(),
     projectId: z.number(),
     activityType: projectActivityTypeEnum.default("units"),
+    categoryTag: z.enum(["materials-heavy", "subcontract-heavy", "resource-heavy"]).optional().nullable(),
     unitOfMeasure: z.string().optional().nullable(),
     unitRate: z
       .string()

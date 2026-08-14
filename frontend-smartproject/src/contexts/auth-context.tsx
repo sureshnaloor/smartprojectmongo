@@ -6,6 +6,7 @@ export interface User {
   name: string;
   picture?: string | null;
   provider: string;
+  role?: "admin" | "user";
 }
 
 interface AuthContextType {

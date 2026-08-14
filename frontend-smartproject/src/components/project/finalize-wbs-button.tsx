@@ -54,7 +54,8 @@ export function FinalizeWbsButton({
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/wbs`] });
       toast({
         title: "WBS finalized",
-        description: "Your work breakdown structure is complete and locked for planning.",
+        description:
+          "Structure is locked. To revise WBS later, create a project amendment (admin or creator only).",
       });
       onInvalidIds?.([]);
     },

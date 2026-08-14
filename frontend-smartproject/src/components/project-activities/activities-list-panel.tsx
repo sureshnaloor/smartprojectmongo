@@ -42,7 +42,7 @@ interface ActivitiesListPanelProps {
   onSortChange: (v: SortKey) => void;
   selectedId: number | null;
   onSelect: (id: number) => void;
-  onAdd: () => void;
+  onAdd?: () => void;
   onDragStart: (e: React.DragEvent, item: GlobalActivityItem) => void;
   allocatedIds: Set<number>;
   loading?: boolean;
@@ -106,10 +106,12 @@ export function ActivitiesListPanel({
           <h2 className="kanban-heading-lg text-[var(--text-primary)]">Activities</h2>
           <span className="kanban-body-sm text-[var(--text-secondary)]">{sorted.length} items</span>
         </div>
-        <Button size="sm" className="gap-1" onClick={onAdd}>
-          <Plus className="h-4 w-4" />
-          Add Activity
-        </Button>
+        {onAdd && (
+          <Button size="sm" className="gap-1" onClick={onAdd}>
+            <Plus className="h-4 w-4" />
+            Add Activity
+          </Button>
+        )}
       </div>
 
       {categories.length > 1 && (

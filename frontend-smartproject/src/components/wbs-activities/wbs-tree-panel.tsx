@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   Network,
   Plus,
@@ -11,6 +11,7 @@ import {
   Trash2,
   GripVertical,
   Loader2,
+  FileUp,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,9 @@ interface WbsTreePanelProps {
   onEditWorkPackage: (id: number) => void;
   onDeleteWorkPackage: (id: number) => void;
   onInvalidWbsIds: (ids: number[]) => void;
+  /** Optional action shown next to Finalize (e.g. amend button) */
+  amendAction?: ReactNode;
+  onImportWbs?: () => void;
 }
 
 function nodeTypeColor(type: string) {
@@ -90,6 +94,8 @@ export function WbsTreePanel({
   onEditWorkPackage,
   onDeleteWorkPackage,
   onInvalidWbsIds,
+  amendAction,
+  onImportWbs,
 }: WbsTreePanelProps) {
   const [search, setSearch] = useState("");
   const allExpanded = expandedIds.size > 0;
@@ -168,7 +174,15 @@ export function WbsTreePanel({
             )}
             <span className={cn("mx-1 h-2 w-2 shrink-0 rounded-full", statusDot(item.percentComplete))} />
             <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(item.id)}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                disabled={wbsFinalized}
+                title={wbsFinalized ? "WBS is finalized — create an amendment to edit" : "Edit"}
+                onClick={() => onEdit(item.id)}
+              >
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
               <Button
@@ -181,7 +195,15 @@ export function WbsTreePanel({
               >
                 <Plus className="h-3.5 w-3.5" />
               </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-[var(--status-danger)]" onClick={() => onDelete(item.id)}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-[var(--status-danger)]"
+                disabled={wbsFinalized}
+                title={wbsFinalized ? "WBS is finalized — create an amendment to delete" : "Delete"}
+                onClick={() => onDelete(item.id)}
+              >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -194,6 +216,7 @@ export function WbsTreePanel({
                   wbsItemId={item.id}
                   level={level}
                   isExpanded={item.expanded}
+                  wbsFinalized={wbsFinalized}
                   onEditWorkPackage={onEditWorkPackage}
                   onDeleteWorkPackage={onDeleteWorkPackage}
                   onWorkPackageClick={onSelectWp}
@@ -222,6 +245,21 @@ export function WbsTreePanel({
             size="sm"
             className="bg-[var(--copper-500)] shadow-[var(--shadow-copper)] hover:bg-[var(--copper-600)]"
           />
+          {amendAction}
+          {onImportWbs && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={onImportWbs}
+              disabled={wbsFinalized}
+              title={wbsFinalized ? "WBS is finalized — create an amendment to import" : "Import WBS from CSV or Excel"}
+            >
+              <FileUp className="h-3.5 w-3.5" />
+              Import
+            </Button>
+          )}
           <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={onAddRoot} disabled={wbsFinalized}>
             <Plus className="h-4 w-4" />
           </Button>
