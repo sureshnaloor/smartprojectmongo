@@ -91,6 +91,7 @@ export const insertProjectSchema = z.object({
   }).optional().nullable(),
   allocationVersion: z.number().optional().nullable(),
   wbsFinalized: z.boolean().optional().default(false),
+  budgetFinalized: z.boolean().optional().default(false),
   planVersion: z.number().default(0),
   sequenceVersion: z.number().default(0),
   /** User id of the project creator (may amend WBS after finalize) */

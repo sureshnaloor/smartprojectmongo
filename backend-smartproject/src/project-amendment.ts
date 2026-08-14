@@ -70,6 +70,7 @@ export async function copyProjectAsAmendment(
     endDate: source.endDate ?? null,
     allocationVersion: null,
     wbsFinalized: false,
+    budgetFinalized: false,
     planVersion: 0,
     sequenceVersion: 0,
     createdById: opts.createdById,
@@ -81,7 +82,7 @@ export async function copyProjectAsAmendment(
   const sourceWps = (await storage.getWorkPackagesByProject(source.id)) as WorkPackage[];
 
   // Copy in level order so parents exist before children
-  const sorted = [...sourceWbs].sort((a, b) => a.level - b.level || a.id - b.id);
+  const sorted = [...sourceWbs].sort((a, b) => (a.level ?? 0) - (b.level ?? 0) || a.id - b.id);
   const idMap = new Map<number, number>();
 
   for (const item of sorted) {

@@ -5,7 +5,8 @@ import { get, post, put, del } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
-import { Calendar } from "lucide-react";
+import { Calendar, Plus, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,7 @@ import { ActivitiesListPanel } from "@/components/project-activities/activities-
 import {
   ActivitiesWorkPackagesPanel,
   type ActivityMappingMode,
+  type WbsItemSimple,
 } from "@/components/project-activities/activities-work-packages-panel";
 import {
   fetchProjectWorkPackages,
@@ -42,6 +44,7 @@ import {
   type ProjectActivityAssignment,
   type SortKey,
 } from "@/components/project-activities/constants";
+import { type ActivityMilestone, validateMilestones } from "@shared/activity-types";
 
 function formToGlobalPayload(values: ProjectActivityFormValues) {
   return {
@@ -53,6 +56,13 @@ function formToGlobalPayload(values: ProjectActivityFormValues) {
     unitRate: values.activityType === "units" ? values.unitRate : "0",
   };
 }
+
+const defaultAssignMilestones = (): ActivityMilestone[] => [
+  { name: "Milestone 1", weightPercent: 25 },
+  { name: "Milestone 2", weightPercent: 25 },
+  { name: "Milestone 3", weightPercent: 25 },
+  { name: "Milestone 4", weightPercent: 25 },
+];
 
 export default function ProjectActivities() {
   const { projectId } = useParams();
@@ -76,6 +86,7 @@ export default function ProjectActivities() {
   const [duration, setDuration] = useState("1");
   const [totalBudget, setTotalBudget] = useState("0");
   const [categoryTag, setCategoryTag] = useState<string>("resource-heavy");
+  const [assignMilestones, setAssignMilestones] = useState<ActivityMilestone[]>(defaultAssignMilestones());
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<ProjectActivityAssignment | null>(null);
@@ -95,6 +106,11 @@ export default function ProjectActivities() {
 
   const { data: project } = useQuery<{ name: string; currency?: string }>({
     queryKey: [`/api/projects/${projectId}`],
+    enabled: !!projectId,
+  });
+
+  const { data: wbsItems = [] } = useQuery<WbsItemSimple[]>({
+    queryKey: [`/api/projects/${projectId}/wbs`],
     enabled: !!projectId,
   });
 
@@ -268,6 +284,7 @@ export default function ProjectActivities() {
     setDuration("1");
     setTotalBudget("0");
     setCategoryTag("resource-heavy");
+    setAssignMilestones(defaultAssignMilestones());
   };
 
   const handleDragStart = (e: React.DragEvent, activity: GlobalActivityItem) => {
@@ -296,6 +313,7 @@ export default function ProjectActivities() {
     setDuration("1");
     setTotalBudget(activity.unitRate ? String(activity.unitRate) : "0");
     setCategoryTag(activity.categoryTag ?? "resource-heavy");
+    setAssignMilestones(defaultAssignMilestones());
     setShowAssignDialog(true);
   };
 
@@ -336,9 +354,21 @@ export default function ProjectActivities() {
       return;
     }
 
+    if (type === "milestone") {
+      const milestoneErr = validateMilestones(assignMilestones);
+      if (milestoneErr) {
+        toast({ title: "Milestone Error", description: milestoneErr, variant: "destructive" });
+        return;
+      }
+    }
+
     const isCustom = catalogTab === "custom";
-    const finalUom = type === "lumpsum" ? "LOT" : draggedActivity.unitOfMeasure;
-    const finalQty = type === "lumpsum" ? "1" : type === "units" ? quantity : "1";
+    const finalUom = type === "lumpsum" ? "LOT" : (draggedActivity.unitOfMeasure || "ea");
+    const finalQty = type === "units" ? quantity : "1";
+    const calculatedBudget = type === "units"
+      ? (parseFloat(quantity || "1") * parseFloat(draggedActivity.unitRate || "0")).toString()
+      : totalBudget;
+    const calculatedRate = type === "units" ? (draggedActivity.unitRate || "0") : totalBudget;
 
     createMutation.mutate({
       wpId: pendingWpId,
@@ -348,14 +378,15 @@ export default function ProjectActivities() {
       name: draggedActivity.name,
       description: draggedActivity.description,
       unitOfMeasure: finalUom,
-      unitRate: draggedActivity.unitRate,
+      unitRate: calculatedRate,
       quantity: finalQty,
-      totalBudget: (type === "milestone" || type === "lumpsum" || type === "progress_0_50_100") ? totalBudget : null,
+      totalBudget: calculatedBudget,
+      milestones: type === "milestone" ? assignMilestones : null,
       remarks: draggedActivity.remarks,
       plannedFromDate: mappingMode === "date-range" ? format(dateRange!.from!, "yyyy-MM-dd") : null,
       plannedToDate: mappingMode === "date-range" ? format(dateRange!.to!, "yyyy-MM-dd") : null,
       duration: (type === "milestone" || type === "progress_0_50_100" || mappingMode === "duration") ? parseInt(duration, 10) : null,
-    });
+    } as any);
   };
 
   const handleRefresh = () => {
@@ -419,6 +450,7 @@ export default function ProjectActivities() {
         <div className="flex min-h-[360px] min-w-0 flex-col lg:min-h-0 lg:overflow-hidden">
           <ActivitiesWorkPackagesPanel
             workPackages={workPackages}
+            wbsItems={wbsItems}
             selectedWpId={selectedWpId}
             onSelectWp={setSelectedWpId}
             assignments={displayedAssignments}
@@ -439,7 +471,7 @@ export default function ProjectActivities() {
       </div>
 
       <Dialog open={showAssignDialog} onOpenChange={(open) => !open && resetAssignState()}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Assign activity</DialogTitle>
           </DialogHeader>
@@ -486,6 +518,76 @@ export default function ProjectActivities() {
                 </div>
               )}
 
+              {draggedActivity.activityType === "milestone" && (
+                <div className="space-y-2 border rounded-md p-3 bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">Milestones (weights must total 100%) *</Label>
+                    <span
+                      className={cn(
+                        "text-xs font-medium",
+                        Math.abs(assignMilestones.reduce((s, m) => s + Number(m.weightPercent || 0), 0) - 100) < 0.01
+                          ? "text-emerald-600 font-bold"
+                          : "text-amber-600 font-bold"
+                      )}
+                    >
+                      Total: {assignMilestones.reduce((s, m) => s + Number(m.weightPercent || 0), 0).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {assignMilestones.map((m, idx) => (
+                      <div key={idx} className="flex gap-2 items-center">
+                        <Input
+                          className="flex-1 h-8 text-xs"
+                          placeholder="Milestone name"
+                          value={m.name}
+                          onChange={(e) => {
+                            const next = [...assignMilestones];
+                            next[idx] = { ...next[idx], name: e.target.value };
+                            setAssignMilestones(next);
+                          }}
+                        />
+                        <Input
+                          type="number"
+                          className="w-16 h-8 text-xs text-right font-mono"
+                          min="0"
+                          max="100"
+                          value={m.weightPercent}
+                          onChange={(e) => {
+                            const next = [...assignMilestones];
+                            next[idx] = {
+                              ...next[idx],
+                              weightPercent: Number(e.target.value),
+                            };
+                            setAssignMilestones(next);
+                          }}
+                        />
+                        <span className="text-xs text-muted-foreground w-3">%</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          disabled={assignMilestones.length <= 1}
+                          onClick={() => setAssignMilestones(assignMilestones.filter((_, i) => i !== idx))}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs mt-1"
+                    onClick={() => setAssignMilestones([...assignMilestones, { name: "", weightPercent: 0 }])}
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Add Milestone
+                  </Button>
+                </div>
+              )}
+
               <div>
                 <Label>Activity Tag / Cost Category *</Label>
                 <Select value={categoryTag} onValueChange={setCategoryTag}>
@@ -528,7 +630,7 @@ export default function ProjectActivities() {
                   />
                 </div>
               )}
-              <div className="flex gap-2">
+              <div className="flex gap-2 pt-2">
                 <Button onClick={handleAssignConfirm} disabled={createMutation.isPending}>
                   <Calendar className="mr-2 h-4 w-4" />
                   Confirm

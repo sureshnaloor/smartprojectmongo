@@ -30,6 +30,8 @@ export const projects = pgTable("projects", {
   allocationVersion: integer("allocation_version"),
   /** True after user successfully finalizes the WBS tree structure */
   wbsFinalized: boolean("wbs_finalized").default(false),
+  /** True after user successfully finalizes work package budgets */
+  budgetFinalized: boolean("budget_finalized").default(false),
   /** User id of the project creator (may amend WBS after finalize) */
   createdById: integer("created_by_id"),
   /** Source project id when this project is a WBS amendment copy */

@@ -1,14 +1,30 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ChevronDown, CloudUpload, Hand, Package, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatCurrency } from "@/lib/utils";
-import { getCategoryTagBadge, type ProjectActivityAssignment, type WorkPackageItem } from "./constants";
+import { getCategoryTagBadge, getActivityTypeBadge, type ProjectActivityAssignment, type WorkPackageItem } from "./constants";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export type ActivityMappingMode = "duration" | "date-range";
 
+export interface WbsItemSimple {
+  id: number;
+  code: string;
+  name: string;
+  level?: number;
+  parentId?: number | null;
+}
+
 interface ActivitiesWorkPackagesPanelProps {
   workPackages: WorkPackageItem[];
+  wbsItems?: WbsItemSimple[];
   selectedWpId: number | null;
   onSelectWp: (id: number | null) => void;
   assignments: ProjectActivityAssignment[];
@@ -25,6 +41,7 @@ interface ActivitiesWorkPackagesPanelProps {
 
 export function ActivitiesWorkPackagesPanel({
   workPackages,
+  wbsItems = [],
   selectedWpId,
   onSelectWp,
   assignments,
@@ -40,6 +57,81 @@ export function ActivitiesWorkPackagesPanel({
 }: ActivitiesWorkPackagesPanelProps) {
   const [showWpList, setShowWpList] = useState(true);
   const [dropActive, setDropActive] = useState(false);
+  const [selectedWbsId, setSelectedWbsId] = useState<number | "all">("all");
+
+  const wbsTree = useMemo(() => {
+    const wpCounts = new Map<number, number>();
+    for (const wp of workPackages) {
+      if (wp.wbsItemId != null) {
+        wpCounts.set(wp.wbsItemId, (wpCounts.get(wp.wbsItemId) || 0) + 1);
+      }
+    }
+
+    if (!wbsItems || wbsItems.length === 0) {
+      const map = new Map<number, { id: number; code: string; name: string; level: number; wpCount: number; isLeafHasWp: boolean }>();
+      for (const wp of workPackages) {
+        if (wp.wbsItemId != null && !map.has(wp.wbsItemId)) {
+          map.set(wp.wbsItemId, {
+            id: wp.wbsItemId,
+            code: `WBS #${wp.wbsItemId}`,
+            name: "WBS Branch",
+            level: 1,
+            wpCount: wpCounts.get(wp.wbsItemId) || 0,
+            isLeafHasWp: true,
+          });
+        }
+      }
+      return Array.from(map.values());
+    }
+
+    const itemMap = new Map<number, WbsItemSimple>();
+    const codeMap = new Map<string, WbsItemSimple>();
+    for (const w of wbsItems) {
+      itemMap.set(w.id, w);
+      if (w.code) codeMap.set(w.code.trim(), w);
+    }
+
+    const includedIds = new Set<number>();
+    for (const [wbsId, count] of Array.from(wpCounts.entries())) {
+      if (count > 0) {
+        let curr: WbsItemSimple | undefined = itemMap.get(wbsId);
+        while (curr) {
+          includedIds.add(curr.id);
+          if (curr.parentId != null) {
+            curr = itemMap.get(curr.parentId);
+          } else if (curr.code && curr.code.includes(".")) {
+            const parentCode = curr.code.substring(0, curr.code.lastIndexOf("."));
+            curr = codeMap.get(parentCode);
+          } else {
+            curr = undefined;
+          }
+        }
+      }
+    }
+
+    const items = Array.from(includedIds)
+      .map((id) => itemMap.get(id)!)
+      .filter(Boolean)
+      .sort((a, b) => (a.code || "").localeCompare(b.code || "", undefined, { numeric: true }));
+
+    return items.map((w) => {
+      const count = wpCounts.get(w.id) || 0;
+      const level = w.level ?? (w.code ? w.code.split(".").length : 1);
+      return {
+        id: w.id,
+        code: w.code || `WBS #${w.id}`,
+        name: w.name || "WBS Item",
+        level,
+        wpCount: count,
+        isLeafHasWp: count > 0,
+      };
+    });
+  }, [workPackages, wbsItems]);
+
+  const displayedWorkPackages = useMemo(() => {
+    if (selectedWbsId === "all") return workPackages;
+    return workPackages.filter((wp) => wp.wbsItemId === selectedWbsId);
+  }, [workPackages, selectedWbsId]);
 
   const selectedWP = workPackages.find((wp) => wp.id === selectedWpId);
 
@@ -95,43 +187,89 @@ export function ActivitiesWorkPackagesPanel({
         </div>
 
         {!loading && !error && workPackages.length > 0 && showWpList && (
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            <button
-              type="button"
-              onClick={() => onSelectWp(null)}
-              className={cn(
-                "shrink-0 rounded-full px-3 py-1.5 kanban-caption font-medium transition-all",
-                selectedWpId === null
-                  ? "bg-[var(--copper-500)] text-white"
-                  : "bg-[var(--bg-warm-gray)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              )}
-            >
-              All
-            </button>
-            {workPackages.map((wp) => (
-              <button
-                key={wp.id}
-                type="button"
-                onClick={() => onSelectWp(wp.id)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onDrop(e, wp.id);
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-[var(--text-secondary)] shrink-0">WBS Level:</span>
+              <Select
+                value={selectedWbsId === "all" ? "all" : String(selectedWbsId)}
+                onValueChange={(val) => {
+                  if (val === "all") {
+                    setSelectedWbsId("all");
+                    onSelectWp(null);
+                  } else {
+                    const id = Number(val);
+                    setSelectedWbsId(id);
+                    const wpInWbs = workPackages.find((wp) => wp.wbsItemId === id);
+                    if (wpInWbs) onSelectWp(wpInWbs.id);
+                  }
                 }}
-                onDragOver={handleDragOver}
+              >
+                <SelectTrigger className="h-8 text-xs bg-white border-[var(--border-subtle)]">
+                  <SelectValue placeholder="All WBS Branches" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  <SelectItem value="all" className="font-semibold text-xs">
+                    📁 All WBS Branches & Work Packages
+                  </SelectItem>
+                  {wbsTree.map((wbs) => {
+                    const indent = (wbs.level - 1) * 12;
+                    return (
+                      <SelectItem
+                        key={wbs.id}
+                        value={String(wbs.id)}
+                        disabled={!wbs.isLeafHasWp}
+                        className={cn(
+                          "text-xs font-mono",
+                          !wbs.isLeafHasWp && "opacity-50 text-gray-400 italic pointer-events-none"
+                        )}
+                        style={{ paddingLeft: `${indent + 12}px` }}
+                      >
+                        {wbs.code} — {wbs.name} {!wbs.isLeafHasWp ? "(Parent level)" : `(${wbs.wpCount} WP)`}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              <button
+                type="button"
+                onClick={() => onSelectWp(null)}
                 className={cn(
                   "shrink-0 rounded-full px-3 py-1.5 kanban-caption font-medium transition-all",
-                  selectedWpId === wp.id
+                  selectedWpId === null
                     ? "bg-[var(--copper-500)] text-white"
                     : "bg-[var(--bg-warm-gray)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 )}
-                title={`${wp.code} – ${wp.name}`}
               >
-                <span className="font-mono">{wp.code}</span>
-                <span className="mx-1 opacity-60">·</span>
-                {wp.name}
+                All Packages
               </button>
-            ))}
+              {displayedWorkPackages.map((wp) => (
+                <button
+                  key={wp.id}
+                  type="button"
+                  onClick={() => onSelectWp(wp.id)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDrop(e, wp.id);
+                  }}
+                  onDragOver={handleDragOver}
+                  className={cn(
+                    "shrink-0 rounded-full px-3 py-1.5 kanban-caption font-medium transition-all",
+                    selectedWpId === wp.id
+                      ? "bg-[var(--copper-500)] text-white"
+                      : "bg-[var(--bg-warm-gray)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  )}
+                  title={`${wp.code} – ${wp.name}`}
+                >
+                  <span className="font-mono">{wp.code}</span>
+                  <span className="mx-1 opacity-60">·</span>
+                  {wp.name}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -212,8 +350,33 @@ export function ActivitiesWorkPackagesPanel({
                 <tbody>
                   {assignments.map((row) => {
                     const wp = workPackages.find((w) => w.id === row.wpId);
-                    const rate = Number(row.unitRate);
-                    const amount = rate * Number(row.quantity);
+                    const type = row.activityType || "units";
+
+                    let displayQty = row.quantity || "1";
+                    let displayUom = row.unitOfMeasure || "ea";
+                    let displayRate = Number(row.unitRate || 0);
+                    let displayAmount = Number(row.totalBudget || 0);
+
+                    if (type === "lumpsum") {
+                      displayQty = "1";
+                      displayUom = row.unitOfMeasure || "LOT";
+                      displayAmount = Number(row.totalBudget || row.unitRate || 0);
+                      displayRate = displayAmount;
+                    } else if (type === "milestone" || type === "progress_0_50_100") {
+                      displayQty = "1";
+                      displayUom = row.unitOfMeasure || "LOT";
+                      displayAmount = Number(row.totalBudget || row.unitRate || 0);
+                      displayRate = displayAmount;
+                    } else if (type === "units") {
+                      displayQty = row.quantity || "1";
+                      displayUom = row.unitOfMeasure || "ea";
+                      displayRate = Number(row.unitRate || 0);
+                      displayAmount = displayAmount > 0 ? displayAmount : displayRate * Number(displayQty);
+                    }
+
+                    const typeBadge = getActivityTypeBadge(type);
+                    const tagBadge = getCategoryTagBadge(row.categoryTag);
+
                     return (
                       <tr
                         key={row.id}
@@ -227,24 +390,25 @@ export function ActivitiesWorkPackagesPanel({
                         <td className="px-3 py-2.5 kanban-body-sm text-[var(--text-primary)]">
                           <div className="flex flex-col gap-0.5">
                             <span className="font-medium">{row.name}</span>
-                            {(() => {
-                              const tagBadge = getCategoryTagBadge(row.categoryTag);
-                              if (!tagBadge) return null;
-                              return (
+                            <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                              <span className={cn("inline-flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded font-medium border w-fit", typeBadge.className)}>
+                                {typeBadge.icon} {typeBadge.label}
+                              </span>
+                              {tagBadge && (
                                 <span className={cn("inline-flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded font-medium border w-fit", tagBadge.className)}>
                                   {tagBadge.icon} {tagBadge.label}
                                 </span>
-                              );
-                            })()}
+                              )}
+                            </div>
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-right kanban-body-sm font-mono">{row.quantity}</td>
-                        <td className="px-3 py-2.5 kanban-body-sm text-[var(--text-secondary)]">{row.unitOfMeasure}</td>
+                        <td className="px-3 py-2.5 text-right kanban-body-sm font-mono">{displayQty}</td>
+                        <td className="px-3 py-2.5 kanban-body-sm text-[var(--text-secondary)]">{displayUom}</td>
                         <td className="px-3 py-2.5 text-right kanban-body-sm font-mono text-[var(--text-secondary)]">
-                          {formatCurrency(rate)}
+                          {formatCurrency(displayRate)}
                         </td>
                         <td className="px-3 py-2.5 text-right kanban-body-sm font-mono text-[var(--text-primary)]">
-                          {formatCurrency(amount)}
+                          {formatCurrency(displayAmount)}
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex justify-end gap-0.5">

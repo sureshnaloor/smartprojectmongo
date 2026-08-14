@@ -109,12 +109,20 @@ export function ActivityFormDialog({
     setError(null);
     if (initial) {
       const initialType = (initial.activityType as ProjectActivityType) ?? "units";
+      const initialBudget = initial.totalBudget
+        ? String(initial.totalBudget)
+        : initial.unitRate
+        ? String(initial.unitRate)
+        : "0";
       setForm({
         ...defaultValues(),
         ...initial,
         activityType: initialType,
+        categoryTag: initial.categoryTag || "resource-heavy",
         unitOfMeasure: initialType === "lumpsum" ? "LOT" : (initial.unitOfMeasure ?? ""),
         quantity: initialType === "lumpsum" ? "1" : (initial.quantity ?? "1"),
+        unitRate: initial.unitRate ? String(initial.unitRate) : "0",
+        totalBudget: initialBudget,
         duration: initial.duration ?? 1,
         milestones: initial.milestones?.length
           ? initial.milestones.map((m) => ({ ...m }))

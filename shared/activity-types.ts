@@ -55,9 +55,12 @@ export function computeActivityBudget(activity: {
 }): number {
   const type = (activity.activityType ?? "units") as ProjectActivityType;
   if (type === "units") {
-    return Number(activity.quantity || 0) * Number(activity.unitRate || 0);
+    const q = Number(activity.quantity || 0);
+    const r = Number(activity.unitRate || 0);
+    const t = Number(activity.totalBudget || 0);
+    return t > 0 ? t : q * r;
   }
-  return Number(activity.totalBudget || 0);
+  return Number(activity.totalBudget || activity.unitRate || 0);
 }
 
 export function computeEarnedValue(activity: {

@@ -16,8 +16,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FinalizeWbsButton } from "@/components/project/finalize-wbs-button";
+import { FinalizeBudgetButton } from "@/components/project/finalize-budget-button";
 import { WbsItemWithWorkPackages } from "@/components/project/wbs-item-with-work-packages";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { WbsItem, WorkPackage } from "@shared/schema";
 import { MAX_WBS_LEVEL } from "@shared/wbs-validation";
 export interface WbsTreeNode extends WbsItem {
@@ -30,6 +31,9 @@ interface WbsTreePanelProps {
   wbsItems: WbsItem[];
   workPackages: WorkPackage[];
   wbsFinalized: boolean;
+  budgetFinalized?: boolean;
+  projectCurrency?: string;
+  flashingZeroBudgetWpIds?: Set<number>;
   tree: WbsTreeNode[];
   isLoading?: boolean;
   selectedWbsId: number | null;
@@ -49,7 +53,9 @@ interface WbsTreePanelProps {
   onAddWorkPackage: (wbs: { id: number; name: string }) => void;
   onEditWorkPackage: (id: number) => void;
   onDeleteWorkPackage: (id: number) => void;
+  onEditWorkPackageBudget?: (wp: WorkPackage) => void;
   onInvalidWbsIds: (ids: number[]) => void;
+  onInvalidWpBudgetIds?: (wpIds: number[], parentWbsIds: number[]) => void;
   /** Optional action shown next to Finalize (e.g. amend button) */
   amendAction?: ReactNode;
   onImportWbs?: () => void;
@@ -74,6 +80,9 @@ export function WbsTreePanel({
   wbsItems,
   workPackages,
   wbsFinalized,
+  budgetFinalized = false,
+  projectCurrency = "INR",
+  flashingZeroBudgetWpIds,
   tree,
   isLoading,
   selectedWbsId,
@@ -93,49 +102,73 @@ export function WbsTreePanel({
   onAddWorkPackage,
   onEditWorkPackage,
   onDeleteWorkPackage,
+  onEditWorkPackageBudget,
   onInvalidWbsIds,
+  onInvalidWpBudgetIds,
   amendAction,
   onImportWbs,
 }: WbsTreePanelProps) {
   const [search, setSearch] = useState("");
   const allExpanded = expandedIds.size > 0;
 
+  const wbsBudgetMap = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const item of wbsItems) {
+      const descendantIds = new Set<number>([item.id]);
+      let added = true;
+      while (added) {
+        added = false;
+        for (const w of wbsItems) {
+          if (w.parentId != null && descendantIds.has(w.parentId) && !descendantIds.has(w.id)) {
+            descendantIds.add(w.id);
+            added = true;
+          }
+        }
+      }
+      let sum = 0;
+      for (const wp of workPackages) {
+        if (wp.wbsItemId != null && descendantIds.has(wp.wbsItemId)) {
+          sum += Number(wp.budgetedCost || 0);
+        }
+      }
+      map.set(item.id, sum);
+    }
+    return map;
+  }, [wbsItems, workPackages]);
+
   const filteredTree = useMemo(() => {
     if (!search.trim()) return tree;
     const q = search.toLowerCase();
     const filterNodes = (nodes: WbsTreeNode[]): WbsTreeNode[] =>
       nodes
-        .map((n) => ({
-          ...n,
-          children: filterNodes(n.children),
-        }))
-        .filter(
-          (n) =>
-            n.name.toLowerCase().includes(q) ||
-            n.code?.toLowerCase().includes(q) ||
-            n.children.length > 0
-        );
+        .map((n) => {
+          const matchSelf = n.name.toLowerCase().includes(q) || (n.code?.toLowerCase() || "").includes(q);
+          const filteredChildren = filterNodes(n.children);
+          if (matchSelf || filteredChildren.length > 0) {
+            return { ...n, children: filteredChildren };
+          }
+          return null;
+        })
+        .filter(Boolean) as WbsTreeNode[];
     return filterNodes(tree);
   }, [tree, search]);
 
-  const renderNode = (items: WbsTreeNode[], level = 0) =>
-    items.map((item) => {
-      const wpCount = wbsWpCount.get(item.id) ?? 0;
-      const childCount = (item.children?.length ?? 0) + wpCount;
-      const canExpand = childCount > 0;
+  const renderNode = (nodes: WbsTreeNode[], level = 0) =>
+    nodes.map((item) => {
       const isSelected = selectedWbsId === item.id;
-      const hasChildWbs = (childWbsCountByParent.get(item.id) ?? 0) > 0;
-      const hasWorkPackages = wpCount > 0;
+      const isFlashing = flashingWbsIds.has(item.id);
+      const childCount = (wbsWpCount.get(item.id) ?? 0) + (childWbsCountByParent.get(item.id) ?? 0);
+      const canExpand = item.children.length > 0 || (wbsWpCount.get(item.id) ?? 0) > 0;
+      const hasWorkPackages = (wbsWpCount.get(item.id) ?? 0) > 0;
+      const rolledUpBudget = wbsBudgetMap.get(item.id) || 0;
 
       return (
-        <div key={item.id}>
+        <div key={item.id} className="select-none">
           <div
             className={cn(
-              "group relative flex w-full items-center gap-1 border-b border-[var(--border-subtle)] py-2 pr-2 transition-colors duration-100",
-              isSelected
-                ? "border-l-[3px] border-l-[var(--copper-500)] bg-[var(--copper-50)] font-medium"
-                : "border-l-[3px] border-l-transparent hover:bg-[rgba(253,246,237,0.5)]",
-              flashingWbsIds.has(item.id) && "animate-pulse ring-2 ring-red-500 bg-red-50"
+              "group relative flex items-center gap-1.5 py-1.5 pr-2 transition-colors hover:bg-[var(--bg-warm-gray)]",
+              isSelected && "bg-[rgba(253,245,232,0.8)] font-medium text-[var(--copper-500)]",
+              isFlashing && "animate-pulse bg-emerald-100 dark:bg-emerald-950/40"
             )}
             style={{ paddingLeft: 16 + level * 20 }}
           >
@@ -167,6 +200,11 @@ export function WbsTreePanel({
                 <span className="ml-1 kanban-caption text-[var(--text-muted)]">(WBS)</span>
               )}
             </button>
+            {rolledUpBudget > 0 && (
+              <span className="shrink-0 text-[10px] font-mono font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                {formatCurrency(rolledUpBudget, projectCurrency)}
+              </span>
+            )}
             {childCount > 0 && (
               <span className="shrink-0 rounded-full bg-[var(--bg-warm-gray)] px-1.5 py-0.5 kanban-caption text-[var(--text-secondary)]">
                 {childCount}
@@ -217,8 +255,13 @@ export function WbsTreePanel({
                   level={level}
                   isExpanded={item.expanded}
                   wbsFinalized={wbsFinalized}
+                  budgetFinalized={budgetFinalized}
+                  projectWorkPackages={workPackages}
+                  projectCurrency={projectCurrency}
+                  flashingZeroBudgetWpIds={flashingZeroBudgetWpIds}
                   onEditWorkPackage={onEditWorkPackage}
                   onDeleteWorkPackage={onDeleteWorkPackage}
+                  onEditWorkPackageBudget={onEditWorkPackageBudget}
                   onWorkPackageClick={onSelectWp}
                 />
               )}
@@ -244,6 +287,14 @@ export function WbsTreePanel({
             onInvalidIds={onInvalidWbsIds}
             size="sm"
             className="bg-[var(--copper-500)] shadow-[var(--shadow-copper)] hover:bg-[var(--copper-600)]"
+          />
+          <FinalizeBudgetButton
+            projectId={projectId}
+            wbsFinalized={wbsFinalized}
+            budgetFinalized={budgetFinalized}
+            workPackages={workPackages}
+            onInvalidWpBudgetIds={onInvalidWpBudgetIds}
+            size="sm"
           />
           {amendAction}
           {onImportWbs && (

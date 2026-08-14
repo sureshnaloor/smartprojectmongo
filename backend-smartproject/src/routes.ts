@@ -102,8 +102,6 @@ async function normalizeAndValidateGlobalActivity(
       data: {
         ...data,
         unitOfMeasure: uom.name,
-        quantity: null,
-        totalBudget: null,
       },
     };
   }
@@ -111,12 +109,6 @@ async function normalizeAndValidateGlobalActivity(
   return {
     data: {
       ...data,
-      unitOfMeasure: null,
-      unitRate: null,
-      quantity: null,
-      totalBudget: null,
-      percentComplete: 0,
-      progressState: 0,
     },
   };
 }
@@ -790,12 +782,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid project ID" });
       }
 
-      const targetProject = await getLatestProjectInFamily(projectId);
-      if (!targetProject) {
+      const project = await storage.getProject(projectId);
+      if (!project) {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const activities = await storage.getProjectActivities(targetProject.id);
+      const activities = await storage.getProjectActivities(projectId);
       res.json(activities);
     } catch (err) {
       handleError(err, res);
@@ -2089,12 +2081,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid project ID" });
       }
 
-      const targetProject = await getLatestProjectInFamily(projectId);
-      if (!targetProject) {
+      const project = await storage.getProject(projectId);
+      if (!project) {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const wbsItems = await storage.getWbsItems(targetProject.id);
+      const wbsItems = await storage.getWbsItems(projectId);
       res.json(wbsItems);
     } catch (err) {
       handleError(err, res);
@@ -2226,8 +2218,133 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * Finalize work package budgets for a project version.
+   * Prerequisite: WBS structure MUST be finalized first (wbsFinalized=true),
+   * all work packages must have non-zero budget, and total WP budget must not exceed project value.
+   */
+  app.post("/api/projects/:projectId/finalize-budget", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) {
+        return res.status(400).json({ message: "Invalid project ID" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      if (!(project as any).wbsFinalized) {
+        return res.status(400).json({ message: "WBS status must be 'Finalized' before Work Package budget can be finalized." });
+      }
+
+      if ((project as any).budgetFinalized) {
+        return res.status(400).json({ message: "Work package budget is already finalized for this project version." });
+      }
+
+      const wbsItems = await storage.getWbsItems(projectId);
+      const activeWbsIdSet = new Set(wbsItems.map((w) => w.id));
+
+      const allWorkPackages = await storage.getWorkPackagesByProject(projectId);
+
+      // Clean up / purge any orphaned work packages belonging to deleted WBS items of THIS project
+      const orphanedWpIds = allWorkPackages
+        .filter((wp) => !activeWbsIdSet.has(wp.wbsItemId))
+        .map((wp) => wp.id);
+      if (orphanedWpIds.length > 0) {
+        const { db } = await import("./storage");
+        await db.collection("work_packages").deleteMany({ id: { $in: orphanedWpIds } });
+      }
+
+      const workPackages = allWorkPackages.filter((wp) => activeWbsIdSet.has(wp.wbsItemId));
+      if (!workPackages || workPackages.length === 0) {
+        return res.status(400).json({ message: "No work packages found for active WBS items in this project version" });
+      }
+
+      // 1. Check if any work package is missing budget value
+      const zeroBudgetWps = workPackages.filter(
+        (wp) => !wp.budgetedCost || isNaN(Number(wp.budgetedCost)) || Number(wp.budgetedCost) <= 0
+      );
+
+      // Fetch all project activities for this project
+      const projectActivities = await storage.getProjectActivities(projectId);
+      const wpActivityMap = new Map<number, typeof projectActivities>();
+      for (const act of projectActivities) {
+        if (act.wpId) {
+          const list = wpActivityMap.get(act.wpId) || [];
+          list.push(act);
+          wpActivityMap.set(act.wpId, list);
+        }
+      }
+
+      // 2. Check if any work package has NIL (0) assigned activities
+      const nilActivityWps = workPackages.filter((wp) => {
+        const acts = wpActivityMap.get(wp.id) || [];
+        return acts.length === 0;
+      });
+
+      // 3. Check for Negative Slack (Sum of activity budgets > WP budget)
+      const negativeSlackWps = workPackages.filter((wp) => {
+        const acts = wpActivityMap.get(wp.id) || [];
+        const wpBudget = Number(wp.budgetedCost || 0);
+        const sumActs = acts.reduce((sum, a) => sum + computeActivityBudget(a), 0);
+        return wpBudget - sumActs < 0;
+      });
+
+      const invalidWps = Array.from(
+        new Set([
+          ...zeroBudgetWps.map((w) => w.id),
+          ...nilActivityWps.map((w) => w.id),
+          ...negativeSlackWps.map((w) => w.id),
+        ])
+      );
+
+      if (invalidWps.length > 0) {
+        const invalidWpObjects = workPackages.filter((wp) => invalidWps.includes(wp.id));
+        const invalidWbsIds = Array.from(new Set(invalidWpObjects.map((wp) => wp.wbsItemId)));
+
+        let errorMsg = "";
+        if (zeroBudgetWps.length > 0) {
+          errorMsg += `Found ${zeroBudgetWps.length} Work Package(s) with ₹0.00 budget (e.g. "${zeroBudgetWps[0].name}"). `;
+        }
+        if (nilActivityWps.length > 0) {
+          errorMsg += `Found ${nilActivityWps.length} Work Package(s) with NO (NIL) assigned activities (e.g. "${nilActivityWps[0].name}"). `;
+        }
+        if (negativeSlackWps.length > 0) {
+          errorMsg += `Found ${negativeSlackWps.length} Work Package(s) where activity budgets exceed work package budget (negative slack, e.g. "${negativeSlackWps[0].name}"). `;
+        }
+
+        return res.status(400).json({
+          message: `Work Package Budget Finalization Failed: ${errorMsg.trim()} All work packages must have a non-zero budget, at least 1 assigned activity, and non-negative slack before finalizing.`,
+          invalidWpIds: invalidWps,
+          invalidWbsIds,
+          details: {
+            zeroBudgetWpIds: zeroBudgetWps.map((w) => w.id),
+            nilActivityWpIds: nilActivityWps.map((w) => w.id),
+            negativeSlackWpIds: negativeSlackWps.map((w) => w.id),
+          },
+        });
+      }
+
+      // Check total work package budget vs project total budget
+      const totalWpBudget = workPackages.reduce((sum, wp) => sum + Number(wp.budgetedCost || 0), 0);
+      const projectTotalBudget = Number(project.budget || 0);
+      if (projectTotalBudget > 0 && totalWpBudget > projectTotalBudget) {
+        return res.status(400).json({
+          message: `Total work package budget (₹${totalWpBudget.toLocaleString()}) exceeds project contract value (₹${projectTotalBudget.toLocaleString()}). Please adjust work package budgets before finalizing.`,
+        });
+      }
+
+      const updated = await storage.updateProject(projectId, { budgetFinalized: true } as any);
+      res.json({ ok: true, budgetFinalized: true, project: updated });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  /**
    * Create a WBS amendment: deep-copy project + WBS + work packages into
-   * `{baseName}_amd_{n}` with wbsFinalized=false. Admin or project creator only.
+   * `{baseName}_amd_{n}` with wbsFinalized=false, budgetFinalized=false. Admin or project creator only.
    */
   app.post("/api/projects/:projectId/amend", async (req: Request, res: Response) => {
     try {
@@ -2248,6 +2365,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!(project as { wbsFinalized?: boolean }).wbsFinalized) {
         return res.status(400).json({
           message: "Project WBS must be finalized before creating an amendment",
+        });
+      }
+
+      if (!(project as { budgetFinalized?: boolean }).budgetFinalized) {
+        return res.status(400).json({
+          message: "Budget finalization should be completed before the WBS can be initiated for amendment.",
         });
       }
 
@@ -2289,12 +2412,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid project ID" });
       }
 
-      const targetProject = await getLatestProjectInFamily(projectId);
-      if (!targetProject) {
+      const project = await storage.getProject(projectId);
+      if (!project) {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const workPackages = await storage.getWorkPackagesByProject(targetProject.id);
+      const wbsItems = await storage.getWbsItems(projectId);
+      const activeWbsIdSet = new Set(wbsItems.map((w) => w.id));
+      const allWorkPackages = await storage.getWorkPackagesByProject(projectId);
+      const workPackages = allWorkPackages.filter((wp) => activeWbsIdSet.has(wp.wbsItemId));
       res.json(workPackages);
     } catch (err) {
       handleError(err, res);
@@ -2817,44 +2943,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Work package not found" });
       }
 
-      if (!(await assertProjectWbsEditable(workPackage.projectId, res))) return;
+      const project = await storage.getProject(workPackage.projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
 
       const partialWorkPackageSchema = insertWorkPackageSchema.partial();
       const workPackageData = partialWorkPackageSchema.parse(req.body);
 
+      // Separate structural updates vs budget updates:
+      // Structural fields: code, name, description, wbsItemId
+      const isStructuralUpdate =
+        workPackageData.code !== undefined ||
+        workPackageData.name !== undefined ||
+        workPackageData.wbsItemId !== undefined;
+
+      const isBudgetUpdate = workPackageData.budgetedCost !== undefined;
+
+      if (isStructuralUpdate && (project as any).wbsFinalized) {
+        return res.status(400).json({ message: WBS_FINALIZED_MESSAGE });
+      }
+
+      if (isBudgetUpdate && (project as any).budgetFinalized) {
+        return res.status(400).json({
+          message: "Work package budget is finalized. Create a project amendment to revise budget values.",
+        });
+      }
+
       // Code uniqueness validation if code is being changed
       if (workPackageData.code && workPackageData.code !== workPackage.code) {
         const allProjectWorkPackages = await storage.getWorkPackagesByProject(workPackage.projectId);
-        const codeExists = allProjectWorkPackages.some(wp => wp.code === workPackageData.code && wp.id !== id);
+        const codeExists = allProjectWorkPackages.some((wp) => wp.code === workPackageData.code && wp.id !== id);
         if (codeExists) {
           return res.status(400).json({
-            message: `Work Package code "${workPackageData.code}" already exists in this project. Code must be unique within a project.`
+            message: `Work Package code "${workPackageData.code}" already exists in this project. Code must be unique within a project.`,
           });
         }
       }
 
-      // Budget validation
+      // Budget validation against total project contract value
       if (workPackageData.budgetedCost !== undefined) {
-        const wbsItem = await storage.getWbsItem(workPackage.wbsItemId);
-        if (wbsItem) {
-          // Check against parent WBS budget
-          if (Number(workPackageData.budgetedCost) > Number(wbsItem.budgetedCost)) {
-            return res.status(400).json({
-              message: `Budget cannot exceed parent WBS budget of ${wbsItem.budgetedCost}`
-            });
-          }
+        const newCost = Number(workPackageData.budgetedCost);
+        if (isNaN(newCost) || newCost <= 0) {
+          return res.status(400).json({ message: "Work package budget must be a positive number" });
+        }
 
-          // Check sum of other work packages
-          const allWorkPackages = await storage.getWorkPackagesByWbsItem(workPackage.wbsItemId);
-          const otherWorkPackagesTotal = allWorkPackages
-            .filter(wp => wp.id !== id)
-            .reduce((sum, wp) => sum + Number(wp.budgetedCost), 0);
+        const allWorkPackages = await storage.getWorkPackagesByProject(workPackage.projectId);
+        const otherWorkPackagesTotal = allWorkPackages
+          .filter((wp) => wp.id !== id)
+          .reduce((sum, wp) => sum + Number(wp.budgetedCost || 0), 0);
 
-          if ((otherWorkPackagesTotal + Number(workPackageData.budgetedCost)) > Number(wbsItem.budgetedCost)) {
-            return res.status(400).json({
-              message: `Sum of all work package budgets (${otherWorkPackagesTotal + Number(workPackageData.budgetedCost)}) cannot exceed parent WBS budget (${wbsItem.budgetedCost})`
-            });
-          }
+        const newTotalWpBudget = otherWorkPackagesTotal + newCost;
+        const projectTotalBudget = Number(project.budget || 0);
+
+        if (projectTotalBudget > 0 && newTotalWpBudget > projectTotalBudget) {
+          return res.status(400).json({
+            message: `Total work package budget (₹${newTotalWpBudget.toLocaleString()}) cannot exceed project contract value (₹${projectTotalBudget.toLocaleString()}).`,
+          });
+        }
+
+        const acts = await storage.getProjectActivitiesByWorkPackage(id);
+        const sumActs = acts.reduce((sum, a) => sum + computeActivityBudget(a), 0);
+        if (newCost < sumActs) {
+          return res.status(400).json({
+            message: `Work package budget (₹${newCost.toLocaleString()}) cannot be less than the sum of assigned activity budgets (₹${sumActs.toLocaleString()}). Slack cannot be negative.`,
+          });
         }
       }
 
@@ -7615,8 +7768,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const projectId = parseInt(req.params.projectId);
       if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
-      const targetProject = await getLatestProjectInFamily(projectId);
-      const rows = await storage.getWorkPackageMaterials({ projectId: targetProject ? targetProject.id : projectId });
+      const rows = await storage.getWorkPackageMaterials({ projectId });
       const result = await enrichWorkPackageMaterials(rows as unknown as Array<Record<string, unknown>>);
       res.json(result);
     } catch (err) {

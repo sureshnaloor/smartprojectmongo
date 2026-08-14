@@ -205,6 +205,7 @@ export class DatabaseStorage {
 
   async deleteWbsItem(id: number): Promise<void> {
     await db.collection("wbs_items").deleteOne({ id });
+    await db.collection("work_packages").deleteMany({ wbsItemId: id });
   }
 
   async getDependencies(projectId?: number): Promise<Dependency[]> {

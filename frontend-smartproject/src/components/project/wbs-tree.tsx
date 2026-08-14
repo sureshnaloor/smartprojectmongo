@@ -48,6 +48,7 @@ import {
 import { ImportActivityModal } from "./import-activity-modal";
 import { ImportWbsModal } from "./import-wbs-modal";
 import { FinalizeWbsButton } from "./finalize-wbs-button";
+import { FinalizeBudgetButton } from "./finalize-budget-button";
 import { AmendProjectButton } from "./amend-project-button";
 import { MAX_WBS_LEVEL } from "@shared/wbs-validation";
 
@@ -517,11 +518,18 @@ export function WbsTree({ projectId }: WbsTreeProps) {
               });
             }}
           />
+          <FinalizeBudgetButton
+            projectId={projectId}
+            wbsFinalized={isWbsFinalized}
+            budgetFinalized={Boolean((project as any)?.budgetFinalized)}
+            workPackages={projectWorkPackages}
+          />
           {project && (
             <AmendProjectButton
               projectId={projectId}
               projectName={(project as ProjectData).name}
               wbsFinalized={isWbsFinalized}
+              budgetFinalized={Boolean((project as any)?.budgetFinalized)}
               createdById={(project as ProjectData & { createdById?: number | null }).createdById}
             />
           )}

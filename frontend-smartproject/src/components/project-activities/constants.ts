@@ -84,6 +84,36 @@ export function getCategoryTagBadge(tag?: string | null): { label: string; class
   }
 }
 
+export function getActivityTypeBadge(type?: string | null): { label: string; className: string; icon: string } {
+  switch (type) {
+    case "lumpsum":
+      return {
+        label: "Lump Sum",
+        className: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800",
+        icon: "💼",
+      };
+    case "milestone":
+      return {
+        label: "Milestone",
+        className: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800",
+        icon: "🎯",
+      };
+    case "progress_0_50_100":
+      return {
+        label: "0/50/100",
+        className: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800",
+        icon: "⏱️",
+      };
+    case "units":
+    default:
+      return {
+        label: "Units",
+        className: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
+        icon: "📏",
+      };
+  }
+}
+
 export function activityCategoryLabel(item: GlobalActivityItem): string {
   if (item.category?.trim()) return item.category.trim();
   const type = item.activityType;

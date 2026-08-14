@@ -8,6 +8,7 @@ import { EditWbsModal } from "@/components/project/edit-wbs-modal";
 import { AddWorkPackageModal } from "@/components/project/add-work-package-modal";
 import { EditWorkPackageModal } from "@/components/project/edit-work-package-modal";
 import { EditAllocationModal } from "@/components/project/edit-allocation-modal";
+import { EditWorkPackageBudgetModal } from "@/components/project/edit-work-package-budget-modal";
 import { useToast } from "@/hooks/use-toast";
 import { WbsActivitiesSplitView } from "@/components/wbs-activities/wbs-activities-split-view";
 import { WbsTreePanel, type WbsTreeNode } from "@/components/wbs-activities/wbs-tree-panel";
@@ -45,6 +46,9 @@ export default function ProjectWbsWorkPackages() {
   const [selectedWbsForWp, setSelectedWbsForWp] = useState<{ id: number; name: string } | null>(null);
   const [isEditAllocationOpen, setIsEditAllocationOpen] = useState(false);
   const [isImportWbsOpen, setIsImportWbsOpen] = useState(false);
+  const [isEditWpBudgetOpen, setIsEditWpBudgetOpen] = useState(false);
+  const [selectedWpForBudgetEdit, setSelectedWpForBudgetEdit] = useState<WorkPackage | null>(null);
+  const [flashingZeroBudgetWpIds, setFlashingZeroBudgetWpIds] = useState<Set<number>>(new Set());
 
   const { data: project, isLoading: loadingProject } = useQuery<Project>({
     queryKey: [`/api/projects/${pid}`],
@@ -72,6 +76,7 @@ export default function ProjectWbsWorkPackages() {
   });
 
   const isWbsFinalized = Boolean((project as Project & { wbsFinalized?: boolean })?.wbsFinalized);
+  const isBudgetFinalized = Boolean((project as Project & { budgetFinalized?: boolean })?.budgetFinalized);
   const projectCreatedById = (project as Project & { createdById?: number | null })?.createdById ?? null;
   const projectBudgetNum = Number(project?.budget) || 0;
   const topLevelWbs = useMemo(() => wbsItems.filter((w) => !w.parentId), [wbsItems]);
@@ -221,6 +226,8 @@ export default function ProjectWbsWorkPackages() {
             wbsItems={wbsItems}
             workPackages={workPackages}
             wbsFinalized={isWbsFinalized}
+            budgetFinalized={isBudgetFinalized}
+            projectCurrency={project?.currency || "INR"}
             tree={wbsTree}
             isLoading={loadingWbs}
             selectedWbsId={selectedWbsId}
@@ -274,9 +281,35 @@ export default function ProjectWbsWorkPackages() {
               setIsEditWpOpen(true);
             }}
             onDeleteWorkPackage={handleDeleteWp}
+            onEditWorkPackageBudget={(wp) => {
+              if (isBudgetFinalized) {
+                toast({
+                  title: "Budget is finalized",
+                  description: "Create a project amendment to edit work package budgets.",
+                  variant: "destructive",
+                });
+                return;
+              }
+              setFlashingZeroBudgetWpIds((prev) => {
+                const next = new Set(prev);
+                next.delete(wp.id);
+                return next;
+              });
+              setSelectedWpForBudgetEdit(wp);
+              setIsEditWpBudgetOpen(true);
+            }}
             onInvalidWbsIds={(ids) => {
               setFlashingWbsIds(new Set(ids));
-              setExpandedIds((prev) => new Set([...prev, ...ids]));
+              setExpandedIds((prev) => new Set([...Array.from(prev), ...ids]));
+              setTimeout(() => setFlashingWbsIds(new Set()), 4000);
+            }}
+            flashingZeroBudgetWpIds={flashingZeroBudgetWpIds}
+            onInvalidWpBudgetIds={(wpIds, parentWbsIds) => {
+              setFlashingZeroBudgetWpIds(new Set(wpIds));
+              if (parentWbsIds.length > 0) {
+                setExpandedIds((prev) => new Set([...Array.from(prev), ...parentWbsIds]));
+              }
+              setTimeout(() => setFlashingZeroBudgetWpIds(new Set()), 4000);
             }}
             amendAction={
               project ? (
@@ -284,6 +317,7 @@ export default function ProjectWbsWorkPackages() {
                   projectId={pid}
                   projectName={project.name}
                   wbsFinalized={isWbsFinalized}
+                  budgetFinalized={isBudgetFinalized}
                   createdById={projectCreatedById}
                 />
               ) : null
@@ -394,6 +428,13 @@ export default function ProjectWbsWorkPackages() {
           queryClient.invalidateQueries({ queryKey: [`/api/projects/${pid}/work-packages`] });
         }}
         readOnly={allocationComplete}
+      />
+
+      <EditWorkPackageBudgetModal
+        open={isEditWpBudgetOpen}
+        onOpenChange={setIsEditWpBudgetOpen}
+        workPackage={selectedWpForBudgetEdit}
+        project={project}
       />
 
       <ImportWbsModal

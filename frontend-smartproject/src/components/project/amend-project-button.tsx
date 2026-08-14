@@ -23,6 +23,7 @@ interface AmendProjectButtonProps {
   projectId: number;
   projectName: string;
   wbsFinalized: boolean;
+  budgetFinalized?: boolean;
   createdById?: number | null;
   className?: string;
   size?: "sm" | "default";
@@ -32,6 +33,7 @@ export function AmendProjectButton({
   projectId,
   projectName,
   wbsFinalized,
+  budgetFinalized = false,
   createdById,
   className,
   size = "sm",
@@ -48,6 +50,9 @@ export function AmendProjectButton({
 
   const amendMutation = useMutation({
     mutationFn: async () => {
+      if (!budgetFinalized) {
+        throw new Error("Budget finalization should be completed before the WBS can be initiated for amendment.");
+      }
       const res = await apiRequest("POST", `/api/projects/${projectId}/amend`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
