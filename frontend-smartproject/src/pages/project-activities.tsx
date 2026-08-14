@@ -104,10 +104,11 @@ export default function ProjectActivities() {
     setSelectedActivityId(null);
   }, [catalogTab]);
 
-  const { data: project } = useQuery<{ name: string; currency?: string }>({
+  const { data: project } = useQuery<{ name: string; currency?: string; budgetFinalized?: boolean; wbsFinalized?: boolean }>({
     queryKey: [`/api/projects/${projectId}`],
     enabled: !!projectId,
   });
+  const isBudgetFinalized = Boolean(project?.budgetFinalized);
 
   const { data: wbsItems = [] } = useQuery<WbsItemSimple[]>({
     queryKey: [`/api/projects/${projectId}/wbs`],
@@ -288,11 +289,28 @@ export default function ProjectActivities() {
   };
 
   const handleDragStart = (e: React.DragEvent, activity: GlobalActivityItem) => {
+    if (isBudgetFinalized) {
+      toast({
+        title: "Budget Finalized",
+        description: "Work package budget is finalized. No further activities can be assigned to work packages.",
+        variant: "destructive",
+      });
+      return;
+    }
     e.dataTransfer.setData("application/json", JSON.stringify({ activity, catalogTab }));
     setDraggedActivity(activity);
   };
 
   const beginAssign = (activity: GlobalActivityItem, wpId: number) => {
+    if (isBudgetFinalized) {
+      toast({
+        title: "Budget Finalized",
+        description: "Work package budget is finalized. No further activities can be assigned to work packages.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const exists = allProjectActivities.some(
       (pa) => pa.globalActivityId === activity.id && pa.wpId === wpId && catalogTab !== "custom"
     );
@@ -319,6 +337,14 @@ export default function ProjectActivities() {
 
   const handleDrop = (e: React.DragEvent, wpId: number) => {
     e.preventDefault();
+    if (isBudgetFinalized) {
+      toast({
+        title: "Budget Finalized",
+        description: "Work package budget is finalized. No further activities can be assigned to work packages.",
+        variant: "destructive",
+      });
+      return;
+    }
     const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("activity");
     if (!raw) {
       if (draggedActivity) beginAssign(draggedActivity, wpId);
@@ -334,6 +360,14 @@ export default function ProjectActivities() {
   };
 
   const handleAssignConfirm = () => {
+    if (isBudgetFinalized) {
+      toast({
+        title: "Budget Finalized",
+        description: "Work package budget is finalized. No further activities can be assigned to work packages.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!draggedActivity || pendingWpId == null) return;
     const type = draggedActivity.activityType ?? "units";
 
@@ -396,6 +430,14 @@ export default function ProjectActivities() {
   };
 
   const handleDelete = (id: number) => {
+    if (isBudgetFinalized) {
+      toast({
+        title: "Budget Finalized",
+        description: "Work package budget is finalized. Assigned activities cannot be deleted.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (confirm("Remove this activity from the work package?")) {
       deleteMutation.mutate(id);
     }
@@ -415,10 +457,30 @@ export default function ProjectActivities() {
         customCount={customCatalog.length}
         search={searchTerm}
         onSearchChange={setSearchTerm}
-        onImportCsv={() => setIsImportModalOpen(true)}
+        onImportCsv={() => {
+          if (isBudgetFinalized) {
+            toast({
+              title: "Budget Finalized",
+              description: "Work package budget is finalized. No further activities can be imported or assigned.",
+              variant: "destructive",
+            });
+            return;
+          }
+          setIsImportModalOpen(true);
+        }}
         onRefresh={handleRefresh}
         refreshing={refreshing}
       />
+
+      {isBudgetFinalized && (
+        <div className="mx-6 lg:mx-8 mb-3 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-between text-amber-800 dark:text-amber-300 font-medium text-xs shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">🔒</span>
+            <span>Work package budget for this project is <strong>Finalized</strong>. Activity assignments and budgets are locked and read-only.</span>
+          </div>
+          <span className="px-2 py-0.5 rounded bg-amber-500/20 text-[10px] uppercase font-bold tracking-wider shrink-0">Locked</span>
+        </div>
+      )}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto px-6 pb-6 lg:grid-cols-[3fr_2fr] lg:overflow-hidden lg:px-8">
         <div className="flex min-h-[360px] min-w-0 flex-col lg:min-h-0 lg:overflow-hidden">
@@ -433,7 +495,17 @@ export default function ProjectActivities() {
             onSortChange={setSortKey}
             selectedId={selectedActivityId}
             onSelect={setSelectedActivityId}
-            onAdd={catalogTab === "custom" ? () => setAddActivityOpen(true) : undefined}
+            onAdd={catalogTab === "custom" ? () => {
+              if (isBudgetFinalized) {
+                toast({
+                  title: "Budget Finalized",
+                  description: "Work package budget is finalized. No further activities can be created or assigned.",
+                  variant: "destructive",
+                });
+                return;
+              }
+              setAddActivityOpen(true);
+            } : undefined}
             onDragStart={handleDragStart}
             allocatedIds={allocatedGlobalIds}
             loading={globalLoading && catalogTab === "global"}
@@ -461,6 +533,14 @@ export default function ProjectActivities() {
             mappingMode={mappingMode}
             onMappingModeChange={setMappingMode}
             onEdit={(row) => {
+              if (isBudgetFinalized) {
+                toast({
+                  title: "Budget Finalized",
+                  description: "Work package budget is finalized. Assigned activities cannot be edited.",
+                  variant: "destructive",
+                });
+                return;
+              }
               setEditingActivity(row);
               setIsEditDialogOpen(true);
             }}

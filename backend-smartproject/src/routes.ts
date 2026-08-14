@@ -826,6 +826,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
+      if ((project as any).budgetFinalized) {
+        return res.status(400).json({
+          message: "Work package budget is finalized. No further activities can be assigned to work packages.",
+        });
+      }
+
       // Validate wpId is provided
       if (!req.body.wpId) {
         return res.status(400).json({ message: "Work Package ID (wpId) is required" });
@@ -902,6 +908,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const project = await storage.getProject(projectId);
       if (!project) {
         return res.status(404).json({ message: "Project not found" });
+      }
+
+      if ((project as any).budgetFinalized) {
+        return res.status(400).json({
+          message: "Work package budget is finalized. Assigned activities cannot be edited.",
+        });
       }
 
       const activity = await storage.getProjectActivity(activityId);
@@ -981,6 +993,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
+      if ((project as any).budgetFinalized) {
+        return res.status(400).json({
+          message: "Work package budget is finalized. Assigned activities cannot be deleted.",
+        });
+      }
+
       const activity = await storage.getProjectActivity(activityId);
       if (!activity) {
         return res.status(404).json({ message: "Activity not found" });
@@ -1025,6 +1043,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const project = await storage.getProject(projectId);
       if (!project) {
         return res.status(404).json({ message: "Project not found" });
+      }
+
+      if ((project as any).budgetFinalized) {
+        return res.status(400).json({
+          message: "Work package budget is finalized. No further activities can be imported or assigned.",
+        });
       }
 
       const { csvData } = req.body as { csvData?: unknown };

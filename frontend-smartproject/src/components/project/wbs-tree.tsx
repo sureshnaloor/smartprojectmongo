@@ -448,9 +448,8 @@ export function WbsTree({ projectId }: WbsTreeProps) {
     setExpandedItems({});
   };
 
-  // Add a check to determine if budget is finalized
-  const isBudgetFinalized = Math.abs(budgetUsage.workPackageTotal - budgetUsage.topLevelAllocated) < 0.01 && 
-                          budgetUsage.workPackageTotal > 0;
+  // Check if budget is finalized for this project version
+  const isBudgetFinalized = Boolean((project as ProjectData & { budgetFinalized?: boolean })?.budgetFinalized);
 
   if (isLoading) {
     return (

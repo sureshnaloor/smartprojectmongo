@@ -382,33 +382,11 @@ export function GanttChart({ projectId, onAddActivity, onAddTask }: GanttChartPr
   }, [wbsItems]);
 
   // Query to check if budget is finalized
-  const { data: project } = useQuery<{ id: number; name: string; budget: number }>(
+  const { data: project } = useQuery<{ id: number; name: string; budget: number; budgetFinalized?: boolean }>(
     { queryKey: [`/api/projects/${projectId}`] }
   );
   
-  // Calculate if budget is finalized
-  const isBudgetFinalized = useMemo(() => {
-    if (!wbsItems.length) return false;
-    
-    // Get all top-level items (Summary type)
-    const topLevelItems = wbsItems.filter(item => item.isTopLevel && item.type === "Summary");
-    
-    // Sum up all top-level budgets
-    const totalAllocated = topLevelItems.reduce((total, item) => {
-      return total + Number(item.budgetedCost || 0);
-    }, 0);
-    
-    // Get all work packages
-    const workPackages = wbsItems.filter(item => item.type === "WorkPackage");
-    
-    // Sum up all work package budgets
-    const totalWorkPackageBudget = workPackages.reduce((total, wp) => {
-      return total + Number(wp.budgetedCost || 0);
-    }, 0);
-    
-    // Budget is finalized when the sums match and are greater than 0
-    return Math.abs(totalWorkPackageBudget - totalAllocated) < 0.01 && totalWorkPackageBudget > 0;
-  }, [wbsItems]);
+  const isBudgetFinalized = Boolean((project as any)?.budgetFinalized);
 
   // Recursive function to render WBS items with better duplicate handling
   const renderWbsItems = (

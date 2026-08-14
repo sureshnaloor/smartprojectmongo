@@ -82,12 +82,7 @@ export default function Dashboard({ projectId: propProjectId }: DashboardProps) 
     .filter(item => item.type === "WorkPackage")
     .reduce((sum, item) => sum + Number(item.actualCost), 0);
 
-  // Check if budget is finalized (sum of top-level summary items equals work package total)
-  const topLevelSummaryBudget = wbsItems
-    .filter(item => item.type === "Summary" && item.isTopLevel)
-    .reduce((sum, item) => sum + Number(item.budgetedCost), 0);
-
-  const isBudgetFinalized = Math.abs(topLevelSummaryBudget - workPackageBudget) < 0.01;
+  const isBudgetFinalized = Boolean((project as any)?.budgetFinalized);
 
   // Calculate earned value based on work packages only
   const completedValue = wbsItems
