@@ -104,11 +104,11 @@ export default function ProjectActivities() {
     setSelectedActivityId(null);
   }, [catalogTab]);
 
-  const { data: project } = useQuery<{ name: string; currency?: string; budgetFinalized?: boolean; wbsFinalized?: boolean }>({
+  const { data: project } = useQuery<{ name: string; currency?: string; budgetFinalized?: boolean; wbsFinalized?: boolean; activitiesFinalized?: boolean }>({
     queryKey: [`/api/projects/${projectId}`],
     enabled: !!projectId,
   });
-  const isBudgetFinalized = Boolean(project?.budgetFinalized);
+  const isActivitiesFinalized = Boolean(project?.activitiesFinalized);
 
   const { data: wbsItems = [] } = useQuery<WbsItemSimple[]>({
     queryKey: [`/api/projects/${projectId}/wbs`],
@@ -289,10 +289,10 @@ export default function ProjectActivities() {
   };
 
   const handleDragStart = (e: React.DragEvent, activity: GlobalActivityItem) => {
-    if (isBudgetFinalized) {
+    if (isActivitiesFinalized) {
       toast({
-        title: "Budget Finalized",
-        description: "Work package budget is finalized. No further activities can be assigned to work packages.",
+        title: "Activities Finalized",
+        description: "Project activities are finalized. No further activities can be assigned to work packages.",
         variant: "destructive",
       });
       return;
@@ -302,10 +302,10 @@ export default function ProjectActivities() {
   };
 
   const beginAssign = (activity: GlobalActivityItem, wpId: number) => {
-    if (isBudgetFinalized) {
+    if (isActivitiesFinalized) {
       toast({
-        title: "Budget Finalized",
-        description: "Work package budget is finalized. No further activities can be assigned to work packages.",
+        title: "Activities Finalized",
+        description: "Project activities are finalized. No further activities can be assigned to work packages.",
         variant: "destructive",
       });
       return;
@@ -337,10 +337,10 @@ export default function ProjectActivities() {
 
   const handleDrop = (e: React.DragEvent, wpId: number) => {
     e.preventDefault();
-    if (isBudgetFinalized) {
+    if (isActivitiesFinalized) {
       toast({
-        title: "Budget Finalized",
-        description: "Work package budget is finalized. No further activities can be assigned to work packages.",
+        title: "Activities Finalized",
+        description: "Project activities are finalized. No further activities can be assigned to work packages.",
         variant: "destructive",
       });
       return;
@@ -360,10 +360,10 @@ export default function ProjectActivities() {
   };
 
   const handleAssignConfirm = () => {
-    if (isBudgetFinalized) {
+    if (isActivitiesFinalized) {
       toast({
-        title: "Budget Finalized",
-        description: "Work package budget is finalized. No further activities can be assigned to work packages.",
+        title: "Activities Finalized",
+        description: "Project activities are finalized. No further activities can be assigned to work packages.",
         variant: "destructive",
       });
       return;
@@ -430,10 +430,10 @@ export default function ProjectActivities() {
   };
 
   const handleDelete = (id: number) => {
-    if (isBudgetFinalized) {
+    if (isActivitiesFinalized) {
       toast({
-        title: "Budget Finalized",
-        description: "Work package budget is finalized. Assigned activities cannot be deleted.",
+        title: "Activities Finalized",
+        description: "Project activities are finalized. Assigned activities cannot be deleted.",
         variant: "destructive",
       });
       return;
@@ -458,10 +458,10 @@ export default function ProjectActivities() {
         search={searchTerm}
         onSearchChange={setSearchTerm}
         onImportCsv={() => {
-          if (isBudgetFinalized) {
+          if (isActivitiesFinalized) {
             toast({
-              title: "Budget Finalized",
-              description: "Work package budget is finalized. No further activities can be imported or assigned.",
+              title: "Activities Finalized",
+              description: "Project activities are finalized. No further activities can be imported or assigned.",
               variant: "destructive",
             });
             return;
@@ -472,13 +472,13 @@ export default function ProjectActivities() {
         refreshing={refreshing}
       />
 
-      {isBudgetFinalized && (
-        <div className="mx-6 lg:mx-8 mb-3 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-between text-amber-800 dark:text-amber-300 font-medium text-xs shadow-sm">
+      {isActivitiesFinalized && (
+        <div className="mx-6 lg:mx-8 mb-3 px-4 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg flex items-center justify-between text-emerald-800 dark:text-emerald-300 font-medium text-xs shadow-sm">
           <div className="flex items-center gap-2">
             <span className="text-sm">🔒</span>
-            <span>Work package budget for this project is <strong>Finalized</strong>. Activity assignments and budgets are locked and read-only.</span>
+            <span>Project activities for this project are <strong>Finalized</strong>. Baseline CPM schedule path is frozen.</span>
           </div>
-          <span className="px-2 py-0.5 rounded bg-amber-500/20 text-[10px] uppercase font-bold tracking-wider shrink-0">Locked</span>
+          <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-[10px] uppercase font-bold tracking-wider shrink-0 text-emerald-800">Finalized</span>
         </div>
       )}
 
@@ -496,10 +496,10 @@ export default function ProjectActivities() {
             selectedId={selectedActivityId}
             onSelect={setSelectedActivityId}
             onAdd={catalogTab === "custom" ? () => {
-              if (isBudgetFinalized) {
+              if (isActivitiesFinalized) {
                 toast({
-                  title: "Budget Finalized",
-                  description: "Work package budget is finalized. No further activities can be created or assigned.",
+                  title: "Activities Finalized",
+                  description: "Project activities are finalized. No further activities can be created or assigned.",
                   variant: "destructive",
                 });
                 return;
@@ -533,10 +533,10 @@ export default function ProjectActivities() {
             mappingMode={mappingMode}
             onMappingModeChange={setMappingMode}
             onEdit={(row) => {
-              if (isBudgetFinalized) {
+              if (isActivitiesFinalized) {
                 toast({
-                  title: "Budget Finalized",
-                  description: "Work package budget is finalized. Assigned activities cannot be edited.",
+                  title: "Activities Finalized",
+                  description: "Project activities are finalized. Assigned activities cannot be edited.",
                   variant: "destructive",
                 });
                 return;

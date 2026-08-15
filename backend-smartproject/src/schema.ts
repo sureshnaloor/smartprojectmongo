@@ -92,6 +92,7 @@ export const insertProjectSchema = z.object({
   allocationVersion: z.number().optional().nullable(),
   wbsFinalized: z.boolean().optional().default(false),
   budgetFinalized: z.boolean().optional().default(false),
+  activitiesFinalized: z.boolean().optional().default(false),
   planVersion: z.number().default(0),
   sequenceVersion: z.number().default(0),
   /** User id of the project creator (may amend WBS after finalize) */
@@ -247,7 +248,9 @@ export const activityMilestoneSchema = z.object({
   name: z.string().min(1),
   weightPercent: z.number().min(0).max(100),
   achieved: z.boolean().optional(),
+  completed: z.boolean().optional().default(false),
 });
+export type ActivityMilestone = z.infer<typeof activityMilestoneSchema>;
 
 // --- Activities (global activity master) ---
 export const insertActivitySchema = z.object({
@@ -381,6 +384,15 @@ export const insertProjectActivitySchema = z.object({
   lateStartDay: z.number().optional().nullable(),
   lateFinishDay: z.number().optional().nullable(),
   totalFloatDays: z.number().optional().nullable(),
+  // Pseudo milestone activity flags
+  isPseudo: z.boolean().optional().default(false),
+  pseudoType: z.enum(["START", "FINISH"]).optional().nullable(),
+  // Baseline schedule fields saved upon activities finalization
+  baselineFromDate: z.string().optional().nullable(),
+  baselineToDate: z.string().optional().nullable(),
+  baselineDuration: z.number().optional().nullable(),
+  baselineFloatDays: z.number().optional().nullable(),
+  baselineIsCritical: z.boolean().optional().nullable(),
 });
 export type InsertProjectActivity = z.infer<typeof insertProjectActivitySchema>;
 export type ProjectActivity = InsertProjectActivity & { id: number; createdAt: Date; updatedAt: Date };

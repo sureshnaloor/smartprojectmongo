@@ -528,7 +528,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/projects/:id", async (req: Request, res: Response) => {
+  const updateProjectHandler = async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -606,7 +606,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       handleError(err, res);
     }
-  });
+  };
+
+  app.patch("/api/projects/:id", updateProjectHandler);
+  app.put("/api/projects/:id", updateProjectHandler);
 
   app.delete("/api/projects/:id", async (req: Request, res: Response) => {
     try {
@@ -826,9 +829,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      if ((project as any).budgetFinalized) {
+      if (Boolean((project as any).activitiesFinalized)) {
         return res.status(400).json({
-          message: "Work package budget is finalized. No further activities can be assigned to work packages.",
+          message: "Project activities are finalized. No further activities can be assigned or created.",
         });
       }
 
@@ -910,9 +913,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      if ((project as any).budgetFinalized) {
+      if (Boolean((project as any).activitiesFinalized)) {
         return res.status(400).json({
-          message: "Work package budget is finalized. Assigned activities cannot be edited.",
+          message: "Project activities are finalized. Assigned activities cannot be edited.",
         });
       }
 
@@ -993,9 +996,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      if ((project as any).budgetFinalized) {
+      if (Boolean((project as any).activitiesFinalized)) {
         return res.status(400).json({
-          message: "Work package budget is finalized. Assigned activities cannot be deleted.",
+          message: "Project activities are finalized. Assigned activities cannot be deleted.",
         });
       }
 
@@ -1045,9 +1048,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      if ((project as any).budgetFinalized) {
+      if (Boolean((project as any).activitiesFinalized)) {
         return res.status(400).json({
-          message: "Work package budget is finalized. No further activities can be imported or assigned.",
+          message: "Project activities are finalized. No further activities can be imported or assigned.",
         });
       }
 
@@ -1241,8 +1244,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const categorized = await storage.getCategorizedActivities(projectId);
-      res.json(categorized);
+      const allActivities = await db
+        .collection("project_activities")
+        .find({ projectId, isPseudo: { $ne: true } })
+        .toArray();
+
+      const currentlyPlanned: any[] = [];
+      const inProgress: any[] = [];
+      const pending: any[] = [];
+      const completed: any[] = [];
+
+      for (const act of allActivities) {
+        const percent = act.percentComplete ?? 0;
+        if (percent === 100 || act.progressState === 100) {
+          completed.push(act);
+        } else if (percent > 0 || act.progressState === 50 || act.actualStartDate) {
+          inProgress.push(act);
+        } else if (act.plannedFromDate || act.estimatedStartDate) {
+          currentlyPlanned.push(act);
+        } else {
+          pending.push(act);
+        }
+      }
+
+      res.json({
+        currentlyPlanned,
+        inProgress,
+        pending,
+        completed,
+      });
     } catch (err) {
       handleError(err, res);
     }
@@ -1261,8 +1291,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const activityResources = await storage.getActivityResources(projectId);
-      res.json(activityResources);
+      const activities = await db
+        .collection("project_activities")
+        .find({ projectId, isPseudo: { $ne: true } })
+        .toArray();
+
+      const materials = await db
+        .collection("work_package_materials")
+        .find({ projectId })
+        .toArray();
+
+      const services = await db
+        .collection("work_package_services")
+        .find({ projectId })
+        .toArray();
+
+      const resources = await db
+        .collection("project_resources")
+        .find({ projectId })
+        .toArray();
+
+      res.json({ activities, materials, services, resources });
     } catch (err) {
       handleError(err, res);
     }
@@ -1284,9 +1333,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const dependencies = await db
-        .select()
-        .from(projectActivityDependencies)
-        .where(eq(projectActivityDependencies.projectId, projectId));
+        .collection("project_activity_dependencies")
+        .find({ projectId })
+        .toArray();
 
       res.json(dependencies);
     } catch (err) {
@@ -1320,54 +1369,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify both activities exist and belong to this project
-      const [predecessor, successor] = await Promise.all([
-        db.collection(projectActivities).find().toArray().where(
-          and(
-            eq(projectActivities.id, predecessorId),
-            eq(projectActivities.projectId, projectId)
-          )
-        ),
-        db.collection(projectActivities).find().toArray().where(
-          and(
-            eq(projectActivities.id, successorId),
-            eq(projectActivities.projectId, projectId)
-          )
-        ),
-      ]);
+      const predecessor = await db
+        .collection("project_activities")
+        .findOne({ id: predecessorId, projectId });
 
-      if (predecessor.length === 0) {
+      const successor = await db
+        .collection("project_activities")
+        .findOne({ id: successorId, projectId });
+
+      if (!predecessor) {
         return res.status(404).json({ message: "Predecessor activity not found in this project" });
       }
-      if (successor.length === 0) {
+      if (!successor) {
         return res.status(404).json({ message: "Successor activity not found in this project" });
       }
 
       // Prevent duplicate links
       const existing = await db
-        .select()
-        .from(projectActivityDependencies)
-        .where(
-          and(
-            eq(projectActivityDependencies.projectId, projectId),
-            eq(projectActivityDependencies.predecessorId, predecessorId),
-            eq(projectActivityDependencies.successorId, successorId)
-          )
-        );
+        .collection("project_activity_dependencies")
+        .findOne({ projectId, predecessorId, successorId });
 
-      if (existing.length > 0) {
+      if (existing) {
         return res.status(409).json({ message: "This dependency link already exists" });
       }
 
-      const [created] = await db
-        .insert(projectActivityDependencies)
-        .values({
-          projectId,
-          predecessorId,
-          successorId,
-          type: depData.type || "FS",
-          lag: depData.lag || 0,
-        })
-        .returning();
+      const id = await storage.getNextId("project_activity_dependencies");
+      const created = {
+        id,
+        projectId,
+        predecessorId,
+        successorId,
+        type: depData.type || "FS",
+        lag: Number(depData.lag ?? 0),
+        createdAt: new Date(),
+      };
+
+      await db.collection("project_activity_dependencies").insertOne(created);
 
       const p = await storage.getProject(projectId);
       if (p) {
@@ -1392,15 +1429,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const project = await storage.getProject(projectId);
       if (!project) return res.status(404).json({ message: "Project not found" });
 
-      const [existing] = await db
-        .select()
-        .from(projectActivityDependencies)
-        .where(
-          and(
-            eq(projectActivityDependencies.id, depId),
-            eq(projectActivityDependencies.projectId, projectId)
-          )
-        );
+      const existing = await db
+        .collection("project_activity_dependencies")
+        .findOne({ id: depId, projectId });
       if (!existing) return res.status(404).json({ message: "Dependency not found" });
 
       const type = req.body.type != null ? String(req.body.type) : existing.type;
@@ -1409,11 +1440,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid type" });
       }
 
-      const [updated] = await db
-        .update(projectActivityDependencies)
-        .set({ type, lag })
-        .where(eq(projectActivityDependencies.id, depId))
-        .returning();
+      await db
+        .collection("project_activity_dependencies")
+        .updateOne({ id: depId }, { $set: { type, lag } });
+
+      const updated = await db
+        .collection("project_activity_dependencies")
+        .findOne({ id: depId });
 
       const p2 = await storage.getProject(projectId);
       if (p2) {
@@ -1437,23 +1470,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid IDs" });
       }
 
-      const [dep] = await db
-        .select()
-        .from(projectActivityDependencies)
-        .where(
-          and(
-            eq(projectActivityDependencies.id, depId),
-            eq(projectActivityDependencies.projectId, projectId)
-          )
-        );
+      const dep = await db
+        .collection("project_activity_dependencies")
+        .findOne({ id: depId, projectId });
 
       if (!dep) {
         return res.status(404).json({ message: "Dependency not found" });
       }
 
       await db
-        .delete(projectActivityDependencies)
-        .where(eq(projectActivityDependencies.id, depId));
+        .collection("project_activity_dependencies")
+        .deleteOne({ id: depId });
 
       const p = await storage.getProject(projectId);
       if (p) {
@@ -1491,14 +1518,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Fetch all activities and dependencies
       const activitiesRaw = await db
-        .select()
-        .from(projectActivities)
-        .where(eq(projectActivities.projectId, projectId));
+        .collection("project_activities")
+        .find({ projectId })
+        .toArray();
 
       const deps = await db
-        .select()
-        .from(projectActivityDependencies)
-        .where(eq(projectActivityDependencies.projectId, projectId));
+        .collection("project_activity_dependencies")
+        .find({ projectId })
+        .toArray();
 
       if (activitiesRaw.length === 0) {
         return res.status(400).json({ message: "No activities found for this project" });
@@ -1534,7 +1561,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       for (const dep of deps) {
-        // Only process deps where both activities exist in this project
         if (!actMap.has(dep.predecessorId) || !actMap.has(dep.successorId)) continue;
 
         successors.get(dep.predecessorId)!.push({
@@ -1580,8 +1606,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // ─── Forward Pass ────────────────────────────────────────
-      const es = new Map<number, number>(); // Early Start (day offset from project start)
-      const ef = new Map<number, number>(); // Early Finish
+      const es = new Map<number, number>();
+      const ef = new Map<number, number>();
 
       for (const actId of topoOrder) {
         const act = actMap.get(actId)!;
@@ -1590,11 +1616,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let earliestStart = 0;
 
         if (preds.length === 0) {
-          // ROOT activity - respect user-defined firmed date
           earliestStart = act.firmedOffset;
         } else {
           for (const pred of preds) {
-            const predAct = actMap.get(pred.actId)!;
             const predES = es.get(pred.actId) ?? 0;
             const predEF = ef.get(pred.actId) ?? 0;
 
@@ -1629,8 +1653,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         projectEndDay = Math.max(projectEndDay, finish);
       }
 
-      const ls = new Map<number, number>(); // Late Start
-      const lf = new Map<number, number>(); // Late Finish
+      const ls = new Map<number, number>();
+      const lf = new Map<number, number>();
       const totalFloat = new Map<number, number>();
 
       for (const act of activitiesRaw) {
@@ -1704,22 +1728,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const lsDate = addDays(projectStartDate, lateStart);
         const lfDate = addDays(projectStartDate, lateFinish);
 
-        // Only persist schedule dates back to project_activities for the initial plan (baseline).
-        // Revised plans are stored in project_activity_plan_versions without overwriting baseline columns.
         if (isInitialPlan) {
-          await db
-            .update(projectActivities)
-            .set({
-              plannedFromDate: esDate,
-              plannedToDate: efDate,
-              duration: act.duration,
-              earlyStartDay: earlyStart,
-              earlyFinishDay: earlyFinish,
-              lateStartDay: lateStart,
-              lateFinishDay: lateFinish,
-              totalFloatDays: float,
-            })
-            .where(eq(projectActivities.id, actId));
+          await db.collection("project_activities").updateOne(
+            { id: actId },
+            {
+              $set: {
+                plannedFromDate: esDate,
+                plannedToDate: efDate,
+                duration: act.duration,
+                earlyStartDay: earlyStart,
+                earlyFinishDay: earlyFinish,
+                lateStartDay: lateStart,
+                lateFinishDay: lateFinish,
+                totalFloatDays: float,
+              },
+            }
+          );
         }
 
         results.push({
@@ -1741,18 +1765,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Persist this plan version (schedule + sequence) without overwriting previous versions
       const projectEndDate = addDays(projectStartDate, projectEndDay);
       const nextVersion = currentPlanVersion + 1;
 
-      await db.insert(projectActivityPlanVersions).values({
+      const versionId = await storage.getNextId("project_activity_plan_versions");
+      await db.collection("project_activity_plan_versions").insertOne({
+        id: versionId,
         projectId,
         version: nextVersion,
         activitiesJson: JSON.stringify(results),
         dependenciesJson: JSON.stringify(deps),
+        createdAt: new Date(),
       });
 
-      // Update project with latest plan version and end date
       await storage.updateProject(projectId, { planVersion: nextVersion, endDate: projectEndDate });
 
       res.json({
@@ -1762,6 +1787,298 @@ export async function registerRoutes(app: Express): Promise<Server> {
         criticalPath,
         activities: results,
       });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // Helper to ensure START and FINISH pseudo milestone nodes exist for a project
+  async function ensurePseudoActivities(projectId: number) {
+    const allActs = await db
+      .collection("project_activities")
+      .find({ projectId })
+      .toArray();
+
+    let startNode = allActs.find((a: any) => a.isPseudo && a.pseudoType === "START");
+    let finishNode = allActs.find((a: any) => a.isPseudo && a.pseudoType === "FINISH");
+
+    if (!startNode) {
+      const id = await storage.getNextId("project_activities");
+      startNode = {
+        id,
+        projectId,
+        wpId: 0,
+        name: "START",
+        description: "Project Start Anchor Milestone",
+        activityType: "milestone",
+        duration: 0,
+        isPseudo: true,
+        pseudoType: "START",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      await db.collection("project_activities").insertOne(startNode);
+    }
+
+    if (!finishNode) {
+      const id = await storage.getNextId("project_activities");
+      finishNode = {
+        id,
+        projectId,
+        wpId: 0,
+        name: "FINISH",
+        description: "Project Finish Anchor Milestone",
+        activityType: "milestone",
+        duration: 0,
+        isPseudo: true,
+        pseudoType: "FINISH",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      await db.collection("project_activities").insertOne(finishNode);
+    }
+
+    return { startNode, finishNode };
+  }
+
+  // Validate activity network connectivity (START to FINISH), duration, & cycles
+  app.post("/api/projects/:projectId/validate-activities", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+
+      const { startNode, finishNode } = await ensurePseudoActivities(projectId);
+
+      const activities = await db
+        .collection("project_activities")
+        .find({ projectId })
+        .toArray();
+
+      const deps = await db
+        .collection("project_activity_dependencies")
+        .find({ projectId })
+        .toArray();
+
+      const normalActivities = activities.filter((a: any) => !a.isPseudo);
+
+      const missingDurations = normalActivities.filter(
+        (a: any) => a.duration == null || isNaN(Number(a.duration)) || Number(a.duration) < 0
+      );
+
+      const predMap = new Map<number, number[]>();
+      const succMap = new Map<number, number[]>();
+      const inDegree = new Map<number, number>();
+
+      for (const act of activities as any[]) {
+        predMap.set(act.id, []);
+        succMap.set(act.id, []);
+        inDegree.set(act.id, 0);
+      }
+
+      for (const dep of deps as any[]) {
+        if (!predMap.has(dep.successorId) || !succMap.has(dep.predecessorId)) continue;
+        predMap.get(dep.successorId)!.push(dep.predecessorId);
+        succMap.get(dep.predecessorId)!.push(dep.successorId);
+        inDegree.set(dep.successorId, (inDegree.get(dep.successorId) || 0) + 1);
+      }
+
+      const orphanPredecessors = normalActivities.filter(
+        (a: any) => (predMap.get(a.id) || []).length === 0
+      );
+
+      const orphanSuccessors = normalActivities.filter(
+        (a: any) => (succMap.get(a.id) || []).length === 0
+      );
+
+      // Cycle detection via Kahn's algorithm
+      const topoOrder: number[] = [];
+      const queue: number[] = [];
+      for (const [id, degree] of inDegree) {
+        if (degree === 0) queue.push(id);
+      }
+
+      const tempInDegree = new Map(inDegree);
+      while (queue.length > 0) {
+        const curr = queue.shift()!;
+        topoOrder.push(curr);
+        for (const succId of succMap.get(curr) || []) {
+          const newDeg = (tempInDegree.get(succId) || 0) - 1;
+          tempInDegree.set(succId, newDeg);
+          if (newDeg === 0) queue.push(succId);
+        }
+      }
+
+      const hasCycle = topoOrder.length < activities.length;
+
+      const isValid =
+        missingDurations.length === 0 &&
+        orphanPredecessors.length === 0 &&
+        orphanSuccessors.length === 0 &&
+        !hasCycle;
+
+      res.json({
+        isValid,
+        hasCycle,
+        startId: startNode.id,
+        finishId: finishNode.id,
+        missingDurations: missingDurations.map((a: any) => ({ id: a.id, name: a.name })),
+        orphanPredecessors: orphanPredecessors.map((a: any) => ({ id: a.id, name: a.name })),
+        orphanSuccessors: orphanSuccessors.map((a: any) => ({ id: a.id, name: a.name })),
+      });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // Auto-link orphan activities to START or FINISH
+  app.post("/api/projects/:projectId/auto-link-orphans", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+
+      const { startNode, finishNode } = await ensurePseudoActivities(projectId);
+
+      const activities = await db
+        .collection("project_activities")
+        .find({ projectId })
+        .toArray();
+
+      const deps = await db
+        .collection("project_activity_dependencies")
+        .find({ projectId })
+        .toArray();
+
+      const normalActivities = activities.filter((a: any) => !a.isPseudo);
+
+      const predMap = new Map<number, number[]>();
+      const succMap = new Map<number, number[]>();
+
+      for (const act of activities as any[]) {
+        predMap.set(act.id, []);
+        succMap.set(act.id, []);
+      }
+
+      for (const dep of deps as any[]) {
+        if (predMap.has(dep.successorId)) predMap.get(dep.successorId)!.push(dep.predecessorId);
+        if (succMap.has(dep.predecessorId)) succMap.get(dep.predecessorId)!.push(dep.successorId);
+      }
+
+      let createdCount = 0;
+
+      for (const act of normalActivities as any[]) {
+        if ((predMap.get(act.id) || []).length === 0) {
+          const id = await storage.getNextId("project_activity_dependencies");
+          await db.collection("project_activity_dependencies").insertOne({
+            id,
+            projectId,
+            predecessorId: startNode.id,
+            successorId: act.id,
+            type: "FS",
+            lag: 0,
+            createdAt: new Date(),
+          });
+          createdCount++;
+        }
+      }
+
+      for (const act of normalActivities as any[]) {
+        if ((succMap.get(act.id) || []).length === 0) {
+          const id = await storage.getNextId("project_activity_dependencies");
+          await db.collection("project_activity_dependencies").insertOne({
+            id,
+            projectId,
+            predecessorId: act.id,
+            successorId: finishNode.id,
+            type: "FS",
+            lag: 0,
+            createdAt: new Date(),
+          });
+          createdCount++;
+        }
+      }
+
+      res.json({ message: "Orphans auto-linked successfully", createdCount });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // Finalize Project Activities & Lock Baseline Schedule Path
+  app.post("/api/projects/:projectId/finalize-activities", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+
+      const project = await storage.getProject(projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+
+      const activities = await db
+        .collection("project_activities")
+        .find({ projectId })
+        .toArray();
+
+      const deps = await db
+        .collection("project_activity_dependencies")
+        .find({ projectId })
+        .toArray();
+
+      const normalActivities = activities.filter((a: any) => !a.isPseudo);
+      if (normalActivities.length === 0) {
+        return res.status(400).json({ message: "Project has no activities to finalize" });
+      }
+
+      const missingDurations = normalActivities.filter(
+        (a: any) => a.duration == null || isNaN(Number(a.duration)) || Number(a.duration) < 0
+      );
+
+      const predMap = new Map<number, number[]>();
+      const succMap = new Map<number, number[]>();
+      for (const act of activities as any[]) {
+        predMap.set(act.id, []);
+        succMap.set(act.id, []);
+      }
+      for (const dep of deps as any[]) {
+        if (predMap.has(dep.successorId)) predMap.get(dep.successorId)!.push(dep.predecessorId);
+        if (succMap.has(dep.predecessorId)) succMap.get(dep.predecessorId)!.push(dep.successorId);
+      }
+
+      const orphanPredecessors = normalActivities.filter(
+        (a: any) => (predMap.get(a.id) || []).length === 0
+      );
+      const orphanSuccessors = normalActivities.filter(
+        (a: any) => (succMap.get(a.id) || []).length === 0
+      );
+
+      if (missingDurations.length > 0 || orphanPredecessors.length > 0 || orphanSuccessors.length > 0) {
+        return res.status(400).json({
+          message: "Cannot finalize activities due to network validation errors.",
+          details: {
+            missingDurations: missingDurations.map((a: any) => a.name),
+            orphanPredecessors: orphanPredecessors.map((a: any) => a.name),
+            orphanSuccessors: orphanSuccessors.map((a: any) => a.name),
+          },
+        });
+      }
+
+      await storage.updateProject(projectId, { activitiesFinalized: true } as any);
+
+      for (const act of activities as any[]) {
+        await db.collection("project_activities").updateOne(
+          { id: act.id },
+          {
+            $set: {
+              finalized: true,
+              baselineFromDate: act.plannedFromDate || act.estimatedStartDate || null,
+              baselineToDate: act.plannedToDate || act.estimatedEndDate || null,
+              baselineDuration: act.duration,
+              baselineFloatDays: act.totalFloatDays ?? 0,
+              baselineIsCritical: (act.totalFloatDays ?? 0) <= 0,
+            },
+          }
+        );
+      }
+
+      res.json({ message: "Project activities finalized successfully", projectId });
     } catch (err) {
       handleError(err, res);
     }
@@ -1783,12 +2100,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const rows = await db
-        .select()
-        .from(projectActivityPlanVersions)
-        .where(eq(projectActivityPlanVersions.projectId, projectId))
-        .orderBy(projectActivityPlanVersions.version);
+        .collection("project_activity_plan_versions")
+        .find({ projectId })
+        .sort({ version: 1 })
+        .toArray();
 
-      const summaries = rows.map(row => {
+      const summaries = rows.map((row: any) => {
         let activities: any[] = [];
         let deps: any[] = [];
         try {
@@ -1821,7 +2138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return {
           id: row.id,
           version: row.version,
-          createdAt: (row as any).createdAt,
+          createdAt: row.createdAt,
           activityCount,
           dependencyCount,
           startDate,
@@ -1849,15 +2166,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const [row] = await db
-        .select()
-        .from(projectActivityPlanVersions)
-        .where(
-          and(
-            eq(projectActivityPlanVersions.projectId, projectId),
-            eq(projectActivityPlanVersions.version, version),
-          )
-        );
+      const row = await db
+        .collection("project_activity_plan_versions")
+        .findOne({ projectId, version }) as any;
 
       if (!row) {
         return res.status(404).json({ message: "Plan version not found" });
@@ -1880,7 +2191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: row.id,
         projectId: row.projectId,
         version: row.version,
-        createdAt: (row as any).createdAt,
+        createdAt: row.createdAt,
         activities,
         dependencies: deps,
       });
@@ -4031,11 +4342,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // If activityId is provided, filter tasks by activity
       if (activityId !== null) {
-        const result = await db.collection(tasks).find().toArray().where(eq(tasks.activityId, activityId));
+        const result = await db.collection("tasks").find({ activityId }).toArray();
         res.json(result);
       } else {
-        // Return all tasks if no activityId is provided
-        const result = await db.collection(tasks).find().toArray();
+        const result = await db.collection("tasks").find().toArray();
         res.json(result);
       }
     } catch (err) {
