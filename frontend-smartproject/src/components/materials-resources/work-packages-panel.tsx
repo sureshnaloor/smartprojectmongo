@@ -1,9 +1,12 @@
 import { useState, useMemo } from "react";
-import { ChevronDown, CloudUpload, Hand, Package, Pencil, RefreshCw, Trash2, UserPlus, Calendar as CalendarIcon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronDown, CloudUpload, Hand, ListTodo, Package, Pencil, RefreshCw, Trash2, UserPlus, Users, Wrench, Calendar as CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatCurrency } from "@/lib/utils";
 import { format } from "date-fns";
 import { resourceTypeLabel, type WorkPackageItem } from "./constants";
+import { computeActivityBudget } from "@shared/activity-types";
+import { getActivityTypeBadge, getCategoryTagBadge } from "@/components/project-activities/constants";
 import {
   Select,
   SelectContent,
@@ -56,6 +59,9 @@ interface WorkPackagesPanelProps {
   selectedWpId: number | null;
   onSelectWp: (id: number | null) => void;
   assignments: AssignmentRow[];
+  wpMaterials?: any[];
+  wpServices?: any[];
+  wpResources?: ResourceAssignmentRow[];
   loading?: boolean;
   error?: boolean;
   onRetry: () => void;
@@ -66,6 +72,279 @@ interface WorkPackagesPanelProps {
   onOnboard?: () => void;
   onboarding?: boolean;
   projectId: string;
+}
+
+function WpActivitiesWindow({ projectId, selectedWpId }: { projectId: string; selectedWpId: number }) {
+  const [showActivities, setShowActivities] = useState(true);
+
+  const { data: wpActivities = [], isLoading } = useQuery<any[]>({
+    queryKey: ["wp-activities", selectedWpId],
+    queryFn: async () => {
+      const res = await fetch(`/api/work-packages/${selectedWpId}/activities`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedWpId,
+  });
+
+  const totalActBudget = useMemo(() => {
+    return wpActivities.reduce((sum, a) => sum + computeActivityBudget(a), 0);
+  }, [wpActivities]);
+
+  return (
+    <div className="mb-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-cream)]/30 overflow-hidden shadow-xs">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 px-3.5 py-2 bg-[var(--bg-warm-gray)]/50 border-b border-[var(--border-subtle)]">
+        <div className="flex items-center gap-2 min-w-0">
+          <ListTodo className="h-4 w-4 text-[var(--copper-500)] shrink-0" />
+          <span className="kanban-body-sm font-semibold text-[var(--text-primary)] truncate">
+            Assigned Activities ({isLoading ? "…" : wpActivities.length})
+          </span>
+          {!isLoading && wpActivities.length > 0 && (
+            <span className="hidden sm:inline-flex kanban-caption font-mono text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0">
+              Act. Budget: {formatCurrency(totalActBudget)}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            className="flex items-center gap-1 kanban-caption text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            onClick={() => setShowActivities((v) => !v)}
+          >
+            <span>{showActivities ? "Hide" : "Show"}</span>
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !showActivities && "-rotate-90")} />
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      {showActivities && (
+        <div className="p-3">
+          {isLoading ? (
+            <div className="space-y-2 py-1">
+              <div className="h-8 w-full animate-pulse rounded bg-zinc-200/50" />
+              <div className="h-8 w-2/3 animate-pulse rounded bg-zinc-200/50" />
+            </div>
+          ) : wpActivities.length === 0 ? (
+            <div className="py-3 px-4 text-center kanban-caption text-[var(--text-muted)] bg-white/70 rounded-md border border-dashed border-[var(--border-subtle)]">
+              No activities assigned to this work package yet.
+            </div>
+          ) : (
+            <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1">
+              {wpActivities.map((act) => {
+                const typeBadge = getActivityTypeBadge(act.activityType);
+                const tagBadge = getCategoryTagBadge(act.categoryTag);
+                const actBudget = computeActivityBudget(act);
+
+                return (
+                  <div
+                    key={act.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-2.5 rounded-md bg-white border border-[var(--border-subtle)] hover:border-[var(--copper-300)] shadow-2xs transition-all"
+                  >
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                      <span className="kanban-body-sm font-semibold text-[var(--text-primary)] truncate">
+                        {act.name}
+                      </span>
+                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium border shrink-0", typeBadge.className)}>
+                        {typeBadge.icon} {typeBadge.label}
+                      </span>
+                      {tagBadge && (
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium border shrink-0", tagBadge.className)}>
+                          {tagBadge.icon} {tagBadge.label}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0 kanban-caption text-right self-end sm:self-center">
+                      {act.activityType === "units" && act.quantity && act.unitOfMeasure ? (
+                        <span className="font-mono text-[var(--text-secondary)]">
+                          {act.quantity} {act.unitOfMeasure} @ {formatCurrency(Number(act.unitRate || 0))}
+                        </span>
+                      ) : null}
+                      <span className="font-mono font-semibold text-[var(--text-primary)]">
+                        {formatCurrency(actBudget)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SecondaryMaterialsSummary({ items }: { items: any[] }) {
+  const [open, setOpen] = useState(true);
+  const total = useMemo(() => items.reduce((s, m) => s + Number(m.estimatedValue || 0), 0), [items]);
+
+  return (
+    <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/30 overflow-hidden shadow-2xs">
+      <div className="flex items-center justify-between px-3.5 py-2 bg-blue-100/50 border-b border-blue-200">
+        <div className="flex items-center gap-2">
+          <Package className="h-4 w-4 text-blue-700 shrink-0" />
+          <span className="kanban-body-sm font-semibold text-blue-950 truncate">
+            Also Assigned: Materials ({items.length})
+          </span>
+          <span className="hidden sm:inline-flex kanban-caption font-mono text-[11px] text-blue-800 bg-blue-100 border border-blue-300 px-1.5 py-0.5 rounded shrink-0">
+            Total: {formatCurrency(total)}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="flex items-center gap-1 kanban-caption text-blue-700 hover:text-blue-900 transition-colors shrink-0"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span>{open ? "Hide" : "Show"}</span>
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !open && "-rotate-90")} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="p-2 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="text-blue-800 border-b border-blue-200/60 font-medium">
+                <th className="px-2 py-1.5">Material</th>
+                <th className="px-2 py-1.5 text-right">Qty</th>
+                <th className="px-2 py-1.5">Unit</th>
+                <th className="px-2 py-1.5 text-right">Rate</th>
+                <th className="px-2 py-1.5 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((m) => (
+                <tr key={m.id} className="border-t border-blue-100 hover:bg-blue-100/40">
+                  <td className="px-2 py-1.5 font-medium text-slate-800">{m.materialDescription || m.materialCode}</td>
+                  <td className="px-2 py-1.5 text-right font-mono">{m.quantity}</td>
+                  <td className="px-2 py-1.5 text-slate-600">{m.uom || m.unitOfMeasure}</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-slate-600">{formatCurrency(Number(m.baseRate || 0))}</td>
+                  <td className="px-2 py-1.5 text-right font-mono font-semibold text-slate-900">{formatCurrency(Number(m.estimatedValue || 0))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SecondaryServicesSummary({ items }: { items: any[] }) {
+  const [open, setOpen] = useState(true);
+  const total = useMemo(() => items.reduce((s, m) => s + Number(m.estimatedValue || 0), 0), [items]);
+
+  return (
+    <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50/30 overflow-hidden shadow-2xs">
+      <div className="flex items-center justify-between px-3.5 py-2 bg-purple-100/50 border-b border-purple-200">
+        <div className="flex items-center gap-2">
+          <Wrench className="h-4 w-4 text-purple-700 shrink-0" />
+          <span className="kanban-body-sm font-semibold text-purple-950 truncate">
+            Also Assigned: Services ({items.length})
+          </span>
+          <span className="hidden sm:inline-flex kanban-caption font-mono text-[11px] text-purple-800 bg-purple-100 border border-purple-300 px-1.5 py-0.5 rounded shrink-0">
+            Total: {formatCurrency(total)}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="flex items-center gap-1 kanban-caption text-purple-700 hover:text-purple-900 transition-colors shrink-0"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span>{open ? "Hide" : "Show"}</span>
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !open && "-rotate-90")} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="p-2 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="text-purple-800 border-b border-purple-200/60 font-medium">
+                <th className="px-2 py-1.5">Service</th>
+                <th className="px-2 py-1.5 text-right">Qty</th>
+                <th className="px-2 py-1.5">Unit</th>
+                <th className="px-2 py-1.5 text-right">Rate</th>
+                <th className="px-2 py-1.5 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((s) => (
+                <tr key={s.id} className="border-t border-purple-100 hover:bg-purple-100/40">
+                  <td className="px-2 py-1.5 font-medium text-slate-800">{s.serviceDescription || s.serviceCode}</td>
+                  <td className="px-2 py-1.5 text-right font-mono">{s.quantity}</td>
+                  <td className="px-2 py-1.5 text-slate-600">{s.uom || s.unitOfMeasure}</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-slate-600">{formatCurrency(Number(s.baseRate || 0))}</td>
+                  <td className="px-2 py-1.5 text-right font-mono font-semibold text-slate-900">{formatCurrency(Number(s.estimatedValue || 0))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SecondaryResourcesSummary({ items }: { items: ResourceAssignmentRow[] }) {
+  const [open, setOpen] = useState(true);
+  const total = useMemo(() => items.reduce((s, r) => s + Number(r.unitRate || 0) * Number(r.quantity || 0), 0), [items]);
+
+  return (
+    <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/30 overflow-hidden shadow-2xs">
+      <div className="flex items-center justify-between px-3.5 py-2 bg-emerald-100/50 border-b border-emerald-200">
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-emerald-700 shrink-0" />
+          <span className="kanban-body-sm font-semibold text-emerald-950 truncate">
+            Also Assigned: Manpower & Equipment ({items.length})
+          </span>
+          <span className="hidden sm:inline-flex kanban-caption font-mono text-[11px] text-emerald-800 bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded shrink-0">
+            Total: {formatCurrency(total)}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="flex items-center gap-1 kanban-caption text-emerald-700 hover:text-emerald-900 transition-colors shrink-0"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span>{open ? "Hide" : "Show"}</span>
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !open && "-rotate-90")} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="p-2 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="text-emerald-800 border-b border-emerald-200/60 font-medium">
+                <th className="px-2 py-1.5">Resource</th>
+                <th className="px-2 py-1.5">Type</th>
+                <th className="px-2 py-1.5 text-right">Qty / Hrs</th>
+                <th className="px-2 py-1.5 text-right">Rate</th>
+                <th className="px-2 py-1.5 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((r) => (
+                <tr key={r.id} className="border-t border-emerald-100 hover:bg-emerald-100/40">
+                  <td className="px-2 py-1.5 font-medium text-slate-800">{r.name}</td>
+                  <td className="px-2 py-1.5 capitalize text-slate-600">{resourceTypeLabel(r.type)}</td>
+                  <td className="px-2 py-1.5 text-right font-mono">{r.quantity} {r.unitOfMeasure}</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-slate-600">{formatCurrency(Number(r.unitRate || 0))}</td>
+                  <td className="px-2 py-1.5 text-right font-mono font-semibold text-slate-900">
+                    {formatCurrency(Number(r.unitRate || 0) * Number(r.quantity || 0))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function isResourceRow(row: AssignmentRow): row is ResourceAssignmentRow {
@@ -79,6 +358,9 @@ export function WorkPackagesPanel({
   selectedWpId,
   onSelectWp,
   assignments,
+  wpMaterials = [],
+  wpServices = [],
+  wpResources = [],
   loading,
   error,
   onRetry,
@@ -93,6 +375,21 @@ export function WorkPackagesPanel({
   const [showWpList, setShowWpList] = useState(true);
   const [dropActive, setDropActive] = useState(false);
   const [selectedWbsId, setSelectedWbsId] = useState<number | "all">("all");
+
+  const assignedWpMaterials = useMemo(() => {
+    if (selectedWpId == null || !wpMaterials) return [];
+    return wpMaterials.filter((m) => m.wpId === selectedWpId);
+  }, [wpMaterials, selectedWpId]);
+
+  const assignedWpServices = useMemo(() => {
+    if (selectedWpId == null || !wpServices) return [];
+    return wpServices.filter((s) => s.wpId === selectedWpId);
+  }, [wpServices, selectedWpId]);
+
+  const assignedWpResources = useMemo(() => {
+    if (selectedWpId == null || !wpResources) return [];
+    return wpResources.filter((r) => r.wpId === selectedWpId);
+  }, [wpResources, selectedWpId]);
 
   const wbsTree = useMemo(() => {
     // Count work packages per WBS item
@@ -385,62 +682,210 @@ export function WorkPackagesPanel({
               drop zone below.
             </p>
           </div>
-        ) : selectedWpId != null && assignments.length === 0 ? (
-          <div className="flex flex-col items-center gap-4 py-6">
-            <p className="kanban-body-md font-medium text-[var(--text-primary)]">
-              {selectedWP?.code} – {selectedWP?.name}
-            </p>
-            {mode !== "resources" && budget > 0 && (
-              <p className="kanban-caption text-[var(--text-secondary)]">
-                Budget: {formatCurrency(budget)} · {formatCurrency(0)} allocated
-              </p>
+        ) : selectedWpId != null ? (
+          <div className="space-y-4">
+            {/* Header & Budget */}
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="kanban-body-md font-medium text-[var(--text-primary)]">
+                  {selectedWP?.code} – {selectedWP?.name}
+                </p>
+                {mode !== "resources" && (
+                  <span className="kanban-caption text-[var(--text-secondary)]">
+                    {formatCurrency(allocated)} / {formatCurrency(budget)}
+                  </span>
+                )}
+              </div>
+              {mode !== "resources" && budget > 0 && (
+                <div className="h-2 overflow-hidden rounded-full mb-3" style={{ backgroundColor: "var(--bg-warm-gray)" }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${pct}%`, backgroundColor: "var(--copper-500)" }}
+                  />
+                </div>
+              )}
+
+              {/* Assigned Activities Sub-Window */}
+              <WpActivitiesWindow projectId={projectId} selectedWpId={selectedWpId} />
+            </div>
+
+            {/* Primary Category Assignments (Materials / Services / Resources) */}
+            {assignments.length > 0 ? (
+              <>
+                <p className="mb-2 kanban-body-sm font-semibold text-[var(--text-primary)]">
+                  Assigned {mode === "materials" ? "Materials" : mode === "services" ? "Services" : "Manpower & Equipment"} ({assignments.length})
+                </p>
+                <div className="overflow-x-auto rounded-md border border-[var(--border-subtle)]">
+                  <table className="w-full text-left">
+                    <thead className="bg-[var(--bg-cream)]">
+                      <tr className="kanban-caption text-[var(--text-secondary)]">
+                        <th className="px-3 py-2 font-medium">
+                          {mode === "materials" ? "Material" : mode === "services" ? "Service" : "Resource"}
+                        </th>
+                        {mode === "resources" && <th className="px-3 py-2 font-medium">Type</th>}
+                        <th className="px-3 py-2 font-medium text-right">Qty</th>
+                        <th className="px-3 py-2 font-medium">Unit</th>
+                        <th className="px-3 py-2 font-medium text-right">Rate</th>
+                        <th className="px-3 py-2 font-medium text-right">Amount</th>
+                        {mode === "resources" && <th className="px-3 py-2 font-medium">Dates</th>}
+                        <th className="px-3 py-2 w-16" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {assignments.map((r) => {
+                        let label = "";
+                        let uom = "";
+                        let rate = 0;
+                        let amount = 0;
+
+                        if (mode === "resources" && isResourceRow(r)) {
+                          label = r.name;
+                          uom = r.unitOfMeasure;
+                          rate = Number(r.unitRate);
+                          amount = rate * Number(r.quantity);
+                        } else {
+                          const ms = r as MsAssignmentRow;
+                          label =
+                            mode === "materials"
+                              ? ms.materialDescription ?? ms.materialCode ?? ""
+                              : ms.serviceDescription ?? ms.serviceCode ?? "";
+                          uom = ms.uom ?? ms.unitOfMeasure ?? "";
+                          rate = Number(ms.baseRate ?? ms.unitRate ?? 0);
+                          amount = Number(ms.estimatedValue ?? rate * Number(ms.quantity));
+                        }
+
+                        return (
+                          <tr key={r.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-cream)]/60">
+                            <td className="px-3 py-2 kanban-body-sm text-[var(--text-primary)]">{label}</td>
+                            {mode === "resources" && isResourceRow(r) && (
+                              <td className="px-3 py-2 kanban-caption capitalize text-[var(--text-secondary)]">
+                                {resourceTypeLabel(r.type)}
+                              </td>
+                            )}
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                type="button"
+                                className="kanban-body-sm font-mono hover:underline"
+                                onClick={() => {
+                                  if (mode === "resources" && isResourceRow(r)) onEditResource?.(r);
+                                  else onEditQty?.(r as MsAssignmentRow);
+                                }}
+                              >
+                                {r.quantity}
+                              </button>
+                            </td>
+                            <td className="px-3 py-2 kanban-body-sm text-[var(--text-secondary)]">{uom}</td>
+                            <td className="px-3 py-2 text-right kanban-body-sm font-mono text-[var(--text-secondary)]">
+                              {formatCurrency(rate)}
+                            </td>
+                            <td className="px-3 py-2 text-right kanban-body-sm font-mono text-[var(--text-primary)]">
+                              {formatCurrency(amount)}
+                            </td>
+                            {mode === "resources" && isResourceRow(r) && (
+                              <td className="px-3 py-2 kanban-caption text-[var(--text-secondary)]">
+                                {r.plannedStartDate && r.plannedEndDate ? (
+                                  <>
+                                    {format(new Date(r.plannedStartDate), "MMM d")} –{" "}
+                                    {format(new Date(r.plannedEndDate), "MMM d, yyyy")}
+                                  </>
+                                ) : (
+                                  <span className="text-[var(--text-muted)]">Not set</span>
+                                )}
+                              </td>
+                            )}
+                            <td className="px-3 py-2">
+                              <div className="flex justify-end gap-0.5">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => {
+                                    if (mode === "resources" && isResourceRow(r)) onEditResource?.(r);
+                                    else onEditQty?.(r as MsAssignmentRow);
+                                  }}
+                                >
+                                  <Pencil className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 hover:text-[var(--status-danger)]"
+                                  onClick={() => onDelete(r.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-2 text-right">
+                  <span className="kanban-body-sm font-semibold text-[var(--text-primary)]">
+                    Total {mode}: {formatCurrency(allocated)}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-md border border-amber-200 bg-amber-50/50 p-3 text-center text-xs text-amber-900">
+                No {mode} assigned to this work package yet. Drag from the left panel to assign.
+              </div>
             )}
+
+            {/* Drop zone for active category */}
             <div
-              className="flex h-[100px] w-full items-center justify-center rounded-md border-2 border-dashed kanban-body-sm text-[var(--text-muted)]"
-              style={{ borderColor: "rgba(107, 114, 128, 0.3)" }}
+              className={cn(
+                "flex h-[80px] flex-col items-center justify-center rounded-lg border-2 border-dashed transition-all",
+                dropActive ? "msr-drop-zone-active" : ""
+              )}
+              style={{
+                borderColor: dropActive ? "var(--copper-500)" : "rgba(212, 144, 61, 0.45)",
+                backgroundColor: "rgba(253, 246, 237, 0.35)",
+              }}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
             >
-              Drop {dropLabel} here
+              <CloudUpload className="mb-1 h-5 w-5 text-[var(--copper-400)]" />
+              <p className="kanban-body-sm text-[var(--text-secondary)]">Drag {dropLabel} here to assign</p>
+            </div>
+
+            {/* Secondary Cross-Tab Summaries (Always rendered for selected WP) */}
+            <div className="space-y-3 pt-2">
+              {mode === "materials" && (
+                <>
+                  {assignedWpServices.length > 0 && <SecondaryServicesSummary items={assignedWpServices} />}
+                  {assignedWpResources.length > 0 && <SecondaryResourcesSummary items={assignedWpResources} />}
+                </>
+              )}
+              {mode === "services" && (
+                <>
+                  {assignedWpMaterials.length > 0 && <SecondaryMaterialsSummary items={assignedWpMaterials} />}
+                  {assignedWpResources.length > 0 && <SecondaryResourcesSummary items={assignedWpResources} />}
+                </>
+              )}
+              {mode === "resources" && (
+                <>
+                  {assignedWpMaterials.length > 0 && <SecondaryMaterialsSummary items={assignedWpMaterials} />}
+                  {assignedWpServices.length > 0 && <SecondaryServicesSummary items={assignedWpServices} />}
+                </>
+              )}
             </div>
           </div>
         ) : (
+          /* All WP view (when selectedWpId is null) */
           <>
-            {selectedWpId != null && (
-              <div className="mb-4">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="kanban-body-md font-medium text-[var(--text-primary)]">
-                    {selectedWP?.code} – {selectedWP?.name}
-                  </p>
-                  {mode !== "resources" && (
-                    <span className="kanban-caption text-[var(--text-secondary)]">
-                      {formatCurrency(allocated)} / {formatCurrency(budget)}
-                    </span>
-                  )}
-                </div>
-                {mode !== "resources" && (
-                  <div className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: "var(--bg-warm-gray)" }}>
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${pct}%`, backgroundColor: "var(--copper-500)" }}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {selectedWpId == null && (
-              <p className="mb-3 kanban-body-sm text-[var(--text-secondary)]">
-                All assigned {dropLabel} ({assignments.length})
-              </p>
-            )}
-
+            <p className="mb-3 kanban-body-sm text-[var(--text-secondary)]">
+              All assigned {dropLabel} ({assignments.length})
+            </p>
             <div className="overflow-x-auto rounded-md border border-[var(--border-subtle)]">
               <table className="w-full text-left">
                 <thead className="bg-[var(--bg-cream)]">
                   <tr className="kanban-caption text-[var(--text-secondary)]">
-                    {selectedWpId == null && <th className="px-3 py-2 font-medium">Work Package</th>}
+                    <th className="px-3 py-2 font-medium">Work Package</th>
                     <th className="px-3 py-2 font-medium">
                       {mode === "materials" ? "Material" : mode === "services" ? "Service" : "Resource"}
                     </th>
@@ -455,7 +900,7 @@ export function WorkPackagesPanel({
                 </thead>
                 <tbody>
                   {assignments.map((r) => {
-                    const wp = workPackages.find((w) => w.id === (r.wpId ?? selectedWpId));
+                    const wp = workPackages.find((w) => w.id === r.wpId);
                     let label = "";
                     let uom = "";
                     let rate = 0;
@@ -479,11 +924,9 @@ export function WorkPackagesPanel({
 
                     return (
                       <tr key={r.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-cream)]/60">
-                        {selectedWpId == null && (
-                          <td className="px-3 py-2 kanban-caption text-[var(--text-secondary)]">
-                            {wp ? `${wp.code} – ${wp.name}` : "—"}
-                          </td>
-                        )}
+                        <td className="px-3 py-2 kanban-caption text-[var(--text-secondary)]">
+                          {wp ? `${wp.code} – ${wp.name}` : "—"}
+                        </td>
                         <td className="px-3 py-2 kanban-body-sm text-[var(--text-primary)]">{label}</td>
                         {mode === "resources" && isResourceRow(r) && (
                           <td className="px-3 py-2 kanban-caption capitalize text-[var(--text-secondary)]">
@@ -550,35 +993,7 @@ export function WorkPackagesPanel({
                 </tbody>
               </table>
             </div>
-
-            {selectedWpId != null && (
-              <div className="mt-3 text-right">
-                <span className="kanban-body-sm font-semibold text-[var(--text-primary)]">
-                  Total: {formatCurrency(allocated)}
-                </span>
-              </div>
-            )}
           </>
-        )}
-
-        {/* Drop zone — always at bottom when a WP is selected */}
-        {selectedWpId != null && !loading && !error && workPackages.length > 0 && (
-          <div
-            className={cn(
-              "mt-4 flex h-[88px] flex-col items-center justify-center rounded-lg border-2 border-dashed transition-all",
-              dropActive ? "msr-drop-zone-active" : ""
-            )}
-            style={{
-              borderColor: dropActive ? "var(--copper-500)" : "rgba(212, 144, 61, 0.45)",
-              backgroundColor: "rgba(253, 246, 237, 0.35)",
-            }}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-          >
-            <CloudUpload className="mb-1 h-6 w-6 text-[var(--copper-400)]" />
-            <p className="kanban-body-sm text-[var(--text-secondary)]">Drag {dropLabel} here to assign</p>
-          </div>
         )}
       </div>
     </div>

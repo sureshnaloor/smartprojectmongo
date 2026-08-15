@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { MsrPageHeader } from "@/components/materials-resources/msr-page-header";
 import { MaterialsListPanel } from "@/components/materials-resources/materials-list-panel";
 import { ResourcesListPanel } from "@/components/materials-resources/resources-list-panel";
@@ -56,7 +56,7 @@ export default function ProjectMaterialsServices() {
   const [quantity, setQuantity] = useState("1");
   const [isQuantityDialogOpen, setIsQuantityDialogOpen] = useState(false);
   const pendingDropRef = useRef<{
-    type: "material" | "service";
+    type: string;
     item: MaterialItem | ServiceItem;
     wpId: number;
     baseRate: number;
@@ -177,7 +177,7 @@ export default function ProjectMaterialsServices() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: !!projectId && activeTab === "materials",
+    enabled: !!projectId,
   });
 
   const { data: wpServices = [] } = useQuery<any[]>({
@@ -192,7 +192,7 @@ export default function ProjectMaterialsServices() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: !!projectId && activeTab === "services",
+    enabled: !!projectId,
   });
 
   const { data: wpResources = [] } = useQuery<ProjectResourceAssignment[]>({
@@ -207,7 +207,7 @@ export default function ProjectMaterialsServices() {
       if (!response.ok) throw new Error("Failed to fetch resources");
       return response.json();
     },
-    enabled: !!projectId && activeTab === "resources",
+    enabled: !!projectId,
   });
 
   const displayedMaterials = useMemo(
@@ -462,7 +462,7 @@ export default function ProjectMaterialsServices() {
     const pending = pendingDropRef.current;
     if (!pending) return;
     const est = (qty * pending.baseRate).toFixed(2);
-    if (pending.type === "material") {
+    if (pending.type === "material" || pending.type === "materials") {
       addMaterialMutation.mutate({
         wpId: pending.wpId,
         materialId: pending.item.id,
@@ -479,6 +479,23 @@ export default function ProjectMaterialsServices() {
     }
   };
 
+  const isManpowerType = (type?: string | null): boolean => {
+    if (!type) return false;
+    const t = type.toLowerCase();
+    return t === "manpower" || t === "rental_manpower" || t.includes("manpower");
+  };
+
+  const isEquipmentType = (type?: string | null): boolean => {
+    if (!type) return false;
+    const t = type.toLowerCase();
+    return t === "equipment" || t === "rental_equipment" || t === "tools" || t.includes("equipment");
+  };
+
+  const isValidManpowerHours = (qty: number): boolean => {
+    if (isNaN(qty) || qty <= 0) return false;
+    return qty % 8 === 0 || qty % 10 === 0 || qty % 12 === 0;
+  };
+
   const handleResourceAssignConfirm = () => {
     if (!pendingResource || pendingResourceWpId == null) return;
     if (!resourceDateRange?.from || !resourceDateRange?.to) {
@@ -490,6 +507,16 @@ export default function ProjectMaterialsServices() {
       toast({ title: "Invalid quantity", variant: "destructive" });
       return;
     }
+
+    if (isManpowerType(pendingResource.type) && !isValidManpowerHours(qty)) {
+      toast({
+        title: "Invalid Manpower Shift Hours",
+        description: "Manpower quantity must be in shift multiples of 8, 10, or 12 hours (e.g. 8, 10, 12, 16, 20, 24, 30, 32, 40, 48 hrs).",
+        variant: "destructive",
+      });
+      return;
+    }
+
     createResourceMutation.mutate({
       wpId: pendingResourceWpId,
       globalResourceId: pendingResource.id,
@@ -643,6 +670,9 @@ export default function ProjectMaterialsServices() {
             selectedWpId={selectedWpId}
             onSelectWp={setSelectedWpId}
             assignments={panelAssignments}
+            wpMaterials={wpMaterials}
+            wpServices={wpServices}
+            wpResources={wpResources}
             loading={workPackagesLoading}
             error={workPackagesError}
             onRetry={() => refetchWorkPackages()}
@@ -706,7 +736,7 @@ export default function ProjectMaterialsServices() {
                 {pendingResource.type.replace(/_/g, " ")} · {formatCurrency(Number(pendingResource.unitRate))} / {pendingResource.unitOfMeasure}
               </p>
               <div>
-                <Label>Quantity</Label>
+                <Label>Quantity ({pendingResource.unitOfMeasure || "Hours"})</Label>
                 <Input
                   type="number"
                   min="0.01"
@@ -715,6 +745,38 @@ export default function ProjectMaterialsServices() {
                   onChange={(e) => setResourceQuantity(e.target.value)}
                   className="mt-1"
                 />
+                {isManpowerType(pendingResource.type) && (
+                  <div className="space-y-1.5 mt-2">
+                    <p className="text-[11px] font-medium text-[var(--text-secondary)]">Shift hour presets (multiples of 8, 10, or 12 hrs):</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[8, 10, 12, 16, 20, 24, 30, 32, 40, 48].map((h) => (
+                        <button
+                          key={h}
+                          type="button"
+                          className={cn(
+                            "px-2 py-1 text-xs font-mono rounded border transition-colors",
+                            Number(resourceQuantity) === h
+                              ? "bg-[var(--copper-500)] text-white border-[var(--copper-600)] font-bold"
+                              : "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                          )}
+                          onClick={() => setResourceQuantity(String(h))}
+                        >
+                          {h}h
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {isEquipmentType(pendingResource.type) && Number(resourceQuantity) > 0 && Number(resourceQuantity) < 8 && (
+                  <div className="mt-2.5 rounded-md border border-amber-300 bg-amber-50/90 p-3 text-xs text-amber-900 space-y-1">
+                    <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+                      <span>⚠️</span> Short Duration Equipment Notice (&lt; 8 hours)
+                    </div>
+                    <p>
+                      Assigning less than 8 hours. Please verify equipment can be mobilized for short durations and confirm whether assigned hours include mob/demob and setup time.
+                    </p>
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Planned date range</Label>
@@ -752,10 +814,20 @@ export default function ProjectMaterialsServices() {
               onSubmit={(e) => {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
+                const qtyStr = fd.get("quantity") as string;
+                const qty = parseFloat(qtyStr);
+                if (isManpowerType(editingResource.type) && !isValidManpowerHours(qty)) {
+                  toast({
+                    title: "Invalid Manpower Shift Hours",
+                    description: "Manpower quantity must be in shift multiples of 8, 10, or 12 hours (e.g. 8, 10, 12, 16, 20, 24, 30, 32, 40, 48 hrs).",
+                    variant: "destructive",
+                  });
+                  return;
+                }
                 updateResourceMutation.mutate({
                   id: editingResource.id,
                   data: {
-                    quantity: fd.get("quantity") as string,
+                    quantity: qtyStr,
                     plannedStartDate: (fd.get("plannedStartDate") as string) || null,
                     plannedEndDate: (fd.get("plannedEndDate") as string) || null,
                     remarks: (fd.get("remarks") as string) || null,
@@ -765,8 +837,19 @@ export default function ProjectMaterialsServices() {
             >
               <p className="kanban-body-sm font-medium">{editingResource.name}</p>
               <div>
-                <Label htmlFor="quantity">Quantity</Label>
+                <Label htmlFor="quantity">Quantity ({editingResource.unitOfMeasure || "Hours"})</Label>
                 <Input id="quantity" name="quantity" type="number" step="0.01" defaultValue={editingResource.quantity} required />
+                {isManpowerType(editingResource.type) && (
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-1">
+                    Must be in shift multiples of 8, 10, or 12 hours (e.g. 8, 10, 12, 16, 20, 24, 32, 40, 48 hrs).
+                  </p>
+                )}
+                {isEquipmentType(editingResource.type) && Number(editingResource.quantity) < 8 && (
+                  <div className="mt-2 rounded-md border border-amber-300 bg-amber-50/90 p-2.5 text-xs text-amber-900 space-y-0.5">
+                    <div className="font-semibold text-amber-800">⚠️ Short Duration Equipment Notice (&lt; 8 hours)</div>
+                    <p>Confirm equipment mobilization capability and mob/demob & setup hour inclusion.</p>
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
