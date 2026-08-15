@@ -888,3 +888,226 @@
 .wa-progress-bar {
   transition: width 0.8s ease-out;
 }
+
+/* ─── Materials & Resources Page — refined aesthetic system ─── */
+
+/* Panel typography — tighter, more harmonious scale */
+.msr-panel-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.msr-section-heading {
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.msr-item-title {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.msr-item-desc {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.msr-badge {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+}
+
+.msr-pill {
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+/* Table system — refined headers and cells */
+.msr-table-header {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.msr-table-cell {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.msr-table-cell-mono {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+}
+
+.msr-table-cell-amount {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.msr-total {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.msr-meta {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+/* Refined table styling with subtle borders and hover */
+.msr-data-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  text-align: left;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.msr-data-table thead th {
+  background-color: var(--bg-cream);
+  border-bottom: 1.5px solid var(--border-subtle);
+  padding: 0.5rem 0.75rem;
+  white-space: nowrap;
+}
+
+.msr-data-table tbody tr {
+  transition: background-color 120ms ease;
+}
+
+.msr-data-table tbody tr:hover {
+  background-color: rgba(253, 246, 237, 0.45);
+}
+
+.msr-data-table tbody td {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  padding: 0.5625rem 0.75rem;
+  vertical-align: middle;
+}
+
+.msr-data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Refined secondary summaries — softer, cohesive palette */
+.msr-summary {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.msr-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.875rem;
+  border-bottom-width: 1px;
+}
+
+.msr-summary-materials {
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  background-color: rgba(248, 250, 252, 0.7);
+}
+
+.msr-summary-materials .msr-summary-header {
+  background-color: rgba(59, 130, 246, 0.06);
+  border-bottom-color: rgba(59, 130, 246, 0.15);
+}
+
+.msr-summary-materials .msr-summary-title {
+  color: #1e40af;
+}
+
+.msr-summary-services {
+  border: 1px solid rgba(147, 51, 234, 0.15);
+  background-color: rgba(250, 245, 255, 0.5);
+}
+
+.msr-summary-services .msr-summary-header {
+  background-color: rgba(147, 51, 234, 0.05);
+  border-bottom-color: rgba(147, 51, 234, 0.12);
+}
+
+.msr-summary-services .msr-summary-title {
+  color: #6b21a8;
+}
+
+.msr-summary-resources {
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  background-color: rgba(236, 253, 245, 0.5);
+}
+
+.msr-summary-resources .msr-summary-header {
+  background-color: rgba(16, 185, 129, 0.06);
+  border-bottom-color: rgba(16, 185, 129, 0.15);
+}
+
+.msr-summary-resources .msr-summary-title {
+  color: #065f46;
+}
+
+/* Activities window refinement */
+.msr-activities-window {
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background-color: rgba(248, 246, 240, 0.4);
+  overflow: hidden;
+}
+
+.msr-activities-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  background-color: rgba(240, 237, 230, 0.5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Drop zone refinement */
+.msr-drop-zone {
+  border-radius: 8px;
+  border: 2px dashed rgba(193, 120, 23, 0.35);
+  background-color: rgba(253, 246, 237, 0.3);
+  transition: all 200ms ease;
+}
+
+.msr-drop-zone:hover {
+  border-color: rgba(193, 120, 23, 0.55);
+  background-color: rgba(253, 246, 237, 0.5);
+}
+
+/* List item refinement */
+.msr-list-item {
+  transition: all 150ms ease;
+}
+
+.msr-list-item:hover {
+  background-color: rgba(253, 246, 237, 0.35);
+}

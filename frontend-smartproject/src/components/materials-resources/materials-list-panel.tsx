@@ -128,8 +128,8 @@ export function MaterialsListPanel({
     <div className="flex h-full min-h-0 flex-col rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-white)] shadow-[var(--shadow-sm)]">
       <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-6 py-5">
         <div className="flex items-center gap-2">
-          <h2 className="kanban-heading-lg text-[var(--text-primary)]">{label}</h2>
-          <span className="kanban-body-sm text-[var(--text-secondary)]">{sorted.length} items</span>
+          <h2 className="msr-panel-title text-[var(--text-primary)]">{label}</h2>
+          <span className="msr-meta text-[var(--text-secondary)]">{sorted.length} items</span>
         </div>
         <Button size="sm" className="gap-1" onClick={onAdd}>
           <Plus className="h-4 w-4" />
@@ -148,7 +148,7 @@ export function MaterialsListPanel({
               type="button"
               onClick={() => onCategoryFilter(cat)}
               className={cn(
-                "rounded-full px-3 py-1 kanban-caption font-medium transition-colors",
+                "rounded-full px-3 py-1 msr-badge font-medium transition-colors",
                 categoryFilter === cat
                   ? "bg-[var(--copper-500)] text-white"
                   : "bg-[var(--bg-warm-gray)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -160,7 +160,7 @@ export function MaterialsListPanel({
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="kanban-body-sm">
+            <Button variant="ghost" size="sm" className="msr-meta">
               Sort by: {SORT_OPTIONS.find((o) => o.value === sortKey)?.label} ▾
             </Button>
           </DropdownMenuTrigger>
@@ -184,13 +184,13 @@ export function MaterialsListPanel({
         ) : sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
             <Search className="h-10 w-10 text-[var(--text-muted)] opacity-40" />
-            <p className="kanban-body-sm text-[var(--text-secondary)]">
+            <p className="msr-meta text-[var(--text-secondary)]">
               No {mode} match your search
             </p>
             {search && (
               <button
                 type="button"
-                className="kanban-body-sm text-[var(--copper-500)] underline"
+                className="msr-meta text-[var(--copper-500)] underline"
                 onClick={() => onClearSearch?.()}
               >
                 Clear search
@@ -231,26 +231,26 @@ export function MaterialsListPanel({
                 <div className="flex flex-col gap-2 pl-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <span className="kanban-body-sm font-mono text-[var(--copper-600)]">
+                      <span className="msr-item-desc font-mono text-[var(--copper-600)]">
                         {highlightMatch(code, search)}
                       </span>
                       <span className="mx-2 text-[var(--text-muted)]">·</span>
-                      <span className="kanban-body-md font-medium text-[var(--text-primary)]">
+                      <span className="msr-item-title">
                         {highlightMatch(name, search)}
                       </span>
                     </div>
-                    <span className="shrink-0 kanban-body-sm font-mono text-[var(--text-secondary)]">
+                    <span className="shrink-0 msr-item-desc font-mono text-[var(--text-secondary)]">
                       {(item as MaterialItem).uom} · Base: {formatCurrency(Number(item.baseRate || 0))}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span
-                      className="rounded-full px-2 py-0.5 kanban-caption text-[var(--text-secondary)]"
+                      className="rounded-full px-2 py-0.5 msr-badge text-[var(--text-secondary)]"
                       style={{ backgroundColor: "var(--bg-warm-gray)" }}
                     >
                       {category || "General"}
                     </span>
-                    <span className="flex items-center gap-1.5 kanban-caption text-[var(--text-secondary)]">
+                    <span className="flex items-center gap-1.5 msr-badge text-[var(--text-secondary)]">
                       <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.color }} />
                       {status.label}
                     </span>
@@ -263,7 +263,7 @@ export function MaterialsListPanel({
       </div>
 
       <div className="sticky bottom-0 border-t border-[var(--border-subtle)] bg-[var(--bg-white)] px-6 py-3">
-        <p className="kanban-body-sm text-[var(--text-muted)]">
+        <p className="msr-meta text-[var(--text-muted)]">
           Showing {sorted.length} of {items.length} {mode}
         </p>
         <Button variant="ghost" className="mt-2 w-full text-[var(--text-secondary)]" onClick={onAdd}>

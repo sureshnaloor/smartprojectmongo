@@ -78,8 +78,8 @@ export function ResourcesListPanel({
     <div className="flex h-full min-h-0 flex-col rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-white)] shadow-[var(--shadow-sm)]">
       <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-6 py-5">
         <div className="flex items-center gap-2">
-          <h2 className="kanban-heading-lg text-[var(--text-primary)]">Resources</h2>
-          <span className="kanban-body-sm text-[var(--text-secondary)]">{sorted.length} items</span>
+          <h2 className="msr-panel-title text-[var(--text-primary)]">Resources</h2>
+          <span className="msr-meta text-[var(--text-secondary)]">{sorted.length} items</span>
         </div>
       </div>
 
@@ -94,7 +94,7 @@ export function ResourcesListPanel({
               type="button"
               onClick={() => onTypeFilter(f.key)}
               className={cn(
-                "rounded-full px-3 py-1 kanban-caption font-medium transition-colors",
+                "rounded-full px-3 py-1 msr-badge font-medium transition-colors",
                 typeFilter === f.key
                   ? "bg-[var(--copper-500)] text-white"
                   : "bg-[var(--bg-warm-gray)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -106,7 +106,7 @@ export function ResourcesListPanel({
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="kanban-body-sm">
+            <Button variant="ghost" size="sm" className="msr-meta">
               Sort by: {SORT_OPTIONS.find((o) => o.value === sortKey)?.label ?? "Name"} ▾
             </Button>
           </DropdownMenuTrigger>
@@ -130,7 +130,7 @@ export function ResourcesListPanel({
         ) : sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
             <Search className="h-10 w-10 text-[var(--text-muted)] opacity-40" />
-            <p className="kanban-body-sm text-[var(--text-secondary)]">No resources match your filters</p>
+            <p className="msr-meta text-[var(--text-secondary)]">No resources match your filters</p>
           </div>
         ) : (
           sorted.map((item, index) => {
@@ -157,24 +157,24 @@ export function ResourcesListPanel({
                     <div className="flex min-w-0 items-start gap-2">
                       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--copper-500)]" />
                       <div className="min-w-0">
-                        <span className="kanban-body-md font-medium text-[var(--text-primary)]">{item.name}</span>
+                        <span className="msr-item-title">{item.name}</span>
                         {item.description && (
-                          <p className="kanban-caption text-[var(--text-secondary)] truncate">{item.description}</p>
+                          <p className="msr-item-desc truncate">{item.description}</p>
                         )}
                       </div>
                     </div>
-                    <span className="shrink-0 kanban-body-sm font-mono text-[var(--text-secondary)]">
+                    <span className="shrink-0 msr-item-desc font-mono text-[var(--text-secondary)]">
                       {formatCurrency(Number(item.unitRate))} / {item.unitOfMeasure}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 pl-6">
                     <span
-                      className="rounded-full px-2 py-0.5 kanban-caption capitalize text-[var(--text-secondary)]"
+                      className="rounded-full px-2 py-0.5 msr-badge capitalize text-[var(--text-secondary)]"
                       style={{ backgroundColor: "var(--bg-warm-gray)" }}
                     >
                       {resourceTypeLabel(item.type)}
                     </span>
-                    <span className="flex items-center gap-1.5 kanban-caption text-[var(--text-secondary)]">
+                    <span className="flex items-center gap-1.5 msr-badge text-[var(--text-secondary)]">
                       <span
                         className="h-1.5 w-1.5 rounded-full"
                         style={{ backgroundColor: isAllocated ? "var(--status-info)" : "var(--status-success)" }}
@@ -190,7 +190,7 @@ export function ResourcesListPanel({
       </div>
 
       <div className="sticky bottom-0 border-t border-[var(--border-subtle)] bg-[var(--bg-white)] px-6 py-3">
-        <p className="kanban-body-sm text-[var(--text-muted)]">
+        <p className="msr-meta text-[var(--text-muted)]">
           Showing {sorted.length} of {items.length} resources · drag to a work package to assign
         </p>
       </div>

@@ -38,7 +38,7 @@ export function MsrPageHeader({
 
   return (
     <div className="bg-[var(--bg-cream)] pb-5 px-6 lg:px-8 pt-6">
-      <p className="kanban-body-sm text-[var(--text-secondary)] mb-2">
+      <p className="msr-meta mb-2">
         <button type="button" className="hover:text-[var(--text-primary)]" onClick={() => setLocation("/")}>
           Projects
         </button>
@@ -56,7 +56,7 @@ export function MsrPageHeader({
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="hse-display-md text-[var(--text-primary)]">Materials &amp; Resources</h1>
+          <h1 className="msr-panel-title text-[var(--text-primary)]">Materials &amp; Resources</h1>
           <div
             className="mt-3 inline-flex flex-wrap gap-1.5 rounded-full p-1"
             style={{ backgroundColor: "var(--bg-warm-gray)" }}
@@ -71,7 +71,7 @@ export function MsrPageHeader({
                   type="button"
                   onClick={() => setLocation(tab.href(projectId))}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-full px-4 py-2 kanban-body-sm font-medium transition-all",
+                    "flex items-center gap-1.5 rounded-full px-4 py-2 msr-meta font-medium transition-all",
                     isActive
                       ? "bg-[var(--bg-white)] text-[var(--text-primary)] shadow-[var(--shadow-sm)]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -80,7 +80,7 @@ export function MsrPageHeader({
                   {tab.label}
                   {count != null && (
                     <span
-                      className="flex h-5 min-w-5 items-center justify-center rounded-full px-1 kanban-caption font-semibold"
+                      className="flex h-5 min-w-5 items-center justify-center rounded-full px-1 msr-badge font-semibold"
                       style={{ backgroundColor: "var(--bg-warm-gray)" }}
                     >
                       {count}

@@ -97,11 +97,11 @@ function WpActivitiesWindow({ projectId, selectedWpId }: { projectId: string; se
       <div className="flex items-center justify-between gap-2 px-3.5 py-2 bg-[var(--bg-warm-gray)]/50 border-b border-[var(--border-subtle)]">
         <div className="flex items-center gap-2 min-w-0">
           <ListTodo className="h-4 w-4 text-[var(--copper-500)] shrink-0" />
-          <span className="kanban-body-sm font-semibold text-[var(--text-primary)] truncate">
+          <span className="msr-item-title font-semibold text-[var(--text-primary)] truncate">
             Assigned Activities ({isLoading ? "…" : wpActivities.length})
           </span>
           {!isLoading && wpActivities.length > 0 && (
-            <span className="hidden sm:inline-flex kanban-caption font-mono text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0">
+            <span className="hidden sm:inline-flex msr-badge font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0">
               Act. Budget: {formatCurrency(totalActBudget)}
             </span>
           )}
@@ -109,7 +109,7 @@ function WpActivitiesWindow({ projectId, selectedWpId }: { projectId: string; se
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            className="flex items-center gap-1 kanban-caption text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            className="flex items-center gap-1 msr-meta text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             onClick={() => setShowActivities((v) => !v)}
           >
             <span>{showActivities ? "Hide" : "Show"}</span>
@@ -127,7 +127,7 @@ function WpActivitiesWindow({ projectId, selectedWpId }: { projectId: string; se
               <div className="h-8 w-2/3 animate-pulse rounded bg-zinc-200/50" />
             </div>
           ) : wpActivities.length === 0 ? (
-            <div className="py-3 px-4 text-center kanban-caption text-[var(--text-muted)] bg-white/70 rounded-md border border-dashed border-[var(--border-subtle)]">
+            <div className="py-3 px-4 text-center msr-meta text-[var(--text-muted)] bg-white/70 rounded-md border border-dashed border-[var(--border-subtle)]">
               No activities assigned to this work package yet.
             </div>
           ) : (
@@ -143,7 +143,7 @@ function WpActivitiesWindow({ projectId, selectedWpId }: { projectId: string; se
                     className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-2.5 rounded-md bg-white border border-[var(--border-subtle)] hover:border-[var(--copper-300)] shadow-2xs transition-all"
                   >
                     <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                      <span className="kanban-body-sm font-semibold text-[var(--text-primary)] truncate">
+                      <span className="msr-table-cell font-semibold text-[var(--text-primary)] truncate">
                         {act.name}
                       </span>
                       <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium border shrink-0", typeBadge.className)}>
@@ -156,13 +156,13 @@ function WpActivitiesWindow({ projectId, selectedWpId }: { projectId: string; se
                       )}
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0 kanban-caption text-right self-end sm:self-center">
+                    <div className="flex items-center gap-3 shrink-0 msr-table-cell-mono text-right self-end sm:self-center">
                       {act.activityType === "units" && act.quantity && act.unitOfMeasure ? (
-                        <span className="font-mono text-[var(--text-secondary)]">
+                        <span className="text-[var(--text-secondary)]">
                           {act.quantity} {act.unitOfMeasure} @ {formatCurrency(Number(act.unitRate || 0))}
                         </span>
                       ) : null}
-                      <span className="font-mono font-semibold text-[var(--text-primary)]">
+                      <span className="font-semibold text-[var(--text-primary)]">
                         {formatCurrency(actBudget)}
                       </span>
                     </div>
@@ -182,20 +182,20 @@ function SecondaryMaterialsSummary({ items }: { items: any[] }) {
   const total = useMemo(() => items.reduce((s, m) => s + Number(m.estimatedValue || 0), 0), [items]);
 
   return (
-    <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/30 overflow-hidden shadow-2xs">
-      <div className="flex items-center justify-between px-3.5 py-2 bg-blue-100/50 border-b border-blue-200">
+    <div className="mt-4 msr-summary msr-summary-materials">
+      <div className="msr-summary-header">
         <div className="flex items-center gap-2">
           <Package className="h-4 w-4 text-blue-700 shrink-0" />
-          <span className="kanban-body-sm font-semibold text-blue-950 truncate">
+          <span className="msr-summary-title msr-item-title font-semibold truncate">
             Also Assigned: Materials ({items.length})
           </span>
-          <span className="hidden sm:inline-flex kanban-caption font-mono text-[11px] text-blue-800 bg-blue-100 border border-blue-300 px-1.5 py-0.5 rounded shrink-0">
+          <span className="hidden sm:inline-flex msr-badge font-mono text-blue-800 bg-blue-100 border border-blue-300 px-1.5 py-0.5 rounded shrink-0">
             Total: {formatCurrency(total)}
           </span>
         </div>
         <button
           type="button"
-          className="flex items-center gap-1 kanban-caption text-blue-700 hover:text-blue-900 transition-colors shrink-0"
+          className="flex items-center gap-1 msr-meta text-blue-700 hover:text-blue-900 transition-colors shrink-0"
           onClick={() => setOpen((v) => !v)}
         >
           <span>{open ? "Hide" : "Show"}</span>
@@ -238,20 +238,20 @@ function SecondaryServicesSummary({ items }: { items: any[] }) {
   const total = useMemo(() => items.reduce((s, m) => s + Number(m.estimatedValue || 0), 0), [items]);
 
   return (
-    <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50/30 overflow-hidden shadow-2xs">
-      <div className="flex items-center justify-between px-3.5 py-2 bg-purple-100/50 border-b border-purple-200">
+    <div className="mt-4 msr-summary msr-summary-services">
+      <div className="msr-summary-header">
         <div className="flex items-center gap-2">
           <Wrench className="h-4 w-4 text-purple-700 shrink-0" />
-          <span className="kanban-body-sm font-semibold text-purple-950 truncate">
+          <span className="msr-summary-title msr-item-title font-semibold truncate">
             Also Assigned: Services ({items.length})
           </span>
-          <span className="hidden sm:inline-flex kanban-caption font-mono text-[11px] text-purple-800 bg-purple-100 border border-purple-300 px-1.5 py-0.5 rounded shrink-0">
+          <span className="hidden sm:inline-flex msr-badge font-mono text-purple-800 bg-purple-100 border border-purple-300 px-1.5 py-0.5 rounded shrink-0">
             Total: {formatCurrency(total)}
           </span>
         </div>
         <button
           type="button"
-          className="flex items-center gap-1 kanban-caption text-purple-700 hover:text-purple-900 transition-colors shrink-0"
+          className="flex items-center gap-1 msr-meta text-purple-700 hover:text-purple-900 transition-colors shrink-0"
           onClick={() => setOpen((v) => !v)}
         >
           <span>{open ? "Hide" : "Show"}</span>
@@ -294,20 +294,20 @@ function SecondaryResourcesSummary({ items }: { items: ResourceAssignmentRow[] }
   const total = useMemo(() => items.reduce((s, r) => s + Number(r.unitRate || 0) * Number(r.quantity || 0), 0), [items]);
 
   return (
-    <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/30 overflow-hidden shadow-2xs">
-      <div className="flex items-center justify-between px-3.5 py-2 bg-emerald-100/50 border-b border-emerald-200">
+    <div className="mt-4 msr-summary msr-summary-resources">
+      <div className="msr-summary-header">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-emerald-700 shrink-0" />
-          <span className="kanban-body-sm font-semibold text-emerald-950 truncate">
+          <span className="msr-summary-title msr-item-title font-semibold truncate">
             Also Assigned: Manpower & Equipment ({items.length})
           </span>
-          <span className="hidden sm:inline-flex kanban-caption font-mono text-[11px] text-emerald-800 bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded shrink-0">
+          <span className="hidden sm:inline-flex msr-badge font-mono text-emerald-800 bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded shrink-0">
             Total: {formatCurrency(total)}
           </span>
         </div>
         <button
           type="button"
-          className="flex items-center gap-1 kanban-caption text-emerald-700 hover:text-emerald-900 transition-colors shrink-0"
+          className="flex items-center gap-1 msr-meta text-emerald-700 hover:text-emerald-900 transition-colors shrink-0"
           onClick={() => setOpen((v) => !v)}
         >
           <span>{open ? "Hide" : "Show"}</span>
@@ -502,8 +502,8 @@ export function WorkPackagesPanel({
       <div className="shrink-0 border-b border-[var(--border-subtle)] px-5 py-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="kanban-heading-lg text-[var(--text-primary)]">Work Packages</h2>
-            <p className="kanban-caption text-[var(--text-secondary)] mt-0.5">
+            <h2 className="msr-panel-title text-[var(--text-primary)]">Work Packages</h2>
+            <p className="msr-meta mt-0.5">
               {loading
                 ? "Loading…"
                 : error
@@ -520,7 +520,7 @@ export function WorkPackagesPanel({
             )}
             <button
               type="button"
-              className="flex items-center gap-1 kanban-body-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              className="flex items-center gap-1 msr-meta text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               onClick={() => setShowWpList((v) => !v)}
             >
               {showWpList ? "Hide" : "Show"}
@@ -534,7 +534,7 @@ export function WorkPackagesPanel({
           <div className="mt-3 space-y-2.5">
             {wbsTree.length > 0 && (
               <div className="flex items-center gap-2">
-                <span className="kanban-caption font-semibold text-[var(--text-secondary)] shrink-0">
+                <span className="msr-section-heading text-[var(--text-secondary)] shrink-0">
                   WBS Branch:
                 </span>
                 <Select
@@ -600,7 +600,7 @@ export function WorkPackagesPanel({
                 type="button"
                 onClick={() => onSelectWp(null)}
                 className={cn(
-                  "shrink-0 rounded-full px-3 py-1.5 kanban-caption font-medium transition-all",
+                  "shrink-0 rounded-full px-3 py-1.5 msr-pill transition-all",
                   selectedWpId === null
                     ? "bg-[var(--copper-500)] text-white"
                     : "bg-[var(--bg-warm-gray)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -620,7 +620,7 @@ export function WorkPackagesPanel({
                   }}
                   onDragOver={handleDragOver}
                   className={cn(
-                    "shrink-0 rounded-full px-3 py-1.5 kanban-caption font-medium transition-all",
+                    "shrink-0 rounded-full px-3 py-1.5 msr-pill transition-all",
                     selectedWpId === wp.id
                       ? "bg-[var(--copper-500)] text-white"
                       : "bg-[var(--bg-warm-gray)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -644,11 +644,11 @@ export function WorkPackagesPanel({
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-12 animate-pulse rounded-md bg-[var(--bg-warm-gray)]/50" />
             ))}
-            <p className="text-center kanban-body-sm text-[var(--text-muted)]">Loading work packages…</p>
+            <p className="text-center msr-meta text-[var(--text-muted)]">Loading work packages…</p>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <p className="kanban-body-sm text-[var(--status-danger)]">Could not load work packages</p>
+            <p className="msr-table-cell text-[var(--status-danger)]">Could not load work packages</p>
             <Button variant="outline" size="sm" onClick={onRetry}>
               <RefreshCw className="mr-1 h-4 w-4" />
               Retry
@@ -662,13 +662,13 @@ export function WorkPackagesPanel({
             >
               <Package className="h-8 w-8 text-[var(--text-muted)] opacity-30" />
             </div>
-            <h3 className="kanban-heading-md text-[var(--text-primary)]">No work packages found</h3>
-            <p className="kanban-body-sm text-[var(--text-secondary)] max-w-xs">
+            <h3 className="msr-item-title font-semibold text-[var(--text-primary)]">No work packages found</h3>
+            <p className="msr-meta max-w-xs">
               Import WBS or add work packages to the project.
             </p>
             <button
               type="button"
-              className="kanban-body-sm font-medium text-[var(--copper-500)] underline"
+              className="msr-table-cell font-medium text-[var(--copper-500)] underline"
               onClick={() => (window.location.href = `/projects/${projectId}#register`)}
             >
               Import WBS
@@ -677,7 +677,7 @@ export function WorkPackagesPanel({
         ) : selectedWpId == null && assignments.length === 0 ? (
           <div className="flex flex-col items-center gap-4 py-10 text-center">
             <Hand className="h-12 w-12 text-[var(--text-muted)] opacity-25" />
-            <p className="max-w-[320px] kanban-body-sm text-[var(--text-secondary)]">
+            <p className="max-w-[320px] msr-meta text-[var(--text-secondary)]">
               Select a work package above, then drag {dropLabel} from the left list onto a work package pill or the
               drop zone below.
             </p>
@@ -687,11 +687,11 @@ export function WorkPackagesPanel({
             {/* Header & Budget */}
             <div>
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="kanban-body-md font-medium text-[var(--text-primary)]">
+                <p className="msr-item-title font-medium text-[var(--text-primary)]">
                   {selectedWP?.code} – {selectedWP?.name}
                 </p>
                 {mode !== "resources" && (
-                  <span className="kanban-caption text-[var(--text-secondary)]">
+                  <span className="msr-meta text-[var(--text-secondary)]">
                     {formatCurrency(allocated)} / {formatCurrency(budget)}
                   </span>
                 )}
@@ -712,22 +712,22 @@ export function WorkPackagesPanel({
             {/* Primary Category Assignments (Materials / Services / Resources) */}
             {assignments.length > 0 ? (
               <>
-                <p className="mb-2 kanban-body-sm font-semibold text-[var(--text-primary)]">
+                <p className="mb-2 msr-section-heading text-[var(--text-primary)]">
                   Assigned {mode === "materials" ? "Materials" : mode === "services" ? "Services" : "Manpower & Equipment"} ({assignments.length})
                 </p>
                 <div className="overflow-x-auto rounded-md border border-[var(--border-subtle)]">
-                  <table className="w-full text-left">
+                  <table className="msr-data-table">
                     <thead className="bg-[var(--bg-cream)]">
-                      <tr className="kanban-caption text-[var(--text-secondary)]">
-                        <th className="px-3 py-2 font-medium">
+                      <tr className="msr-table-header text-[var(--text-secondary)]">
+                        <th className="px-3 py-2">
                           {mode === "materials" ? "Material" : mode === "services" ? "Service" : "Resource"}
                         </th>
-                        {mode === "resources" && <th className="px-3 py-2 font-medium">Type</th>}
-                        <th className="px-3 py-2 font-medium text-right">Qty</th>
-                        <th className="px-3 py-2 font-medium">Unit</th>
-                        <th className="px-3 py-2 font-medium text-right">Rate</th>
-                        <th className="px-3 py-2 font-medium text-right">Amount</th>
-                        {mode === "resources" && <th className="px-3 py-2 font-medium">Dates</th>}
+                        {mode === "resources" && <th className="px-3 py-2">Type</th>}
+                        <th className="px-3 py-2 text-right">Qty</th>
+                        <th className="px-3 py-2">Unit</th>
+                        <th className="px-3 py-2 text-right">Rate</th>
+                        <th className="px-3 py-2 text-right">Amount</th>
+                        {mode === "resources" && <th className="px-3 py-2">Dates</th>}
                         <th className="px-3 py-2 w-16" />
                       </tr>
                     </thead>
@@ -756,16 +756,16 @@ export function WorkPackagesPanel({
 
                         return (
                           <tr key={r.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-cream)]/60">
-                            <td className="px-3 py-2 kanban-body-sm text-[var(--text-primary)]">{label}</td>
+                            <td className="px-3 py-2 msr-table-cell">{label}</td>
                             {mode === "resources" && isResourceRow(r) && (
-                              <td className="px-3 py-2 kanban-caption capitalize text-[var(--text-secondary)]">
+                              <td className="px-3 py-2 msr-table-cell-mono capitalize">
                                 {resourceTypeLabel(r.type)}
                               </td>
                             )}
                             <td className="px-3 py-2 text-right">
                               <button
                                 type="button"
-                                className="kanban-body-sm font-mono hover:underline"
+                                className="msr-table-cell-mono hover:underline"
                                 onClick={() => {
                                   if (mode === "resources" && isResourceRow(r)) onEditResource?.(r);
                                   else onEditQty?.(r as MsAssignmentRow);
@@ -774,15 +774,15 @@ export function WorkPackagesPanel({
                                 {r.quantity}
                               </button>
                             </td>
-                            <td className="px-3 py-2 kanban-body-sm text-[var(--text-secondary)]">{uom}</td>
-                            <td className="px-3 py-2 text-right kanban-body-sm font-mono text-[var(--text-secondary)]">
+                            <td className="px-3 py-2 msr-table-cell text-[var(--text-secondary)]">{uom}</td>
+                            <td className="px-3 py-2 text-right msr-table-cell-mono">
                               {formatCurrency(rate)}
                             </td>
-                            <td className="px-3 py-2 text-right kanban-body-sm font-mono text-[var(--text-primary)]">
+                            <td className="px-3 py-2 text-right msr-table-cell-amount">
                               {formatCurrency(amount)}
                             </td>
                             {mode === "resources" && isResourceRow(r) && (
-                              <td className="px-3 py-2 kanban-caption text-[var(--text-secondary)]">
+                              <td className="px-3 py-2 msr-table-cell text-[var(--text-secondary)]">
                                 {r.plannedStartDate && r.plannedEndDate ? (
                                   <>
                                     {format(new Date(r.plannedStartDate), "MMM d")} –{" "}
@@ -824,7 +824,7 @@ export function WorkPackagesPanel({
                 </div>
 
                 <div className="mt-2 text-right">
-                  <span className="kanban-body-sm font-semibold text-[var(--text-primary)]">
+                  <span className="msr-total text-[var(--text-primary)]">
                     Total {mode}: {formatCurrency(allocated)}
                   </span>
                 </div>
@@ -850,7 +850,7 @@ export function WorkPackagesPanel({
               onDragLeave={handleDragLeave}
             >
               <CloudUpload className="mb-1 h-5 w-5 text-[var(--copper-400)]" />
-              <p className="kanban-body-sm text-[var(--text-secondary)]">Drag {dropLabel} here to assign</p>
+              <p className="msr-meta text-[var(--text-secondary)]">Drag {dropLabel} here to assign</p>
             </div>
 
             {/* Secondary Cross-Tab Summaries (Always rendered for selected WP) */}
@@ -878,23 +878,23 @@ export function WorkPackagesPanel({
         ) : (
           /* All WP view (when selectedWpId is null) */
           <>
-            <p className="mb-3 kanban-body-sm text-[var(--text-secondary)]">
+            <p className="mb-3 msr-section-heading text-[var(--text-secondary)]">
               All assigned {dropLabel} ({assignments.length})
             </p>
             <div className="overflow-x-auto rounded-md border border-[var(--border-subtle)]">
-              <table className="w-full text-left">
+              <table className="msr-data-table">
                 <thead className="bg-[var(--bg-cream)]">
-                  <tr className="kanban-caption text-[var(--text-secondary)]">
-                    <th className="px-3 py-2 font-medium">Work Package</th>
-                    <th className="px-3 py-2 font-medium">
+                  <tr className="msr-table-header text-[var(--text-secondary)]">
+                    <th className="px-3 py-2">Work Package</th>
+                    <th className="px-3 py-2">
                       {mode === "materials" ? "Material" : mode === "services" ? "Service" : "Resource"}
                     </th>
-                    {mode === "resources" && <th className="px-3 py-2 font-medium">Type</th>}
-                    <th className="px-3 py-2 font-medium text-right">Qty</th>
-                    <th className="px-3 py-2 font-medium">Unit</th>
-                    <th className="px-3 py-2 font-medium text-right">Rate</th>
-                    <th className="px-3 py-2 font-medium text-right">Amount</th>
-                    {mode === "resources" && <th className="px-3 py-2 font-medium">Dates</th>}
+                    {mode === "resources" && <th className="px-3 py-2">Type</th>}
+                    <th className="px-3 py-2 text-right">Qty</th>
+                    <th className="px-3 py-2">Unit</th>
+                    <th className="px-3 py-2 text-right">Rate</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                    {mode === "resources" && <th className="px-3 py-2">Dates</th>}
                     <th className="px-3 py-2 w-16" />
                   </tr>
                 </thead>
@@ -924,19 +924,19 @@ export function WorkPackagesPanel({
 
                     return (
                       <tr key={r.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-cream)]/60">
-                        <td className="px-3 py-2 kanban-caption text-[var(--text-secondary)]">
+                        <td className="px-3 py-2 msr-table-cell text-[var(--text-secondary)]">
                           {wp ? `${wp.code} – ${wp.name}` : "—"}
                         </td>
-                        <td className="px-3 py-2 kanban-body-sm text-[var(--text-primary)]">{label}</td>
+                        <td className="px-3 py-2 msr-table-cell">{label}</td>
                         {mode === "resources" && isResourceRow(r) && (
-                          <td className="px-3 py-2 kanban-caption capitalize text-[var(--text-secondary)]">
+                          <td className="px-3 py-2 msr-table-cell-mono capitalize">
                             {resourceTypeLabel(r.type)}
                           </td>
                         )}
                         <td className="px-3 py-2 text-right">
                           <button
                             type="button"
-                            className="kanban-body-sm font-mono hover:underline"
+                            className="msr-table-cell-mono hover:underline"
                             onClick={() => {
                               if (mode === "resources" && isResourceRow(r)) onEditResource?.(r);
                               else onEditQty?.(r as MsAssignmentRow);
@@ -945,15 +945,15 @@ export function WorkPackagesPanel({
                             {r.quantity}
                           </button>
                         </td>
-                        <td className="px-3 py-2 kanban-body-sm text-[var(--text-secondary)]">{uom}</td>
-                        <td className="px-3 py-2 text-right kanban-body-sm font-mono text-[var(--text-secondary)]">
+                        <td className="px-3 py-2 msr-table-cell text-[var(--text-secondary)]">{uom}</td>
+                        <td className="px-3 py-2 text-right msr-table-cell-mono">
                           {formatCurrency(rate)}
                         </td>
-                        <td className="px-3 py-2 text-right kanban-body-sm font-mono text-[var(--text-primary)]">
+                        <td className="px-3 py-2 text-right msr-table-cell-amount">
                           {formatCurrency(amount)}
                         </td>
                         {mode === "resources" && isResourceRow(r) && (
-                          <td className="px-3 py-2 kanban-caption text-[var(--text-secondary)]">
+                          <td className="px-3 py-2 msr-table-cell text-[var(--text-secondary)]">
                             {r.plannedStartDate && r.plannedEndDate ? (
                               <>
                                 {format(new Date(r.plannedStartDate), "MMM d")} –{" "}
