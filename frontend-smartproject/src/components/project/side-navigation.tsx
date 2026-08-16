@@ -19,6 +19,7 @@ import {
   Package,
   LayoutGrid,
   BookOpen,
+  UserCheck,
   type LucideIcon,
 } from "lucide-react";
 import { useMobile } from "@/hooks/use-mobile";
@@ -201,6 +202,11 @@ export function SideNavigation({ currentProjectId }: SideNavigationProps) {
                       <li>
                         <SidebarLink href={`/projects/${currentProjectId}/materials-services/materials`} active={isActive("/materials-services")} icon={Package}>
                           Materials &amp; Resources
+                        </SidebarLink>
+                      </li>
+                      <li>
+                        <SidebarLink href={`/projects/${currentProjectId}/resource-deployment`} active={isActive("/resource-deployment")} icon={UserCheck}>
+                          Resource Deployment
                         </SidebarLink>
                       </li>
                       <li>

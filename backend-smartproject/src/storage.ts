@@ -1624,8 +1624,8 @@ export class DatabaseStorage {
     if (!resource) {
       throw new Error("Resource not found");
     }
-    if (resource.type !== "manpower") {
-      throw new Error("Resource must be of type 'manpower'");
+    if (resource.type !== "manpower" && resource.type !== "rental_manpower") {
+      throw new Error("Resource must be of type 'manpower' or 'rental_manpower'");
     }
 
     const existing = await this.getEmployeeResourceMapping(employeeId);
@@ -1775,8 +1775,8 @@ export class DatabaseStorage {
     if (!resource) {
       throw new Error("Resource not found");
     }
-    if (resource.type !== "rental_manpower") {
-      throw new Error("Resource must be of type 'rental_manpower'");
+    if (resource.type !== "rental_manpower" && resource.type !== "manpower") {
+      throw new Error("Resource must be of type 'rental_manpower' or 'manpower'");
     }
 
     const existing = await this.getRentalManpowerResourceMapping(rentalManpowerId);
@@ -1984,8 +1984,8 @@ export class DatabaseStorage {
     if (!resource) {
       throw new Error("Resource not found");
     }
-    if (resource.type !== "equipment") {
-      throw new Error("Resource must be of type 'equipment'");
+    if (resource.type !== "equipment" && resource.type !== "rental_equipment") {
+      throw new Error("Resource must be of type 'equipment' or 'rental_equipment'");
     }
 
     const existing = await this.getEquipmentResourceMapping(equipmentId);
@@ -2117,8 +2117,8 @@ export class DatabaseStorage {
     if (!resource) {
       throw new Error("Resource not found");
     }
-    if (resource.type !== "rental_equipment") {
-      throw new Error("Resource must be of type 'rental_equipment'");
+    if (resource.type !== "rental_equipment" && resource.type !== "equipment") {
+      throw new Error("Resource must be of type 'rental_equipment' or 'equipment'");
     }
 
     const existing = await this.getRentalEquipmentResourceMapping(rentalEquipmentId);

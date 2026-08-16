@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { X, Loader2, Check, AlertCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogOverlay,
   DialogPortal,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -95,9 +98,15 @@ function FieldInput({
   }
 
   if (field.type === "select") {
+    const stringVal = String(value ?? "");
+    const options = field.options ? [...field.options] : [];
+    if (stringVal && !options.some((o) => o.value === stringVal)) {
+      options.unshift({ value: stringVal, label: stringVal });
+    }
+
     return (
       <Select
-        value={String(value ?? "")}
+        value={stringVal}
         onValueChange={onChange}
         disabled={field.disabled}
       >
@@ -105,7 +114,7 @@ function FieldInput({
           <SelectValue placeholder={field.placeholder ?? "Select…"} />
         </SelectTrigger>
         <SelectContent>
-          {field.options?.map((opt) => (
+          {options.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
             </SelectItem>
@@ -261,6 +270,78 @@ export function GlobalMasterModal({
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const { data: globalResources = [] } = useQuery<{ id: number; name: string; type: string }[]>({
+    queryKey: ["/api/resources"],
+    queryFn: async () => {
+      const res = await fetch("/api/resources");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  const { data: equipmentTypes = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/equipment-types"],
+    queryFn: async () => {
+      const res = await fetch("/api/equipment-types");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: open && masterKey === "equipment",
+  });
+
+  const { data: equipmentManufacturers = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/equipment-manufacturers"],
+    queryFn: async () => {
+      const res = await fetch("/api/equipment-manufacturers");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: open && masterKey === "equipment",
+  });
+
+  const visibleFields = useMemo(() => {
+    return config.fields.filter((field) => {
+      const isInactive = values.status === "inactive";
+      const reason = String(values.inactiveReason ?? "");
+
+      if (field.key === "inactiveReason") return isInactive;
+      if (field.key === "exitDate") return isInactive && reason === "exit";
+      if (field.key === "leaveStartDate" || field.key === "leaveEndDate") {
+        return isInactive && reason === "temporary-leave";
+      }
+      if (field.key === "maintenanceStartDate" || field.key === "maintenanceEndDate") {
+        return isInactive && reason === "maintenance";
+      }
+      return true;
+    }).map((field) => {
+      if (masterKey === "equipment" && field.key === "category") {
+        if (equipmentTypes.length > 0) {
+          const fetchedOpts = equipmentTypes.map((t) => ({ value: t.name, label: t.name }));
+          return { ...field, options: fetchedOpts };
+        }
+      }
+
+      if (masterKey === "equipment" && field.key === "manufacturer") {
+        if (equipmentManufacturers.length > 0) {
+          const fetchedOpts = equipmentManufacturers.map((m) => ({ value: m.name, label: m.name }));
+          return { ...field, options: fetchedOpts };
+        }
+      }
+
+      if (field.key === "mappedResourceId") {
+        const typeFilter = masterKey === "equipment" ? "equipment" : "manpower";
+
+        const options = globalResources
+          .filter((r) => r.type === typeFilter || r.type === "manpower" || r.type === "equipment")
+          .map((r) => ({ value: String(r.id), label: `${r.name} (${r.type})` }));
+
+        return { ...field, options: options.length > 0 ? options : field.options };
+      }
+      return field;
+    });
+  }, [config.fields, values.status, values.inactiveReason, masterKey, globalResources, equipmentTypes, equipmentManufacturers]);
+
   const gridClass = config.size === "wide" ? "gm-modal__grid" : "flex flex-col gap-4";
 
   return (
@@ -273,12 +354,12 @@ export function GlobalMasterModal({
         >
           <header className="gm-modal__header">
             <div>
-              <h2 className="text-xl font-semibold text-[var(--text-primary)]">{title}</h2>
-              {!readOnly && (
-                <p className="text-xs text-[var(--text-secondary)] mt-1">
-                  Fill in the details below to {mode === "edit" ? "update" : "create"} this {typeLabel.toLowerCase()} record.
-                </p>
-              )}
+              <DialogTitle className="text-xl font-semibold text-[var(--text-primary)]">{title}</DialogTitle>
+              <DialogDescription className="text-xs text-[var(--text-secondary)] mt-1">
+                {readOnly
+                  ? "View record details below."
+                  : `Fill in the details below to ${mode === "edit" ? "update" : "create"} this ${typeLabel.toLowerCase()} record.`}
+              </DialogDescription>
             </div>
             <button
               type="button"
@@ -293,7 +374,7 @@ export function GlobalMasterModal({
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
             <div className="gm-modal__body">
               <div className={gridClass}>
-                {config.fields.map((field) => (
+                {visibleFields.map((field) => (
                   <div
                     key={field.key}
                     className={`gm-field ${field.fullWidth ? "gm-field--full" : ""} ${errors[field.key] && touched[field.key] ? "gm-field--error" : ""}`}

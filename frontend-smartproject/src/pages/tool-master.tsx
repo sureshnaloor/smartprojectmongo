@@ -436,9 +436,9 @@ export default function ToolMasterPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Manufacturer</TableHead>
-                <TableHead>Model</TableHead>
+                <TableHead>Mapped Resource Type</TableHead>
+                <TableHead>Model / Specs</TableHead>
                 <TableHead>Hourly Rate</TableHead>
-                <TableHead>Accessories</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -450,20 +450,21 @@ export default function ToolMasterPage() {
               ) : (
                 filtered.map((tool) => (
                   <TableRow key={tool.id}>
-                    <TableCell className="font-mono text-xs">{tool.toolNumber}</TableCell>
+                    <TableCell className="font-mono text-xs font-semibold text-zinc-700">{tool.toolNumber}</TableCell>
                     <TableCell className="font-medium">{tool.name}</TableCell>
                     <TableCell>{tool.toolType || "—"}</TableCell>
                     <TableCell>{tool.brand || "—"}</TableCell>
-                    <TableCell>{tool.model || "—"}</TableCell>
-                    <TableCell>{tool.unitRate} / {RESOURCE_HOURLY_UOM}</TableCell>
-                    <TableCell>{tool.accessories || "—"}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <ToolResourceMapper
-                          toolId={tool.id}
-                          toolName={tool.name}
-                          onMappingChanged={() => queryClient.invalidateQueries({ queryKey: ["/api/allocation/tools"] })}
-                        />
+                      <ToolResourceMapper
+                        toolId={tool.id}
+                        toolName={tool.name}
+                        onMappingChanged={() => queryClient.invalidateQueries({ queryKey: ["/api/allocation/tools"] })}
+                      />
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">{tool.model || "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">₹{tool.unitRate} / {RESOURCE_HOURLY_UOM}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(tool)}>
                           <Pencil className="h-4 w-4" />
                         </Button>

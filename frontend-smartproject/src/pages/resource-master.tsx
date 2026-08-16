@@ -110,6 +110,10 @@ function resourceToForm(r: Resource): Record<string, unknown> {
     trade: meta.trade ?? "",
     skillLevel: meta.skillLevel ?? meta.skill ?? "Skilled",
     status: displayStatus(meta),
+    inactiveReason: meta.inactiveReason ?? "temporary-leave",
+    exitDate: meta.exitDate ?? "",
+    leaveStartDate: meta.leaveStartDate ?? "",
+    leaveEndDate: meta.leaveEndDate ?? "",
     remarks: stripMeta(r.remarks),
   };
 }
@@ -119,6 +123,10 @@ function formToPayload(values: Record<string, unknown>) {
     trade: String(values.trade ?? ""),
     skillLevel: String(values.skillLevel ?? ""),
     status: String(values.status ?? "active"),
+    inactiveReason: String(values.inactiveReason ?? ""),
+    exitDate: String(values.exitDate ?? ""),
+    leaveStartDate: String(values.leaveStartDate ?? ""),
+    leaveEndDate: String(values.leaveEndDate ?? ""),
   });
   return {
     type: values.type as ResourceType,
@@ -255,8 +263,12 @@ export default function ResourceMaster() {
     {
       key: "status",
       header: "Status",
-      width: "90px",
-      render: (r) => <StatusBadge status={displayStatus(parseMeta(r.remarks))} />,
+      width: "120px",
+      render: (r) => {
+        const meta = parseMeta(r.remarks);
+        const status = displayStatus(meta);
+        return <StatusBadge status={status} />;
+      },
     },
   ];
 

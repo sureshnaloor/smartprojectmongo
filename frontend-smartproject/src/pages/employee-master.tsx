@@ -18,6 +18,7 @@ import {
 import { MappedEntitiesPanel } from "@/components/global-masters/mapped-entities-panel";
 import { encodeMeta, parseMeta, stripMeta, displayStatus } from "@/components/global-masters/meta-fields";
 import { StatusBadge, TypeBadge, useFilteredRows } from "@/components/global-masters/table-utils";
+import { EmployeeResourceMapper } from "@/components/project/employee-resource-mapper";
 
 interface Employee {
   id: number;
@@ -87,6 +88,11 @@ function employeeToForm(e: Employee): Record<string, unknown> {
     email: meta.email ?? "",
     entryDate: e.entryDate ?? "",
     status: displayStatus(meta),
+    inactiveReason: meta.inactiveReason ?? "exit",
+    exitDate: e.exitDate || meta.exitDate || "",
+    leaveStartDate: meta.leaveStartDate ?? "",
+    leaveEndDate: meta.leaveEndDate ?? "",
+    mappedResourceId: meta.mappedResourceId ?? "",
     remarks: stripMeta(e.empMiddleName),
   };
 }
@@ -99,6 +105,11 @@ function formToPayload(values: Record<string, unknown>) {
     phone: String(values.phone ?? ""),
     email: String(values.email ?? ""),
     status: String(values.status ?? "active"),
+    inactiveReason: String(values.inactiveReason ?? ""),
+    exitDate: String(values.exitDate ?? ""),
+    leaveStartDate: String(values.leaveStartDate ?? ""),
+    leaveEndDate: String(values.leaveEndDate ?? ""),
+    mappedResourceId: String(values.mappedResourceId ?? ""),
   });
   return {
     employeeNumber: String(values.employeeNumber),
@@ -115,6 +126,7 @@ function formToPayload(values: Record<string, unknown>) {
     empGrade: "A",
     empCostPerHour: "0",
     entryDate: String(values.entryDate || "") || undefined,
+    exitDate: values.status === "inactive" && values.inactiveReason === "exit" && values.exitDate ? String(values.exitDate) : undefined,
   };
 }
 
@@ -181,12 +193,10 @@ export default function EmployeeMaster() {
 
   const columns: MasterTableColumn<Employee>[] = [
     {
-      key: "type",
-      header: "Type",
-      width: "90px",
-      render: (e) => (
-        <TypeBadge label={parseMeta(e.empMiddleName).employmentType || "Own"} />
-      ),
+      key: "employeeNumber",
+      header: "Code",
+      width: "110px",
+      render: (e) => <span className="font-mono text-xs font-semibold text-zinc-700">{e.employeeNumber}</span>,
     },
     {
       key: "name",
@@ -198,8 +208,16 @@ export default function EmployeeMaster() {
       ),
     },
     {
+      key: "type",
+      header: "Type",
+      width: "100px",
+      render: (e) => (
+        <TypeBadge label={parseMeta(e.empMiddleName).employmentType || "Own"} />
+      ),
+    },
+    {
       key: "description",
-      header: "Description",
+      header: "Designation",
       render: (e) => (
         <span className="text-sm text-[var(--text-secondary)]">{e.empPosition}</span>
       ),
@@ -211,10 +229,43 @@ export default function EmployeeMaster() {
       render: (e) => parseMeta(e.empMiddleName).department ?? e.empTrade,
     },
     {
+      key: "resourceMapping",
+      header: "Mapped Resource Type",
+      width: "160px",
+      render: (e) => (
+        <EmployeeResourceMapper
+          employeeId={e.id}
+          employeeName={`${e.empFirstName} ${e.empLastName}`}
+        />
+      ),
+    },
+    {
+      key: "entryDate",
+      header: "Joining Date",
+      width: "110px",
+      render: (e) => <span className="text-xs font-mono text-zinc-600">{e.entryDate || "—"}</span>,
+    },
+    {
       key: "status",
-      header: "Status",
-      width: "90px",
-      render: (e) => <StatusBadge status={displayStatus(parseMeta(e.empMiddleName))} />,
+      header: "Status & Reason",
+      width: "180px",
+      render: (e) => {
+        const meta = parseMeta(e.empMiddleName);
+        const status = displayStatus(meta);
+        if (status === "active") {
+          return <StatusBadge status="active" />;
+        }
+        const reason = meta.inactiveReason;
+        if (reason === "exit") {
+          const exitStr = e.exitDate || meta.exitDate ? ` (Exit: ${e.exitDate || meta.exitDate})` : " (Exit)";
+          return <span className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded">Inactive{exitStr}</span>;
+        }
+        if (reason === "temporary-leave") {
+          const leaveStr = meta.leaveStartDate ? ` (${meta.leaveStartDate} to ${meta.leaveEndDate || '?'})` : " (Leave)";
+          return <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">Inactive{leaveStr}</span>;
+        }
+        return <StatusBadge status="inactive" />;
+      },
     },
   ];
 

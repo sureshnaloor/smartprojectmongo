@@ -554,28 +554,29 @@ export default function EquipmentMasterRental() {
                     <TableHead>Name</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Vendor</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead>Year</TableHead>
-                    <TableHead>Cost/Hr</TableHead>
+                    <TableHead>Mapped Resource Type</TableHead>
+                    <TableHead>Model / Year</TableHead>
+                    <TableHead>Cost/Hr (₹)</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredItems.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.equipmentNumber}</TableCell>
-                      <TableCell>{item.equipmentName}</TableCell>
+                      <TableCell className="font-mono text-xs font-semibold text-zinc-700">{item.equipmentNumber}</TableCell>
+                      <TableCell className="font-medium">{item.equipmentName}</TableCell>
                       <TableCell>{item.equipmentType}</TableCell>
                       <TableCell>{vendors.find((v) => v.id === item.vendorId)?.vendorName ?? item.vendorId}</TableCell>
-                      <TableCell>{item.model || "—"}</TableCell>
-                      <TableCell>{item.year ?? "—"}</TableCell>
-                      <TableCell>{parseFloat(item.costPerHour).toFixed(2)}</TableCell>
                       <TableCell>
-                        <div className="flex gap-2 items-center flex-wrap">
-                          <RentalEquipmentResourceMapper
-                            rentalEquipmentId={item.id}
-                            equipmentDisplayName={item.equipmentName}
-                          />
+                        <RentalEquipmentResourceMapper
+                          rentalEquipmentId={item.id}
+                          equipmentDisplayName={item.equipmentName}
+                        />
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">{item.model || "—"}{item.year ? ` (${item.year})` : ""}</TableCell>
+                      <TableCell className="font-mono text-xs">₹{parseFloat(item.costPerHour).toFixed(2)}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1 items-center">
                           <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
                             <Pencil className="h-4 w-4" />
                           </Button>

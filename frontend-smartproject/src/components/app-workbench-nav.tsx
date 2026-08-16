@@ -41,6 +41,11 @@ const ALLOCATION: { label: string; href: string }[] = [
   { label: "Timesheets", href: "/timesheets" },
 ];
 
+const REPORTS: { label: string; href: string }[] = [
+  { label: "Manpower Resources", href: "/reports/manpower-resources" },
+  { label: "Equipment Resources", href: "/reports/equipment-resources" },
+];
+
 function NewTabLink({
   href,
   children,
@@ -143,6 +148,22 @@ export function AppWorkbenchNav({ className }: { className?: string }) {
           <DropdownMenuItem disabled className="text-xs text-muted-foreground">
             Coming soon
           </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger className={triggerBase}>
+          Reports
+          <ChevronDown className="h-3 w-3 opacity-70" aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-[12rem]">
+          {REPORTS.map(({ label, href }) => (
+            <DropdownMenuItem key={href} asChild>
+              <NewTabLink href={href} className="cursor-pointer font-medium">
+                {label}
+              </NewTabLink>
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
     </nav>

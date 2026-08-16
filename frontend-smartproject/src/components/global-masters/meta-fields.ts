@@ -27,10 +27,22 @@ export function parseMeta(remarks: string | undefined | null): Record<string, st
 }
 
 export function stripMeta(remarks: string | undefined | null): string {
-  if (!remarks?.startsWith(META_PREFIX)) return remarks?.trim() ?? "";
-  const rest = remarks.slice(META_PREFIX.length);
-  const pipeEnd = rest.indexOf(" ");
-  return pipeEnd === -1 ? "" : rest.slice(pipeEnd + 1).trim();
+  if (!remarks) return "";
+  let s = remarks.trim();
+  if (s.startsWith(META_PREFIX)) {
+    s = s.slice(META_PREFIX.length);
+    const spaceIdx = s.indexOf(" ");
+    if (spaceIdx === -1) return "";
+    s = s.slice(spaceIdx + 1).trim();
+  }
+  // Strip any legacy un-prefixed key-value metadata blocks
+  if (s.includes("=") && (s.includes("|") || s.includes("ownershipType="))) {
+    s = s.replace(/^[^\s]*\|?[a-zA-Z0-9_-]+=[^\s]+\|?/g, "").trim();
+    if (s.includes("=")) {
+      s = s.split(" ").filter((w) => !w.includes("=")).join(" ").trim();
+    }
+  }
+  return s;
 }
 
 export function displayStatus(meta: Record<string, string>, fallback = "active"): string {

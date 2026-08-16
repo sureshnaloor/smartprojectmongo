@@ -58,6 +58,9 @@ import ToolMasterModels from "@/pages/tool-master-models";
 import ToolMasterTypes from "@/pages/tool-master-types";
 import ToolMasterPr from "@/pages/tool-master-pr";
 import GlobalMastersLayout from "@/layouts/global-masters-layout";
+import ProjectResourceDeployment from "@/pages/project-resource-deployment";
+import ReportsManpowerResources from "@/pages/reports-manpower-resources";
+import ReportsEquipmentResources from "@/pages/reports-equipment-resources";
 import GlobalMastersCompany from "@/pages/global-masters-company";
 import GlobalMastersDefaults from "@/pages/global-masters-defaults";
 import GlobalMastersCalendar from "@/pages/global-masters-calendar";
@@ -298,6 +301,18 @@ function Router() {
           </ProjectLayout>
         )}
       </Route>
+
+      {/* Project Resource Deployment */}
+      <Route path="/project-resource-deployment" component={ProjectResourceDeployment} />
+      <Route path="/projects/:projectId/resource-deployment">
+        {params => (
+          <ProjectResourceDeployment />
+        )}
+      </Route>
+
+      {/* Reports */}
+      <Route path="/reports/manpower-resources" component={ReportsManpowerResources} />
+      <Route path="/reports/equipment-resources" component={ReportsEquipmentResources} />
 
       {/* Lesson Learnt Register */}
       <Route path="/projects/:projectId/lesson-learnt-register">

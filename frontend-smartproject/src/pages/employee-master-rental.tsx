@@ -561,30 +561,37 @@ export default function EmployeeMasterRental() {
                                     <TableHead>Vendor</TableHead>
                                     <TableHead>Position</TableHead>
                                     <TableHead>Trade</TableHead>
-                                    <TableHead>Cost/Hr</TableHead>
+                                    <TableHead>Mapped Resource Type</TableHead>
+                                    <TableHead>Cost/Hr (₹)</TableHead>
+                                    <TableHead>Joining Date</TableHead>
+                                    <TableHead>Exit Date</TableHead>
                                     <TableHead>Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {isLoading ? (
-                                    <TableRow><TableCell colSpan={7} className="text-center py-4">Loading...</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={10} className="text-center py-4">Loading...</TableCell></TableRow>
                                 ) : filteredItems.length === 0 ? (
-                                    <TableRow><TableCell colSpan={7} className="text-center py-4">No records found</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={10} className="text-center py-4">No records found</TableCell></TableRow>
                                 ) : (
                                     filteredItems.map(item => (
                                         <TableRow key={item.id}>
-                                            <TableCell>{item.employeeNumber}</TableCell>
-                                            <TableCell>{`${item.empFirstName} ${item.empLastName}`}</TableCell>
+                                            <TableCell className="font-mono font-semibold text-xs text-zinc-700">{item.employeeNumber}</TableCell>
+                                            <TableCell className="font-medium">{`${item.empFirstName} ${item.empLastName}`}</TableCell>
                                             <TableCell>{vendors.find(v => v.id === item.vendorId)?.vendorName || item.vendorId}</TableCell>
                                             <TableCell>{item.empPosition}</TableCell>
                                             <TableCell>{item.empTrade}</TableCell>
-                                            <TableCell>{parseFloat(item.empCostPerHour).toFixed(2)}</TableCell>
                                             <TableCell>
-                                                <div className="flex gap-2 items-center flex-wrap">
-                                                    <RentalManpowerResourceMapper
-                                                        rentalManpowerId={item.id}
-                                                        employeeDisplayName={`${item.empFirstName} ${item.empLastName}`}
-                                                    />
+                                                <RentalManpowerResourceMapper
+                                                    rentalManpowerId={item.id}
+                                                    employeeDisplayName={`${item.empFirstName} ${item.empLastName}`}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="font-mono text-xs">₹{parseFloat(item.empCostPerHour).toFixed(2)}</TableCell>
+                                            <TableCell className="font-mono text-xs">{item.entryDate || "—"}</TableCell>
+                                            <TableCell className="font-mono text-xs">{item.exitDate ? <span className="text-red-600 font-semibold">{item.exitDate}</span> : "—"}</TableCell>
+                                            <TableCell>
+                                                <div className="flex gap-1 items-center">
                                                     <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}><Pencil className="h-4 w-4" /></Button>
                                                     <Button variant="ghost" size="sm" className="text-red-500" onClick={() => { if (confirm("Confirm delete?")) deleteMutation.mutate(item.id) }}><Trash2 className="h-4 w-4" /></Button>
                                                 </div>

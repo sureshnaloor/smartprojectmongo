@@ -21,6 +21,7 @@ import {
 } from "@/components/global-masters/mapped-entities-panel";
 import { parseMeta, encodeMeta, stripMeta } from "@/components/global-masters/meta-fields";
 import { StatusBadge, TypeBadge, useFilteredRows } from "@/components/global-masters/table-utils";
+import { EquipmentResourceMapper } from "@/components/project/equipment-resource-mapper";
 
 interface Equipment {
   id: number;
@@ -71,19 +72,27 @@ async function deleteEquipment(id: number) {
 
 function equipToForm(e: Equipment): Record<string, unknown> {
   const meta = parseMeta(e.remarks);
+  const categoryVal = e.equipmentType || meta.category || "Heavy";
+  const unitVal = e.unit || "Hour";
   return {
     type: "equipment",
-    code: e.equipmentNumber,
-    name: e.equipmentName,
+    code: e.equipmentNumber || "",
+    name: e.equipmentName || "",
     description: e.description ?? "",
-    category: e.equipmentType || meta.category || "Heavy",
-    subcategory: meta.subcategory ?? "Earthmoving",
-    unitRate: e.costPerHour,
-    unit: e.unit ?? "Hour",
+    ownershipType: meta.ownershipType ?? "Own",
+    category: categoryVal,
+    subcategory: meta.subcategory ?? categoryVal,
+    unitRate: e.costPerHour || "0",
+    unit: unitVal,
     manufacturer: e.manufacturer ?? "",
     modelYear: e.model ? `${e.model}${e.year ? ` - ${e.year}` : ""}` : "",
     capacity: e.capacity ?? "",
     status: e.status?.toLowerCase() === "inactive" ? "inactive" : "active",
+    inactiveReason: meta.inactiveReason ?? "maintenance",
+    exitDate: meta.exitDate ?? "",
+    maintenanceStartDate: meta.maintenanceStartDate ?? "",
+    maintenanceEndDate: meta.maintenanceEndDate ?? "",
+    mappedResourceId: meta.mappedResourceId ?? "",
     remarks: stripMeta(e.remarks),
   };
 }
@@ -91,21 +100,30 @@ function equipToForm(e: Equipment): Record<string, unknown> {
 function formToPayload(values: Record<string, unknown>) {
   const modelYear = String(values.modelYear ?? "");
   const [model, yearPart] = modelYear.split(" - ");
+  const categoryVal = String(values.category || "").trim() || "Heavy";
+  const unitVal = String(values.unit || "").trim() || "Hour";
+  const rateVal = String(values.unitRate || "").trim() || "0";
   const remarks = encodeMeta(String(values.remarks ?? ""), {
     subcategory: String(values.subcategory ?? ""),
-    category: String(values.category ?? ""),
+    category: categoryVal,
+    ownershipType: String(values.ownershipType ?? "Own"),
+    inactiveReason: String(values.inactiveReason ?? ""),
+    exitDate: String(values.exitDate ?? ""),
+    maintenanceStartDate: String(values.maintenanceStartDate ?? ""),
+    maintenanceEndDate: String(values.maintenanceEndDate ?? ""),
+    mappedResourceId: String(values.mappedResourceId ?? ""),
   });
   return {
-    equipmentNumber: String(values.code),
-    equipmentName: String(values.name),
-    equipmentType: String(values.category),
+    equipmentNumber: String(values.code || "EQP-001").trim(),
+    equipmentName: String(values.name || "Equipment").trim(),
+    equipmentType: categoryVal,
     description: String(values.description || "") || undefined,
     manufacturer: String(values.manufacturer || "") || undefined,
     model: model?.trim() || undefined,
-    year: yearPart ? Number(yearPart) : undefined,
+    year: yearPart && !isNaN(Number(yearPart)) ? Number(yearPart) : undefined,
     capacity: String(values.capacity || "") || undefined,
-    unit: String(values.unit ?? "Hour"),
-    costPerHour: String(values.unitRate),
+    unit: unitVal,
+    costPerHour: rateVal,
     status: values.status === "inactive" ? "Inactive" : "Active",
     remarks: remarks || undefined,
   };
@@ -136,13 +154,24 @@ export default function EquipmentMaster() {
       e.equipmentName.toLowerCase().includes(q) ||
       e.equipmentNumber.toLowerCase().includes(q),
     type: (e, t) => e.equipmentType === t,
-    category: (e, c) => parseMeta(e.remarks).subcategory === c,
-    status: (e, s) =>
-      (s === "active" ? e.status !== "Inactive" : e.status === "Inactive"),
+    category: (e, c) => (parseMeta(e.remarks).subcategory || e.equipmentType) === c,
+    status: (e, s) => (e.status?.toLowerCase() === "inactive" ? "inactive" : "active") === s,
   });
 
   const createMutation = useMutation({
-    mutationFn: createEquipment,
+    mutationFn: async ({ data, rawValues }: { data: ReturnType<typeof formToPayload>; rawValues?: Record<string, unknown> }) => {
+      const created = await createEquipment(data);
+      if (rawValues?.mappedResourceId && created?.id) {
+        try {
+          await fetch(`/api/equipment/${created.id}/map-resource`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resourceId: Number(rawValues.mappedResourceId) }),
+          });
+        } catch { /* skip */ }
+      }
+      return created;
+    },
     onSuccess: (data: Equipment) => {
       queryClient.invalidateQueries({ queryKey: ["/api/equipment-masters"] });
       toast.success(`${data.equipmentName} created successfully`);
@@ -150,19 +179,30 @@ export default function EquipmentMaster() {
       setModalOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err: Error) => toast.error(`Failed to save: ${err.message}`),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: ReturnType<typeof formToPayload> }) =>
-      updateEquipment(id, data),
+    mutationFn: async ({ id, data, rawValues }: { id: number; data: ReturnType<typeof formToPayload>; rawValues?: Record<string, unknown> }) => {
+      const updated = await updateEquipment(id, data);
+      if (rawValues?.mappedResourceId) {
+        try {
+          await fetch(`/api/equipment/${id}/map-resource`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resourceId: Number(rawValues.mappedResourceId) }),
+          });
+        } catch { /* skip */ }
+      }
+      return updated;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/equipment-masters"] });
       toast.success("Changes saved");
       setModalOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err: Error) => toast.error(`Failed to save: ${err.message}`),
   });
 
   const deleteMutation = useMutation({
@@ -176,10 +216,10 @@ export default function EquipmentMaster() {
 
   const columns: MasterTableColumn<Equipment>[] = [
     {
-      key: "type",
-      header: "Type",
-      width: "90px",
-      render: (e) => <TypeBadge label={e.equipmentType || "Heavy"} />,
+      key: "equipmentNumber",
+      header: "Code",
+      width: "110px",
+      render: (e) => <span className="font-mono text-xs font-semibold text-zinc-700">{e.equipmentNumber}</span>,
     },
     {
       key: "name",
@@ -187,34 +227,56 @@ export default function EquipmentMaster() {
       render: (e) => <span className="font-medium">{e.equipmentName}</span>,
     },
     {
-      key: "description",
-      header: "Description",
+      key: "type",
+      header: "Type",
+      width: "90px",
+      render: (e) => <TypeBadge label={parseMeta(e.remarks).ownershipType || "Own"} />,
+    },
+    {
+      key: "category",
+      header: "Equipment Type / Category",
+      width: "160px",
+      render: (e) => e.equipmentType || parseMeta(e.remarks).category || "Heavy",
+    },
+    {
+      key: "resourceMapping",
+      header: "Mapped Resource Type",
+      width: "160px",
       render: (e) => (
-        <span className="text-sm text-[var(--text-secondary)] line-clamp-2">
-          {e.description || "—"}
-        </span>
+        <EquipmentResourceMapper
+          equipmentId={e.id}
+          equipmentName={e.equipmentName}
+        />
       ),
     },
     {
       key: "rate",
       header: "Hourly Rate",
-      width: "100px",
+      width: "110px",
       className: "text-right font-mono text-sm",
       render: (e) => `₹${e.costPerHour} / H`,
     },
     {
-      key: "category",
-      header: "Category",
-      width: "120px",
-      render: (e) => parseMeta(e.remarks).subcategory || e.equipmentType,
-    },
-    {
       key: "status",
-      header: "Status",
-      width: "90px",
-      render: (e) => (
-        <StatusBadge status={e.status === "Inactive" ? "inactive" : "active"} />
-      ),
+      header: "Status & Reason",
+      width: "190px",
+      render: (e) => {
+        const meta = parseMeta(e.remarks);
+        const isInactive = e.status?.toLowerCase() === "inactive";
+        if (!isInactive) {
+          return <StatusBadge status="active" />;
+        }
+        const reason = meta.inactiveReason;
+        if (reason === "exit") {
+          const exitStr = meta.exitDate ? ` (${meta.exitDate})` : "";
+          return <span className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded">Inactive (Exit{exitStr})</span>;
+        }
+        if (reason === "maintenance") {
+          const maintStr = meta.maintenanceStartDate ? ` (${meta.maintenanceStartDate} to ${meta.maintenanceEndDate || '?'})` : "";
+          return <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">Inactive (Maint{maintStr})</span>;
+        }
+        return <StatusBadge status="inactive" />;
+      },
     },
   ];
 
@@ -295,9 +357,9 @@ export default function EquipmentMaster() {
         onSubmit={(values) => {
           const payload = formToPayload(values);
           if (editing && modalMode === "edit") {
-            updateMutation.mutate({ id: editing.id, data: payload });
+            updateMutation.mutate({ id: editing.id, data: payload, rawValues: values });
           } else {
-            createMutation.mutate(payload as Omit<Equipment, "id">);
+            createMutation.mutate({ data: payload, rawValues: values });
           }
         }}
         onRequestEdit={() => setModalMode("edit")}

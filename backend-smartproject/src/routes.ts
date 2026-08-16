@@ -2409,7 +2409,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // WBS routes
-  app.get("/api/projects/:projectId/wbs", async (req: Request, res: Response) => {
+  app.get(["/api/projects/:projectId/wbs", "/api/projects/:projectId/wbs-items"], async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.projectId);
       if (isNaN(projectId)) {
@@ -9722,9 +9722,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/resources/manpower/all", async (_req: Request, res: Response) => {
+    try {
+      let all: any[] = [];
+      try {
+        all = await storage.getResources();
+      } catch {
+        all = await db.collection("resources").find().toArray();
+      }
+      const rows = all.filter((r) => {
+        const t = String(r.type || "").toLowerCase();
+        return t === "manpower" || t === "rental_manpower";
+      });
+      res.json(rows);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
   app.get("/api/resources/rental_manpower/all", async (_req: Request, res: Response) => {
     try {
-      const rows = await storage.getResourcesByType("rental_manpower");
+      let all: any[] = [];
+      try {
+        all = await storage.getResources();
+      } catch {
+        all = await db.collection("resources").find().toArray();
+      }
+      const rows = all.filter((r) => {
+        const t = String(r.type || "").toLowerCase();
+        return t === "manpower" || t === "rental_manpower";
+      });
+      res.json(rows);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/resources/equipment/all", async (_req: Request, res: Response) => {
+    try {
+      let all: any[] = [];
+      try {
+        all = await storage.getResources();
+      } catch {
+        all = await db.collection("resources").find().toArray();
+      }
+      const rows = all.filter((r) => {
+        const t = String(r.type || "").toLowerCase();
+        return t === "equipment" || t === "rental_equipment";
+      });
       res.json(rows);
     } catch (err) {
       handleError(err, res);
@@ -9733,7 +9778,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/resources/rental_equipment/all", async (_req: Request, res: Response) => {
     try {
-      const rows = await storage.getResourcesByType("rental_equipment");
+      let all: any[] = [];
+      try {
+        all = await storage.getResources();
+      } catch {
+        all = await db.collection("resources").find().toArray();
+      }
+      const rows = all.filter((r) => {
+        const t = String(r.type || "").toLowerCase();
+        return t === "equipment" || t === "rental_equipment";
+      });
       res.json(rows);
     } catch (err) {
       handleError(err, res);
@@ -10920,6 +10974,437 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Mapping not found" });
       }
       res.json({ message: "Mapping deleted successfully", deletedMapping: deleted });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // --- PROJECT WORK PACKAGE RESOURCE DEPLOYMENTS & SUGGESTIONS ---
+
+  // GET /api/projects/:projectId/resource-deployments?month=YYYY-MM
+  app.get("/api/projects/:projectId/resource-deployments", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+
+      const deployments = await db.collection("wp_resource_deployments").find({ projectId, assignedMonth: month }).toArray();
+      res.json(deployments);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // GET /api/work-packages/:wpId/deployment-suggestions?month=YYYY-MM
+  app.get("/api/work-packages/:wpId/deployment-suggestions", async (req: Request, res: Response) => {
+    try {
+      const wpId = parseInt(req.params.wpId);
+      const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+      if (isNaN(wpId)) return res.status(400).json({ message: "Invalid work package ID" });
+
+      const workPackage = await storage.getWorkPackage(wpId);
+      if (!workPackage) return res.status(404).json({ message: "Work package not found" });
+
+      // Required global resources on this Work Package
+      const rawRequiredResources = await db.collection("project_resources").find({
+        $or: [{ wpId }, { workPackageId: wpId }]
+      }).toArray();
+
+      let allGlobalResources: any[] = [];
+      try {
+        allGlobalResources = await storage.getResources();
+      } catch {
+        allGlobalResources = await db.collection("resources").find().toArray();
+      }
+
+      const globalResByName = new Map(allGlobalResources.map(gr => [String(gr.name || "").toLowerCase().trim(), gr]));
+      const globalResById = new Map(allGlobalResources.map(gr => [Number(gr.id), gr]));
+
+      const requiredResources = rawRequiredResources.map(r => {
+        const globalId = Number(r.globalResourceId || r.resourceId);
+        let gr = globalResById.get(globalId);
+
+        const rawName = String(r.name || r.resourceName || "").trim();
+        if (!gr && rawName) {
+          gr = globalResByName.get(rawName.toLowerCase());
+        }
+
+        const resolvedResourceId = gr ? Number(gr.id) : globalId || Number(r.id);
+        const resolvedName = gr ? String(gr.name) : rawName || `Resource #${r.id}`;
+        const resolvedType = gr ? String(gr.type) : String(r.type || r.resourceType || "resource");
+
+        return {
+          id: r.id,
+          resourceId: resolvedResourceId,
+          globalResourceId: resolvedResourceId,
+          name: resolvedName,
+          resourceName: resolvedName,
+          type: resolvedType,
+          resourceType: resolvedType,
+          quantity: r.quantity || r.qty || 160,
+          unitRate: r.unitRate || gr?.unitRate || "0",
+        };
+      });
+
+      const requiredResourceIds = Array.from(new Set(requiredResources.map(r => Number(r.resourceId)).filter(Boolean)));
+
+      // Current deployments across ALL active work packages for this month
+      const allMonthDeployments = await db.collection("wp_resource_deployments").find({ assignedMonth: month }).toArray();
+      const deployedEntityKeys = new Set(allMonthDeployments.map(d => `${d.entityType}_${d.entityId}`));
+      const currentDeployments = allMonthDeployments.filter(d => Number(d.wpId) === wpId);
+
+      // 1. Employee Mappings
+      const empMappings = await db.collection("employee_resource_mappings").find({
+        resourceId: { $in: requiredResourceIds }
+      }).toArray();
+      const mappedEmpIds = Array.from(new Set(empMappings.map(m => Number(m.employeeId))));
+
+      let allEmployees: any[] = [];
+      try {
+        allEmployees = await storage.getEmployeeMasters();
+      } catch {
+        allEmployees = await db.collection("employee_masters").find().toArray();
+      }
+
+      const availableEmployees = allEmployees.filter(e => {
+        const isMapped = mappedEmpIds.includes(Number(e.id));
+        const isNotDeployed = !deployedEntityKeys.has(`employee_${e.id}`);
+        const isActive = String(e.status || "").toLowerCase() !== "inactive";
+        return isMapped && isNotDeployed && isActive;
+      }).map(e => {
+        const mapping = empMappings.find(m => Number(m.employeeId) === Number(e.id));
+        return {
+          ...e,
+          mappedResourceId: mapping?.resourceId,
+        };
+      });
+
+      // 2. Rental Manpower Mappings
+      const rentalEmpMappings = await db.collection("rental_manpower_resource_mappings").find({
+        resourceId: { $in: requiredResourceIds }
+      }).toArray();
+      const mappedRentalEmpIds = Array.from(new Set(rentalEmpMappings.map(m => Number(m.rentalManpowerId))));
+
+      let allRentalEmp = await db.collection("rental_manpower").find().toArray();
+      if (allRentalEmp.length === 0) {
+        allRentalEmp = await db.collection("rental_manpowers").find().toArray();
+      }
+
+      const availableRentalManpower = allRentalEmp.filter(r => {
+        const isMapped = mappedRentalEmpIds.includes(Number(r.id));
+        const isNotDeployed = !deployedEntityKeys.has(`rental_manpower_${r.id}`);
+        const isActive = String(r.status || "").toLowerCase() !== "inactive";
+        return isMapped && isNotDeployed && isActive;
+      }).map(r => {
+        const mapping = rentalEmpMappings.find(m => Number(m.rentalManpowerId) === Number(r.id));
+        return {
+          ...r,
+          mappedResourceId: mapping?.resourceId,
+        };
+      });
+
+      // 3. Own Equipment Mappings
+      const equipMappings = await db.collection("equipment_resource_mappings").find({
+        resourceId: { $in: requiredResourceIds }
+      }).toArray();
+      const mappedEquipIds = Array.from(new Set(equipMappings.map(m => Number(m.equipmentId))));
+
+      let allEquipment: any[] = [];
+      try {
+        allEquipment = await storage.getEquipmentMasters();
+      } catch {
+        allEquipment = await db.collection("equipment_masters").find().toArray();
+      }
+
+      const availableEquipment = allEquipment.filter(eq => {
+        const isMapped = mappedEquipIds.includes(Number(eq.id));
+        const isNotDeployed = !deployedEntityKeys.has(`equipment_${eq.id}`);
+        const isActive = String(eq.status || "").toLowerCase() !== "inactive";
+        return isMapped && isNotDeployed && isActive;
+      }).map(eq => {
+        const mapping = equipMappings.find(m => Number(m.equipmentId) === Number(eq.id));
+        return {
+          ...eq,
+          mappedResourceId: mapping?.resourceId,
+        };
+      });
+
+      // 4. Rental Equipment Mappings
+      const rentalEquipMappings = await db.collection("rental_equipment_resource_mappings").find({
+        resourceId: { $in: requiredResourceIds }
+      }).toArray();
+      const mappedRentalEquipIds = Array.from(new Set(rentalEquipMappings.map(m => Number(m.rentalEquipmentId))));
+
+      let allRentalEquip = await db.collection("rental_equipment").find().toArray();
+      if (allRentalEquip.length === 0) {
+        allRentalEquip = await db.collection("rental_equipments").find().toArray();
+      }
+
+      const availableRentalEquipment = allRentalEquip.filter(req => {
+        const isMapped = mappedRentalEquipIds.includes(Number(req.id));
+        const isNotDeployed = !deployedEntityKeys.has(`rental_equipment_${req.id}`);
+        const isActive = String(req.status || "").toLowerCase() !== "inactive";
+        return isMapped && isNotDeployed && isActive;
+      }).map(req => {
+        const mapping = rentalEquipMappings.find(m => Number(m.rentalEquipmentId) === Number(req.id));
+        return {
+          ...req,
+          mappedResourceId: mapping?.resourceId,
+        };
+      });
+
+      res.json({
+        workPackage,
+        requiredResources,
+        availableEmployees,
+        availableRentalManpower,
+        availableEquipment,
+        availableRentalEquipment,
+        currentDeployments,
+      });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // POST /api/work-packages/:wpId/deploy-resource
+  app.post("/api/work-packages/:wpId/deploy-resource", async (req: Request, res: Response) => {
+    try {
+      const wpId = parseInt(req.params.wpId);
+      if (isNaN(wpId)) return res.status(400).json({ message: "Invalid work package ID" });
+
+      const { projectId, wbsId, resourceId, entityType, entityId, entityName, assignedMonth, assignedHours } = req.body;
+      if (!projectId || !entityType || !entityId || !assignedMonth) {
+        return res.status(400).json({ message: "Missing required deployment parameters" });
+      }
+
+      const newDeployment = {
+        id: Date.now(),
+        projectId: Number(projectId),
+        wbsId: Number(wbsId || 0),
+        wpId: Number(wpId),
+        resourceId: Number(resourceId || 0),
+        entityType: String(entityType),
+        entityId: Number(entityId),
+        entityName: String(entityName || ""),
+        assignedMonth: String(assignedMonth),
+        assignedHours: Number(assignedHours || 160),
+        assignedAt: new Date().toISOString(),
+      };
+
+      await db.collection("wp_resource_deployments").insertOne(newDeployment);
+      res.status(201).json(newDeployment);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // DELETE /api/resource-deployments/:id
+  app.delete("/api/resource-deployments/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid deployment ID" });
+
+      await db.collection("wp_resource_deployments").deleteOne({ id });
+      res.json({ message: "Deployment removed successfully" });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // GET /api/reports/manpower-resources
+  app.get("/api/reports/manpower-resources", async (_req: Request, res: Response) => {
+    try {
+      let allResources: any[] = [];
+      try {
+        allResources = await storage.getResources();
+      } catch {
+        allResources = await db.collection("resources").find().toArray();
+      }
+
+      const manpowerResources = allResources.filter((r) => {
+        const t = String(r.type || "").toLowerCase();
+        return t === "manpower" || t === "rental_manpower";
+      });
+
+      const empMappings = await db.collection("employee_resource_mappings").find().toArray();
+      const rentalEmpMappings = await db.collection("rental_manpower_resource_mappings").find().toArray();
+
+      let allEmployees: any[] = [];
+      try {
+        allEmployees = await storage.getEmployeeMasters();
+      } catch {
+        allEmployees = await db.collection("employee_masters").find().toArray();
+      }
+
+      let allRentalEmp = await db.collection("rental_manpower").find().toArray();
+      if (allRentalEmp.length === 0) {
+        allRentalEmp = await db.collection("rental_manpowers").find().toArray();
+      }
+
+      let vendors: any[] = [];
+      try {
+        vendors = await storage.getVendorMasters();
+      } catch {
+        vendors = await db.collection("vendors").find().toArray();
+      }
+      const vendorById = new Map(vendors.map((v) => [Number(v.id), v]));
+
+      const empById = new Map(allEmployees.map((e) => [Number(e.id), e]));
+      const rentalEmpById = new Map(allRentalEmp.map((r) => [Number(r.id), r]));
+
+      const report = manpowerResources.map((resItem) => {
+        const resId = Number(resItem.id);
+
+        const mappedEmpIds = empMappings
+          .filter((m) => Number(m.resourceId) === resId)
+          .map((m) => Number(m.employeeId));
+        const ownEmployees = mappedEmpIds
+          .map((id) => empById.get(id))
+          .filter(Boolean)
+          .map((e) => ({
+            ...e,
+            empTrade: e.empTrade || e.trade || resItem.trade,
+            empPosition: e.empPosition || e.position || e.designation || resItem.name,
+          }));
+
+        const mappedRentalIds = rentalEmpMappings
+          .filter((m) => Number(m.resourceId) === resId)
+          .map((m) => Number(m.rentalManpowerId));
+        const rentalManpower = mappedRentalIds
+          .map((id) => rentalEmpById.get(id))
+          .filter(Boolean)
+          .map((r) => {
+            const v = vendorById.get(Number(r.vendorId));
+            return {
+              ...r,
+              empTrade: r.empTrade || r.trade || resItem.trade,
+              empPosition: r.empPosition || r.position || r.empTitle || resItem.name,
+              vendorName: v?.companyName || v?.name || r.agency || "Rental Supplier",
+              hourlyRate: r.empCostPerHour || r.hourlyRate || r.unitRate || resItem.unitRate,
+            };
+          });
+
+        return {
+          id: resItem.id,
+          name: resItem.name,
+          code: resItem.code || `RES-${resItem.id}`,
+          type: resItem.type,
+          trade: resItem.trade || "General",
+          skillLevel: resItem.skillLevel || "Skilled",
+          unitRate: resItem.unitRate || "0",
+          status: resItem.status || "active",
+          ownEmployees,
+          rentalManpower,
+          ownCount: ownEmployees.length,
+          rentalCount: rentalManpower.length,
+          totalMapped: ownEmployees.length + rentalManpower.length,
+        };
+      });
+
+      res.json(report);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // GET /api/reports/equipment-resources
+  app.get("/api/reports/equipment-resources", async (_req: Request, res: Response) => {
+    try {
+      let allResources: any[] = [];
+      try {
+        allResources = await storage.getResources();
+      } catch {
+        allResources = await db.collection("resources").find().toArray();
+      }
+
+      const equipmentResources = allResources.filter((r) => {
+        const t = String(r.type || "").toLowerCase();
+        return t === "equipment" || t === "rental_equipment";
+      });
+
+      const equipMappings = await db.collection("equipment_resource_mappings").find().toArray();
+      const rentalEquipMappings = await db.collection("rental_equipment_resource_mappings").find().toArray();
+
+      let allEquipment: any[] = [];
+      try {
+        allEquipment = await storage.getEquipmentMasters();
+      } catch {
+        allEquipment = await db.collection("equipment_masters").find().toArray();
+      }
+
+      let allRentalEquip = await db.collection("rental_equipment").find().toArray();
+      if (allRentalEquip.length === 0) {
+        allRentalEquip = await db.collection("rental_equipments").find().toArray();
+      }
+
+      let vendors: any[] = [];
+      try {
+        vendors = await storage.getVendorMasters();
+      } catch {
+        vendors = await db.collection("vendors").find().toArray();
+      }
+      const vendorById = new Map(vendors.map((v) => [Number(v.id), v]));
+
+      const equipById = new Map(allEquipment.map((e) => [Number(e.id), e]));
+      const rentalEquipById = new Map(allRentalEquip.map((r) => [Number(r.id), r]));
+
+      const report = equipmentResources.map((resItem) => {
+        const resId = Number(resItem.id);
+
+        const mappedEquipIds = equipMappings
+          .filter((m) => Number(m.resourceId) === resId)
+          .map((m) => Number(m.equipmentId));
+        const ownEquipment = mappedEquipIds
+          .map((id) => equipById.get(id))
+          .filter(Boolean)
+          .map((eq) => {
+            const v = vendorById.get(Number(eq.vendorId));
+            return {
+              ...eq,
+              equipmentNumber: eq.code || eq.equipmentNumber || `EQP-${eq.id}`,
+              equipmentName: eq.name || eq.equipmentName || resItem.name,
+              equipmentType: eq.category || eq.equipmentType || resItem.trade || "Heavy Equipment",
+              vendorName: v?.companyName || v?.name || eq.ownershipType || "Own Equipment",
+            };
+          });
+
+        const mappedRentalIds = rentalEquipMappings
+          .filter((m) => Number(m.resourceId) === resId)
+          .map((m) => Number(m.rentalEquipmentId));
+        const rentalEquipment = mappedRentalIds
+          .map((id) => rentalEquipById.get(id))
+          .filter(Boolean)
+          .map((req) => {
+            const v = vendorById.get(Number(req.vendorId));
+            return {
+              ...req,
+              equipmentNumber: req.equipmentNumber || `REQ-${req.id}`,
+              equipmentName: req.equipmentName || resItem.name,
+              equipmentType: req.equipmentType || resItem.trade || "Rental Equipment",
+              vendorName: v?.companyName || v?.name || "Rental Supplier",
+              hourlyRate: req.costPerHour || req.unitRate || resItem.unitRate,
+            };
+          });
+
+        return {
+          id: resItem.id,
+          name: resItem.name,
+          code: resItem.code || `RES-${resItem.id}`,
+          type: resItem.type,
+          category: resItem.trade || resItem.category || "Equipment",
+          unitRate: resItem.unitRate || "0",
+          unit: resItem.unitOfMeasure || "Hour",
+          status: resItem.status || "active",
+          ownEquipment,
+          rentalEquipment,
+          ownCount: ownEquipment.length,
+          rentalCount: rentalEquipment.length,
+          totalMapped: ownEquipment.length + rentalEquipment.length,
+        };
+      });
+
+      res.json(report);
     } catch (err) {
       handleError(err, res);
     }
