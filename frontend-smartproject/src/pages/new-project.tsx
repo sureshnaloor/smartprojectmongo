@@ -84,27 +84,31 @@ export default function NewProject() {
     });
 
     // Fetch WBS Items
-    const { data: flatWbsItems = [], isLoading: isWbsLoading } = useQuery<WbsItem[]>({
+    const { data: rawWbsItems = [], isLoading: isWbsLoading } = useQuery<WbsItem[]>({
         queryKey: [`/api/projects/${projectId}/wbs`],
         enabled: !!projectId,
     });
+    const flatWbsItems = Array.isArray(rawWbsItems) ? rawWbsItems : [];
 
     // Fetch Dependencies
-    const { data: apiDependencies = [], isLoading: isDepsLoading } = useQuery<Dependency[]>({
+    const { data: rawDeps = [], isLoading: isDepsLoading } = useQuery<Dependency[]>({
         queryKey: [`/api/projects/${projectId}/dependencies`],
         enabled: !!projectId,
     });
+    const apiDependencies = Array.isArray(rawDeps) ? rawDeps : [];
 
     // Fetch all work packages for the project (for WBS completion check)
-    const { data: projectWorkPackages = [] } = useQuery<WorkPackage[]>({
+    const { data: rawWorkPackages = [] } = useQuery<WorkPackage[]>({
         queryKey: [`/api/projects/${projectId}/work-packages`],
         enabled: !!projectId,
     });
+    const projectWorkPackages = Array.isArray(rawWorkPackages) ? rawWorkPackages : [];
 
-    const { data: projectResources = [] } = useQuery<unknown[]>({
+    const { data: rawResources = [] } = useQuery<unknown[]>({
         queryKey: [`/api/projects/${projectId}/resources`],
         enabled: !!projectId,
     });
+    const projectResources = Array.isArray(rawResources) ? rawResources : [];
 
     // WBS is complete when every leaf WBS has at least one work package (table) OR is a WorkPackage-type
     // wbs_item (CSV import creates those as leaves; they don't have work_packages table rows).

@@ -55,25 +55,29 @@ export default function ProjectWbsWorkPackages() {
     enabled: !!pid,
   });
 
-  const { data: wbsItems = [], isLoading: loadingWbs } = useQuery<WbsItem[]>({
+  const { data: rawWbs = [], isLoading: loadingWbs } = useQuery<WbsItem[]>({
     queryKey: [`/api/projects/${pid}/wbs`],
     enabled: !!pid,
   });
+  const wbsItems = Array.isArray(rawWbs) ? rawWbs : [];
 
-  const { data: workPackages = [], isLoading: loadingWps } = useQuery<WorkPackage[]>({
+  const { data: rawWps = [], isLoading: loadingWps } = useQuery<WorkPackage[]>({
     queryKey: [`/api/projects/${pid}/work-packages`],
     enabled: !!pid,
   });
+  const workPackages = Array.isArray(rawWps) ? rawWps : [];
 
-  const { data: activities = [], isLoading: loadingActivities } = useQuery<ProjectActivity[]>({
+  const { data: rawActs = [], isLoading: loadingActivities } = useQuery<ProjectActivity[]>({
     queryKey: [`/api/projects/${pid}/activities`],
     enabled: !!pid,
   });
+  const activities = Array.isArray(rawActs) ? rawActs : [];
 
-  const { data: projectResources = [] } = useQuery<unknown[]>({
+  const { data: rawRes = [] } = useQuery<unknown[]>({
     queryKey: [`/api/projects/${pid}/resources`],
     enabled: !!pid,
   });
+  const projectResources = Array.isArray(rawRes) ? rawRes : [];
 
   const isWbsFinalized = Boolean((project as Project & { wbsFinalized?: boolean })?.wbsFinalized);
   const isBudgetFinalized = Boolean((project as Project & { budgetFinalized?: boolean })?.budgetFinalized);

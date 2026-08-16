@@ -164,6 +164,11 @@ export default function Reports() {
                   <SelectItem value="schedule">Schedule Analysis</SelectItem>
                 </SelectContent>
               </Select>
+              <a href={`/projects/${projectId}/consolidated-report`}>
+                <Button className="bg-amber-600 hover:bg-amber-700 text-white gap-2 font-bold shadow-sm">
+                  <FileText className="h-4 w-4" /> Overall Project Report
+                </Button>
+              </a>
               <div className="flex gap-2">
                 <Button variant="outline" size="icon" className="bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50">
                   <Printer className="h-4 w-4" />

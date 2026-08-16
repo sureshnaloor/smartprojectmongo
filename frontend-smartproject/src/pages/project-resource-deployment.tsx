@@ -180,7 +180,7 @@ export default function ProjectResourceDeployment() {
       if (!res.ok) throw new Error("Failed to load deployment suggestions");
       return res.json();
     },
-    enabled: !!selectedWpId,
+    enabled: Boolean(selectedWpId) && selectedWpId !== "all" && !isNaN(Number(selectedWpId)) && Number(selectedWpId) > 0,
   });
 
   // Mutation to deploy resource

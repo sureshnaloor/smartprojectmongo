@@ -1792,6 +1792,290 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/projects/:projectId/consolidated-report
+  app.get("/api/projects/:projectId/consolidated-report", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+
+      const project = await storage.getProject(projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+
+      const projectStartDate = project.startDate ? new Date(project.startDate) : new Date();
+
+      // Query collections natively
+      const wbsItems = await db.collection("wbs_items").find({ projectId }).toArray();
+      const workPackages = await db.collection("work_packages").find({ projectId }).toArray();
+      const activitiesRaw = await db.collection("project_activities").find({ projectId }).toArray();
+      const deps = await db.collection("project_activity_dependencies").find({ projectId }).toArray();
+      const projectResourcesRaw = await db.collection("project_resources").find({ projectId }).toArray();
+      const deployments = await db.collection("wp_resource_deployments").find({ projectId }).toArray();
+
+      // Fetch global resources for name/type enrichment
+      let allGlobalResources: any[] = [];
+      try {
+        allGlobalResources = await storage.getResources();
+      } catch {
+        allGlobalResources = await db.collection("resources").find().toArray();
+      }
+      const globalResById = new Map(allGlobalResources.map((gr) => [Number(gr.id), gr]));
+      const globalResByName = new Map(allGlobalResources.map((gr) => [String(gr.name || "").toLowerCase().trim(), gr]));
+
+      const projectResources = projectResourcesRaw.map((r) => {
+        const globalId = Number(r.globalResourceId || r.resourceId);
+        let gr = globalResById.get(globalId);
+        const rawName = String(r.name || r.resourceName || "").trim();
+        if (!gr && rawName) gr = globalResByName.get(rawName.toLowerCase());
+
+        return {
+          ...r,
+          resourceId: gr ? Number(gr.id) : globalId || Number(r.id),
+          resourceName: gr ? String(gr.name) : rawName || `Resource #${r.id}`,
+          resourceType: gr ? String(gr.type) : String(r.type || r.resourceType || "resource"),
+        };
+      });
+
+      // ─── Run CPM Logic for Report Schedule Table & PERT ───────
+      const getDayOffset = (base: Date, targetStr: string | null): number => {
+        if (!targetStr) return 0;
+        const target = new Date(targetStr);
+        const diffTime = target.getTime() - base.getTime();
+        return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+      };
+
+      const actMap = new Map<number, { id: number; duration: number; name: string; firmedOffset: number }>();
+      for (const act of activitiesRaw) {
+        actMap.set(act.id, {
+          id: act.id,
+          duration: act.duration && act.duration > 0 ? act.duration : 1,
+          name: act.name,
+          firmedOffset: getDayOffset(projectStartDate, act.plannedFromDate),
+        });
+      }
+
+      const successors = new Map<number, { actId: number; type: string; lag: number }[]>();
+      const predecessors = new Map<number, { actId: number; type: string; lag: number }[]>();
+      const inDegree = new Map<number, number>();
+
+      for (const act of activitiesRaw) {
+        successors.set(act.id, []);
+        predecessors.set(act.id, []);
+        inDegree.set(act.id, 0);
+      }
+
+      for (const dep of deps) {
+        if (!actMap.has(dep.predecessorId) || !actMap.has(dep.successorId)) continue;
+        successors.get(dep.predecessorId)!.push({ actId: dep.successorId, type: dep.type || "FS", lag: dep.lag ?? 0 });
+        predecessors.get(dep.successorId)!.push({ actId: dep.predecessorId, type: dep.type || "FS", lag: dep.lag ?? 0 });
+        inDegree.set(dep.successorId, (inDegree.get(dep.successorId) || 0) + 1);
+      }
+
+      const topoOrder: number[] = [];
+      const queue: number[] = [];
+      for (const [actId, degree] of inDegree) {
+        if (degree === 0) queue.push(actId);
+      }
+
+      const tempInDegree = new Map(inDegree);
+      while (queue.length > 0) {
+        const curr = queue.shift()!;
+        topoOrder.push(curr);
+        for (const succ of successors.get(curr) || []) {
+          const newDeg = (tempInDegree.get(succ.actId) || 0) - 1;
+          tempInDegree.set(succ.actId, newDeg);
+          if (newDeg === 0) queue.push(succ.actId);
+        }
+      }
+
+      if (topoOrder.length < activitiesRaw.length) {
+        for (const act of activitiesRaw) {
+          if (!topoOrder.includes(act.id)) topoOrder.push(act.id);
+        }
+      }
+
+      const es = new Map<number, number>();
+      const ef = new Map<number, number>();
+      for (const actId of topoOrder) {
+        const act = actMap.get(actId)!;
+        const preds = predecessors.get(actId) || [];
+        let earliestStart = 0;
+        if (preds.length === 0) {
+          earliestStart = act.firmedOffset;
+        } else {
+          for (const pred of preds) {
+            const predES = es.get(pred.actId) ?? 0;
+            const predEF = ef.get(pred.actId) ?? 0;
+            let constraint = predEF + 1 + pred.lag;
+            if (pred.type === "SS") constraint = predES + pred.lag;
+            earliestStart = Math.max(earliestStart, constraint);
+          }
+        }
+        es.set(actId, earliestStart);
+        ef.set(actId, earliestStart + act.duration - 1);
+      }
+
+      let maxEndDay = 0;
+      for (const [, finish] of ef) {
+        maxEndDay = Math.max(maxEndDay, finish);
+      }
+
+      const ls = new Map<number, number>();
+      const lf = new Map<number, number>();
+      const totalFloat = new Map<number, number>();
+      for (const act of activitiesRaw) {
+        lf.set(act.id, maxEndDay);
+      }
+
+      for (let i = topoOrder.length - 1; i >= 0; i--) {
+        const actId = topoOrder[i];
+        const act = actMap.get(actId)!;
+        const succs = successors.get(actId) || [];
+        let latestFinish = maxEndDay;
+        for (const succ of succs) {
+          const succLS = ls.get(succ.actId) ?? maxEndDay;
+          let constraint = succLS - 1 - succ.lag;
+          latestFinish = Math.min(latestFinish, constraint);
+        }
+        lf.set(actId, latestFinish);
+        ls.set(actId, latestFinish - act.duration + 1);
+        totalFloat.set(actId, (latestFinish - act.duration + 1) - (es.get(actId) ?? 0));
+      }
+
+      const addDays = (base: Date, days: number): string => {
+        const d = new Date(base);
+        d.setDate(d.getDate() + days);
+        return d.toISOString().split("T")[0];
+      };
+
+      const enrichedActivities = activitiesRaw.map((act) => {
+        const actES = es.get(act.id) ?? 0;
+        const actEF = ef.get(act.id) ?? 0;
+        const actLS = ls.get(act.id) ?? 0;
+        const actLF = lf.get(act.id) ?? 0;
+        const float = totalFloat.get(act.id) ?? 0;
+        const isCritical = float === 0;
+
+        const predList = (predecessors.get(act.id) || []).map((p) => {
+          const predAct = activitiesRaw.find((a) => a.id === p.actId);
+          return {
+            predecessorId: p.actId,
+            predecessorCode: predAct?.code || `ACT-${p.actId}`,
+            predecessorName: predAct?.name || `Activity #${p.actId}`,
+            type: p.type,
+            lag: p.lag,
+          };
+        });
+
+        const wp = workPackages.find((w) => w.id === act.workPackageId || w.id === act.wpId);
+
+        return {
+          ...act,
+          workPackageName: wp?.name || act.workPackageName || "General",
+          earlyStartDay: actES,
+          earlyFinishDay: actEF,
+          lateStartDay: actLS,
+          lateFinishDay: actLF,
+          totalFloatDays: float,
+          isCritical,
+          earlyStartDate: addDays(projectStartDate, actES),
+          earlyFinishDate: addDays(projectStartDate, actEF),
+          lateStartDate: addDays(projectStartDate, actLS),
+          lateFinishDate: addDays(projectStartDate, actLF),
+          predecessors: predList,
+        };
+      });
+
+      // ─── Financial & Estimated Cost Rollups ──────────────────────────
+      const enrichedWorkPackages = workPackages.map((wp) => {
+        const wpActs = enrichedActivities.filter(
+          (a) => Number(a.workPackageId) === Number(wp.id) || Number(a.wpId) === Number(wp.id)
+        );
+
+        const actCostSum = wpActs.reduce((sum, a) => {
+          const t = Number(a.totalBudget || 0);
+          const q = Number(a.quantity || 1);
+          const r = Number(a.unitRate || 0);
+          const cost = t > 0 ? t : q * r;
+          return sum + (cost > 0 ? cost : Number(a.estimatedCost || 0));
+        }, 0);
+
+        const docBudget = Number(wp.budgetedCost || wp.budget || wp.estimatedCost || 0);
+        const estimatedCost = docBudget > 0 ? docBudget : actCostSum;
+
+        return {
+          ...wp,
+          budget: estimatedCost,
+          budgetedCost: estimatedCost,
+          estimatedCost,
+          activityCount: wpActs.length,
+        };
+      });
+
+      const enrichedWbsTree = wbsItems.map((wbs) => {
+        const childWps = enrichedWorkPackages.filter(
+          (wp) => Number(wp.wbsId) === Number(wbs.id) || Number(wp.wbsItemId) === Number(wbs.id)
+        );
+        const wbsCostSum = childWps.reduce((sum, wp) => sum + Number(wp.estimatedCost || 0), 0);
+        const docWbsCost = Number(wbs.budgetedCost || wbs.budget || 0);
+        const estimatedCost = docWbsCost > 0 ? docWbsCost : wbsCostSum;
+
+        return {
+          ...wbs,
+          budgetedCost: estimatedCost,
+          estimatedCost,
+          workPackageCount: childWps.length,
+        };
+      });
+
+      const totalBudget = Number(project.budget || 0);
+      const allocatedWpBudget = enrichedWorkPackages.reduce(
+        (acc, wp) => acc + Number(wp.estimatedCost || 0),
+        0
+      );
+      const unallocatedBudget = Math.max(0, totalBudget - allocatedWpBudget);
+
+      const criticalActivitiesCount = enrichedActivities.filter((a) => a.isCritical).length;
+      const targetFinishDate = addDays(projectStartDate, maxEndDay);
+
+      res.json({
+        project: {
+          id: project.id,
+          name: project.name,
+          code: project.code,
+          client: project.client || "Client N/A",
+          budget: totalBudget,
+          startDate: project.startDate,
+          targetFinishDate,
+          durationDays: maxEndDay,
+          status: project.status || "active",
+        },
+        kpis: {
+          totalBudget,
+          allocatedWpBudget,
+          unallocatedBudget,
+          totalWbsItems: enrichedWbsTree.length,
+          totalWorkPackages: enrichedWorkPackages.length,
+          totalActivities: enrichedActivities.length,
+          criticalActivitiesCount,
+          projectDurationDays: maxEndDay,
+          startDate: project.startDate || new Date().toISOString().split("T")[0],
+          targetFinishDate,
+          totalResourcesRequired: projectResources.length,
+          totalActiveDeployments: deployments.length,
+        },
+        wbsTree: enrichedWbsTree,
+        workPackages: enrichedWorkPackages,
+        activities: enrichedActivities,
+        dependencies: deps,
+        criticalPath: enrichedActivities.filter((a) => a.isCritical).map((a) => a.id),
+        resources: projectResources,
+        deployments,
+      });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
   // Helper to ensure START and FINISH pseudo milestone nodes exist for a project
   async function ensurePseudoActivities(projectId: number) {
     const allActs = await db

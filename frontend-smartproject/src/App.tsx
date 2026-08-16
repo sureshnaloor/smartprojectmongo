@@ -59,6 +59,7 @@ import ToolMasterTypes from "@/pages/tool-master-types";
 import ToolMasterPr from "@/pages/tool-master-pr";
 import GlobalMastersLayout from "@/layouts/global-masters-layout";
 import ProjectResourceDeployment from "@/pages/project-resource-deployment";
+import ProjectConsolidatedReport from "@/pages/project-consolidated-report";
 import ReportsManpowerResources from "@/pages/reports-manpower-resources";
 import ReportsEquipmentResources from "@/pages/reports-equipment-resources";
 import GlobalMastersCompany from "@/pages/global-masters-company";
@@ -309,6 +310,9 @@ function Router() {
           <ProjectResourceDeployment />
         )}
       </Route>
+
+      {/* Consolidated Master Project Report */}
+      <Route path="/projects/:projectId/consolidated-report" component={ProjectConsolidatedReport} />
 
       {/* Reports */}
       <Route path="/reports/manpower-resources" component={ReportsManpowerResources} />
