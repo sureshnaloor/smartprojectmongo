@@ -27,8 +27,9 @@ cd frontend-smartproject
 echo "   Installing frontend dependencies (including dev dependencies for build)..."
 npm install
 
-# Build the frontend
+# Build the frontend (raise Node heap — Vite OOM on 2GB droplets otherwise)
 echo "   Building frontend with Vite..."
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1536}"
 npm run build
 
 if [ ! -d "dist" ]; then

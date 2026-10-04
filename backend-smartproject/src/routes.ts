@@ -5,6 +5,7 @@ import { db } from "./db";
 import { insertFileUploadRecord } from "./file-upload-helpers";
 import { registerCorrespondenceRoutes } from "./correspondence-helpers";
 import { registerWikiRecordRoutes } from "./wiki-register-routes";
+import { registerCashflowRoutes } from "./cashflow-routes";
 import { registerCollabRoutes } from "./collab-routes";
 import { validateWbsStructure, MAX_WBS_LEVEL } from "./wbs-validation.js";
 import {
@@ -6017,6 +6018,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerCorrespondenceRoutes(app, db, "subcontract-correspondence", "subcontract-correspondence", handleError);
   registerCorrespondenceRoutes(app, db, "internal-correspondence", "internal-correspondence", handleError);
   registerWikiRecordRoutes(app, handleError);
+  registerCashflowRoutes(app, handleError);
 
   // Request For Inspection routes
   app.post("/api/projects/:projectId/request-for-inspection/upload", async (req: Request, res: Response) => {

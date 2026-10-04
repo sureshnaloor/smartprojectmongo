@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Project, WbsItem } from "@shared/schema";
 import { formatCurrency, formatDate, getStatusColor, cn } from "@/lib/utils";
-import { FileSpreadsheet, ChartLine, GanttChart, Menu, MoreHorizontal, BarChart2, PencilIcon, ArrowLeft, DollarSign, Package, Wrench, Users, LayoutDashboard, Activity, Calendar, TrendingUp, Pin, AlertTriangle, Award, Info, Megaphone, ClipboardCheck, HardHat, Laugh, ListTree } from "lucide-react";
+import { FileSpreadsheet, ChartLine, GanttChart, Menu, MoreHorizontal, BarChart2, PencilIcon, ArrowLeft, DollarSign, Package, Wrench, Users, LayoutDashboard, Activity, Calendar, TrendingUp, Pin, AlertTriangle, Award, Info, Megaphone, ClipboardCheck, HardHat, Laugh, ListTree, Wallet, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ImportWbsModal } from "./import-wbs-modal";
 import { DeleteProjectDialog } from "./delete-project-dialog";
@@ -47,6 +47,10 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
 
     if (location.includes("/kanban")) {
       return "kanban";
+    }
+
+    if (location.includes("/cashflow")) {
+      return "cashflow";
     }
 
     if (location.includes("/materials-services")) {
@@ -289,6 +293,27 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
             <span className={cn(tabLinkClass(true), "cursor-default")}>Collaboration Hub</span>
           ) : routeContext === "kanban" ? (
             <span className={cn(tabLinkClass(true), "cursor-default")}>Kanban</span>
+          ) : routeContext === "cashflow" ? (
+            <>
+              <Link href={`/projects/${projectId}/cashflow`}>
+                <a className={tabLinkClass(location.includes("/cashflow") && !location.includes("/cashflow/overhead") && !location.includes("/cashflow/company"))}>
+                  <Wallet className="h-4 w-4" />
+                  Project cash flow
+                </a>
+              </Link>
+              <Link href={`/projects/${projectId}/cashflow/overhead`}>
+                <a className={tabLinkClass(location.includes("/cashflow/overhead"))}>
+                  <Building2 className="h-4 w-4" />
+                  Company overhead
+                </a>
+              </Link>
+              <Link href={`/projects/${projectId}/cashflow/company`}>
+                <a className={tabLinkClass(location.includes("/cashflow/company"))}>
+                  <TrendingUp className="h-4 w-4" />
+                  Company cash flow
+                </a>
+              </Link>
+            </>
           ) : routeContext === "materials-services" ? (
             <span className={cn(tabLinkClass(true), "cursor-default")}>Materials &amp; Resources</span>
           ) : (

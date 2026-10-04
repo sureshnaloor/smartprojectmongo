@@ -60,6 +60,9 @@ import ToolMasterPr from "@/pages/tool-master-pr";
 import GlobalMastersLayout from "@/layouts/global-masters-layout";
 import ProjectResourceDeployment from "@/pages/project-resource-deployment";
 import ProjectConsolidatedReport from "@/pages/project-consolidated-report";
+import ProjectCashflow from "@/pages/project-cashflow";
+import CompanyOverhead from "@/pages/company-overhead";
+import CompanyCashflow from "@/pages/company-cashflow";
 import ReportsManpowerResources from "@/pages/reports-manpower-resources";
 import ReportsEquipmentResources from "@/pages/reports-equipment-resources";
 import GlobalMastersCompany from "@/pages/global-masters-company";
@@ -313,6 +316,28 @@ function Router() {
 
       {/* Consolidated Master Project Report */}
       <Route path="/projects/:projectId/consolidated-report" component={ProjectConsolidatedReport} />
+
+      <Route path="/projects/:projectId/cashflow/overhead">
+        {params => (
+          <ProjectLayout projectId={parseInt(params.projectId)}>
+            <CompanyOverhead />
+          </ProjectLayout>
+        )}
+      </Route>
+      <Route path="/projects/:projectId/cashflow/company">
+        {params => (
+          <ProjectLayout projectId={parseInt(params.projectId)}>
+            <CompanyCashflow />
+          </ProjectLayout>
+        )}
+      </Route>
+      <Route path="/projects/:projectId/cashflow">
+        {params => (
+          <ProjectLayout projectId={parseInt(params.projectId)}>
+            <ProjectCashflow />
+          </ProjectLayout>
+        )}
+      </Route>
 
       {/* Reports */}
       <Route path="/reports/manpower-resources" component={ReportsManpowerResources} />

@@ -21,6 +21,7 @@ import {
   BookOpen,
   UserCheck,
   FileText,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { useMobile } from "@/hooks/use-mobile";
@@ -213,6 +214,11 @@ export function SideNavigation({ currentProjectId }: SideNavigationProps) {
                       <li>
                         <SidebarLink href={`/projects/${currentProjectId}/consolidated-report`} active={isActive("/consolidated-report")} icon={FileText}>
                           Overall Project Report
+                        </SidebarLink>
+                      </li>
+                      <li>
+                        <SidebarLink href={`/projects/${currentProjectId}/cashflow`} active={isActive("/cashflow")} icon={Wallet}>
+                          Cash Flow Analysis
                         </SidebarLink>
                       </li>
                       <li>

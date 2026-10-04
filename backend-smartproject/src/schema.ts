@@ -1270,6 +1270,49 @@ export const kanbanCards = 'kanban_cards';
 export const projectActivityDependencies = 'project_activity_dependencies';
 export const projectActivityPlanVersions = 'project_activity_plan_versions';
 
+// --- Project cash flow (planned estimate; actual uses the same shape later) ---
+export const cashflowPlans = 'cashflow_plans';
+
+export const cashflowMonthSchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  inflowPercent: z.coerce.number().finite().min(0),
+  inflowAmount: z.coerce.number().finite().min(0),
+  outflowPercent: z.coerce.number().finite().min(0),
+  outflowAmount: z.coerce.number().finite().min(0),
+});
+
+export const upsertCashflowPlanSchema = z.object({
+  kind: z.literal('planned').default('planned'),
+  monthsBefore: z.coerce.number().int().min(0).max(36),
+  monthsAfter: z.coerce.number().int().min(0).max(36),
+  inflowMode: z.enum(['percent', 'amount']),
+  outflowMode: z.enum(['percent', 'amount']),
+  openingBalance: z.coerce.number().finite(),
+  months: z.array(cashflowMonthSchema).max(240),
+});
+export type UpsertCashflowPlan = z.infer<typeof upsertCashflowPlanSchema>;
+
+export const companyOverhead = 'company_overhead';
+
+export const overheadAmountSchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  amount: z.coerce.number().finite().min(0),
+});
+
+export const overheadCategorySchema = z.object({
+  key: z.string().regex(/^[a-z0-9-]{1,40}$/),
+  name: z.string().trim().min(1).max(80),
+  amounts: z.array(overheadAmountSchema).max(240),
+});
+
+export const upsertCompanyOverheadSchema = z.object({
+  startMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  endMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  openingBalance: z.coerce.number().finite(),
+  categories: z.array(overheadCategorySchema).max(24),
+});
+export type UpsertCompanyOverhead = z.infer<typeof upsertCompanyOverheadSchema>;
+
 // --- Project Wiki records (safety, environmental, others) ---
 export const insertWikiRecordSchema = z.object({
   projectId: z.number(),

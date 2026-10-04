@@ -4205,6 +4205,58 @@ export class DatabaseStorage {
   getGlobalCollabThreads(options?: Parameters<DatabaseStorage["getCollabThreads"]>[3]) {
     return this.getCollabThreads(collaborationThreads, collaborationMessages, { projectId: null }, options);
   }
+
+  async getCashflowPlan(projectId: number, kind: string) {
+    const doc = await db.collection("cashflow_plans").findOne({ projectId, kind });
+    if (!doc) return undefined;
+    const { _id, ...rest } = doc as Record<string, unknown>;
+    return rest;
+  }
+
+  async upsertCashflowPlan(projectId: number, kind: string, data: Record<string, unknown>) {
+    const existing = await db.collection("cashflow_plans").findOne({ projectId, kind });
+    const now = new Date();
+    if (existing) {
+      await db.collection("cashflow_plans").updateOne(
+        { id: existing.id },
+        { $set: { ...data, projectId, kind, updatedAt: now } }
+      );
+      return this.getCashflowPlan(projectId, kind);
+    }
+    const id = await this.getNextId("cashflow_plans");
+    const item = { ...data, id, projectId, kind, createdAt: now, updatedAt: now };
+    await db.collection("cashflow_plans").insertOne(item);
+    const { _id, ...rest } = item as Record<string, unknown>;
+    return rest;
+  }
+
+  async listCashflowPlans(kind: string) {
+    const docs = await db.collection("cashflow_plans").find({ kind }).toArray();
+    return docs.map((doc) => {
+      const { _id, ...rest } = doc as Record<string, unknown>;
+      return rest;
+    });
+  }
+
+  async getCompanyOverhead() {
+    const doc = await db.collection("company_overhead").findOne({ id: 1 });
+    if (!doc) return undefined;
+    const { _id, ...rest } = doc as Record<string, unknown>;
+    return rest;
+  }
+
+  async upsertCompanyOverhead(data: Record<string, unknown>) {
+    const existing = await db.collection("company_overhead").findOne({ id: 1 });
+    const now = new Date();
+    if (existing) {
+      await db.collection("company_overhead").updateOne({ id: 1 }, { $set: { ...data, id: 1, updatedAt: now } });
+      return this.getCompanyOverhead();
+    }
+    const item = { ...data, id: 1, createdAt: now, updatedAt: now };
+    await db.collection("company_overhead").insertOne(item);
+    const { _id, ...rest } = item as Record<string, unknown>;
+    return rest;
+  }
 }
 
 export const storage = new DatabaseStorage();
