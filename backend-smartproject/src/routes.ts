@@ -661,7 +661,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/activities", async (req: Request, res: Response) => {
     try {
-      const parsed = insertActivitySchema.parse(req.body);
+      const actType = req.body.activityType || req.body.type || "units";
+      const catTag = req.body.categoryTag || req.body.category || "resource-heavy";
+      const payload = {
+        ...req.body,
+        activityType: actType,
+        type: actType,
+        categoryTag: catTag,
+        category: catTag,
+      };
+      const parsed = insertActivitySchema.parse(payload);
       const validated = await normalizeAndValidateGlobalActivity(parsed);
       if ("error" in validated) {
         return res.status(400).json({ message: validated.error });
@@ -669,7 +678,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const activity = await storage.createActivity({
         ...parsed,
         ...validated.data,
-        activityType: parsed.activityType ?? "units",
+        activityType: actType,
+        type: actType,
+        categoryTag: catTag,
+        category: catTag,
       });
       res.status(201).json(activity);
     } catch (err) {
@@ -690,9 +702,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       for (let index = 0; index < csvData.length; index++) {
         const row = csvData[index];
+        const actType = row.activityType || row.type || "units";
+        const catTag = row.categoryTag || row.category || "resource-heavy";
         const parsed = insertActivitySchema.safeParse({
           ...row,
-          activityType: row.activityType ?? "units",
+          activityType: actType,
+          type: actType,
+          categoryTag: catTag,
+          category: catTag,
         });
         if (!parsed.success) {
           rowErrors.push({
@@ -712,6 +729,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         activitiesToCreate.push({
           ...parsed.data,
           ...validated.data,
+          activityType: actType,
+          type: actType,
+          categoryTag: catTag,
+          category: catTag,
         });
       }
 
@@ -743,7 +764,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Activity not found" });
       }
 
-      const parsed = insertActivitySchema.parse(req.body);
+      const actType = req.body.activityType || req.body.type || activity.activityType || (activity as any).type || "units";
+      const catTag = req.body.categoryTag || req.body.category || (activity as any).categoryTag || (activity as any).category || "resource-heavy";
+      const payload = {
+        ...req.body,
+        activityType: actType,
+        type: actType,
+        categoryTag: catTag,
+        category: catTag,
+      };
+
+      const parsed = insertActivitySchema.parse(payload);
       const validated = await normalizeAndValidateGlobalActivity(parsed);
       if ("error" in validated) {
         return res.status(400).json({ message: validated.error });
@@ -751,6 +782,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedActivity = await storage.updateActivity(id, {
         ...parsed,
         ...validated.data,
+        activityType: actType,
+        type: actType,
+        categoryTag: catTag,
+        category: catTag,
       });
       res.json(updatedActivity);
     } catch (err) {
@@ -855,8 +890,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Work package does not belong to this project" });
       }
 
+      const actType = req.body.activityType || req.body.type || "units";
+      const catTag = req.body.categoryTag || req.body.category || "resource-heavy";
+
       const parsed = insertProjectActivitySchema.parse({
         ...req.body,
+        activityType: actType,
+        type: actType,
+        categoryTag: catTag,
+        category: catTag,
         projectId,
         wpId,
       });
@@ -886,7 +928,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const activityData = {
         ...parsed,
         ...uomValidated.data,
-        activityType: parsed.activityType ?? "units",
+        activityType: actType,
+        type: actType,
+        categoryTag: catTag,
+        category: catTag,
         percentComplete: parsed.percentComplete ?? 0,
         progressState: parsed.progressState ?? 0,
         finalized: parsed.finalized ?? false,
@@ -939,8 +984,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Work package not found" });
       }
 
+      const actType = req.body.activityType || req.body.type || activity.activityType || (activity as any).type || "units";
+      const catTag = req.body.categoryTag || req.body.category || activity.categoryTag || (activity as any).category || "resource-heavy";
+
       const parsed = insertProjectActivitySchema.parse({
         ...req.body,
+        activityType: actType,
+        type: actType,
+        categoryTag: catTag,
+        category: catTag,
         projectId,
         wpId,
       });
@@ -969,7 +1021,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const activityData = {
         ...parsed,
         ...uomValidated.data,
-        activityType: parsed.activityType ?? activity.activityType ?? "units",
+        activityType: actType,
+        type: actType,
+        categoryTag: catTag,
+        category: catTag,
         percentComplete: parsed.percentComplete ?? activity.percentComplete ?? 0,
         progressState: parsed.progressState ?? activity.progressState ?? 0,
         finalized: parsed.finalized ?? activity.finalized ?? false,

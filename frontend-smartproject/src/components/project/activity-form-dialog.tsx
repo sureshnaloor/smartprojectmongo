@@ -33,7 +33,9 @@ import {
 export interface ProjectActivityFormValues {
   id?: number;
   activityType: ProjectActivityType;
+  type?: ProjectActivityType;
   categoryTag?: string;
+  category?: string;
   name: string;
   description: string;
   remarks: string;
@@ -62,7 +64,9 @@ const emptyMilestone = (): ActivityMilestone => ({ name: "", weightPercent: 0 })
 
 const defaultValues = (): ProjectActivityFormValues => ({
   activityType: "units",
+  type: "units",
   categoryTag: "resource-heavy",
+  category: "resource-heavy",
   name: "",
   description: "",
   remarks: "",
@@ -108,7 +112,8 @@ export function ActivityFormDialog({
     if (!open) return;
     setError(null);
     if (initial) {
-      const initialType = (initial.activityType as ProjectActivityType) ?? "units";
+      const initialType = ((initial.activityType || initial.type) as ProjectActivityType) ?? "units";
+      const initialCat = initial.categoryTag || initial.category || "resource-heavy";
       const initialBudget = initial.totalBudget
         ? String(initial.totalBudget)
         : initial.unitRate
@@ -118,7 +123,9 @@ export function ActivityFormDialog({
         ...defaultValues(),
         ...initial,
         activityType: initialType,
-        categoryTag: initial.categoryTag || "resource-heavy",
+        type: initialType,
+        categoryTag: initialCat,
+        category: initialCat,
         unitOfMeasure: initialType === "lumpsum" ? "LOT" : (initial.unitOfMeasure ?? ""),
         quantity: initialType === "lumpsum" ? "1" : (initial.quantity ?? "1"),
         unitRate: initial.unitRate ? String(initial.unitRate) : "0",
@@ -215,8 +222,13 @@ export function ActivityFormDialog({
     }
 
     const isEdit = Boolean(initial?.id);
+    const cat = form.categoryTag || form.category || "resource-heavy";
     const submitValues: ProjectActivityFormValues = {
       ...form,
+      activityType: form.activityType,
+      type: form.activityType,
+      categoryTag: cat,
+      category: cat,
       totalBudget: isGlobal ? "" : form.totalBudget,
       quantity: form.activityType === "lumpsum" ? "1" : isGlobal ? "1" : form.quantity,
       unitOfMeasure: form.activityType === "lumpsum" ? "LOT" : form.unitOfMeasure,

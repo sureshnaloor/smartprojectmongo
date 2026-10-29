@@ -306,16 +306,28 @@ function Router() {
         )}
       </Route>
 
-      {/* Project Resource Deployment */}
-      <Route path="/project-resource-deployment" component={ProjectResourceDeployment} />
+      {/* Project Resource Deployment (global standalone, no project context) */}
+      <Route path="/project-resource-deployment">
+        <MasterLayout>
+          <ProjectResourceDeployment />
+        </MasterLayout>
+      </Route>
       <Route path="/projects/:projectId/resource-deployment">
         {params => (
-          <ProjectResourceDeployment />
+          <ProjectLayout projectId={parseInt(params.projectId)}>
+            <ProjectResourceDeployment />
+          </ProjectLayout>
         )}
       </Route>
 
       {/* Consolidated Master Project Report */}
-      <Route path="/projects/:projectId/consolidated-report" component={ProjectConsolidatedReport} />
+      <Route path="/projects/:projectId/consolidated-report">
+        {params => (
+          <ProjectLayout projectId={parseInt(params.projectId)}>
+            <ProjectConsolidatedReport />
+          </ProjectLayout>
+        )}
+      </Route>
 
       <Route path="/projects/:projectId/cashflow/overhead">
         {params => (

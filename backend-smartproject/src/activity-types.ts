@@ -49,11 +49,12 @@ export const ACTIVITY_CATEGORY_TAG_DESCRIPTIONS: Record<ActivityCategoryTag, str
 
 export function computeActivityBudget(activity: {
   activityType?: ProjectActivityType | string | null;
+  type?: ProjectActivityType | string | null;
   quantity?: string | number | null;
   unitRate?: string | number | null;
   totalBudget?: string | number | null;
 }): number {
-  const type = (activity.activityType ?? "units") as ProjectActivityType;
+  const type = ((activity.activityType || activity.type) ?? "units") as ProjectActivityType;
   if (type === "units") {
     const q = Number(activity.quantity || 0);
     const r = Number(activity.unitRate || 0);
@@ -65,6 +66,7 @@ export function computeActivityBudget(activity: {
 
 export function computeEarnedValue(activity: {
   activityType?: ProjectActivityType | string | null;
+  type?: ProjectActivityType | string | null;
   quantity?: string | number | null;
   unitRate?: string | number | null;
   totalBudget?: string | number | null;
@@ -73,7 +75,7 @@ export function computeEarnedValue(activity: {
   milestones?: ActivityMilestone[] | null;
 }): number {
   const budget = computeActivityBudget(activity);
-  const type = (activity.activityType ?? "units") as ProjectActivityType;
+  const type = ((activity.activityType || activity.type) ?? "units") as ProjectActivityType;
 
   switch (type) {
     case "units":
@@ -113,6 +115,7 @@ export function validateMilestones(
 
 export function validateProjectActivityPayload(data: {
   activityType?: ProjectActivityType | string | null;
+  type?: ProjectActivityType | string | null;
   name?: string;
   unitOfMeasure?: string | null;
   unitRate?: string | number | null;
@@ -122,7 +125,7 @@ export function validateProjectActivityPayload(data: {
   milestones?: Array<{ name?: string; weightPercent?: number; achieved?: boolean }> | null;
   progressState?: number | null;
 }): string | null {
-  const type = (data.activityType ?? "units") as ProjectActivityType;
+  const type = ((data.activityType || data.type) ?? "units") as ProjectActivityType;
 
   if (!data.name?.trim()) return "Activity name is required";
 
@@ -166,13 +169,14 @@ export function validateProjectActivityPayload(data: {
 /** Global activity master — budget is assigned per project when the activity is used. */
 export function validateGlobalActivityPayload(data: {
   activityType?: ProjectActivityType | string | null;
+  type?: ProjectActivityType | string | null;
   name?: string;
   unitOfMeasure?: string | null;
   unitRate?: string | number | null;
   duration?: number | string | null;
   milestones?: Array<{ name?: string; weightPercent?: number; achieved?: boolean }> | null;
 }): string | null {
-  const type = (data.activityType ?? "units") as ProjectActivityType;
+  const type = ((data.activityType || data.type) ?? "units") as ProjectActivityType;
 
   if (!data.name?.trim()) return "Activity name is required";
 

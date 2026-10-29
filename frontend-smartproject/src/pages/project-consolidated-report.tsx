@@ -530,10 +530,10 @@ export default function ProjectConsolidatedReport() {
   );
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans">
-      {/* Screen Header Bar - Hidden in Print */}
-      <header className="bg-white border-b border-zinc-200 sticky top-0 z-30 print:hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+    <div className="space-y-6 text-zinc-900">
+      {/* Page Toolbar - Hidden in Print */}
+      <div className="print:hidden">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-3">
             <Link href={`/projects/${pId}`}>
               <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-zinc-600">
@@ -569,10 +569,10 @@ export default function ProjectConsolidatedReport() {
             </Button>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Screen Container */}
-      <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 print:hidden">
+      <main className="max-w-7xl mx-auto space-y-6 print:hidden">
         {/* Cover / Executive Title Banner */}
         <div className="bg-gradient-to-r from-zinc-900 via-zinc-800 to-amber-950 text-white p-6 sm:p-8 rounded-2xl shadow-md flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
@@ -696,7 +696,7 @@ export default function ProjectConsolidatedReport() {
             print-color-adjust: exact !important;
             overflow: visible !important;
           }
-          header, nav, footer, .print\\:hidden {
+          header, nav, aside, footer, .cp-inline-page-header, .print\\:hidden {
             display: none !important;
           }
           .print\\:block {

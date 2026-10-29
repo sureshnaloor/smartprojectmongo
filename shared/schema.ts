@@ -106,6 +106,10 @@ export const activities = pgTable("activities", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
+  activityType: text("activity_type").notNull().default("units"),
+  type: text("type").default("units"),
+  categoryTag: text("category_tag").default("resource-heavy"),
+  category: text("category").default("resource-heavy"),
   unitOfMeasure: text("unit_of_measure").notNull(),
   unitRate: numeric("unit_rate", { precision: 12, scale: 2 }).notNull(),
   remarks: text("remarks"),
@@ -199,7 +203,9 @@ export const projectActivities = pgTable("project_activities", {
   wpId: integer("wp_id").notNull().references(() => workPackages.id, { onDelete: "cascade" }), // Work Package ID - required
   globalActivityId: integer("global_activity_id").references(() => activities.id, { onDelete: "set null" }), // nullable for project-specific activities
   activityType: text("activity_type").notNull().default("units"), // units | milestone | lumpsum | progress_0_50_100
+  type: text("type").default("units"),
   categoryTag: text("category_tag"), // materials-heavy | subcontract-heavy | resource-heavy
+  category: text("category"),
   name: text("name").notNull(),
   description: text("description"),
   unitOfMeasure: text("unit_of_measure"),
@@ -418,7 +424,9 @@ export const insertProjectActivitySchema = createInsertSchema(projectActivities)
     wpId: z.number(),
     projectId: z.number(),
     activityType: projectActivityTypeEnum.default("units"),
-    categoryTag: z.enum(["materials-heavy", "subcontract-heavy", "resource-heavy"]).optional().nullable(),
+    type: z.string().optional().nullable(),
+    categoryTag: z.enum(["materials-heavy", "subcontract-heavy", "resource-heavy"]).or(z.string()).optional().nullable(),
+    category: z.string().optional().nullable(),
     unitOfMeasure: z.string().optional().nullable(),
     unitRate: z
       .string()

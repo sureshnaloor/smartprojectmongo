@@ -30,6 +30,7 @@ export interface GlobalActivityItem {
   unitRate: string;
   remarks: string | null;
   activityType?: ProjectActivityType | string | null;
+  type?: ProjectActivityType | string | null;
   categoryTag?: ActivityCategoryTag | string | null;
   category?: string | null;
   createdAt?: string;
@@ -41,7 +42,9 @@ export interface ProjectActivityAssignment {
   wpId: number;
   globalActivityId: number | null;
   activityType?: ProjectActivityType | string | null;
+  type?: ProjectActivityType | string | null;
   categoryTag?: ActivityCategoryTag | string | null;
+  category?: string | null;
   name: string;
   description: string | null;
   unitOfMeasure: string;

@@ -257,6 +257,9 @@ export const insertActivitySchema = z.object({
   name: z.string(),
   description: z.string().optional().nullable(),
   activityType: projectActivityTypeEnum.default("units"),
+  type: z.string().optional().nullable(),
+  categoryTag: z.enum(["materials-heavy", "subcontract-heavy", "resource-heavy"]).or(z.string()).optional().nullable(),
+  category: z.string().optional().nullable(),
   unitOfMeasure: z.string().optional().nullable(),
   unitRate: z
     .string()
@@ -345,7 +348,9 @@ export const insertProjectActivitySchema = z.object({
   wpId: z.number(),
   globalActivityId: z.number().optional().nullable(),
   activityType: projectActivityTypeEnum.default("units"),
-  categoryTag: z.enum(["materials-heavy", "subcontract-heavy", "resource-heavy"]).optional().nullable(),
+  type: z.string().optional().nullable(),
+  categoryTag: z.enum(["materials-heavy", "subcontract-heavy", "resource-heavy"]).or(z.string()).optional().nullable(),
+  category: z.string().optional().nullable(),
   name: z.string(),
   description: z.string().optional().nullable(),
   unitOfMeasure: z.string().optional().nullable(),

@@ -29,6 +29,9 @@ interface GlobalActivity {
   name: string;
   description?: string | null;
   activityType?: string | null;
+  type?: string | null;
+  categoryTag?: string | null;
+  category?: string | null;
   unitOfMeasure?: string | null;
   unitRate?: string | null;
   remarks?: string | null;
@@ -36,6 +39,7 @@ interface GlobalActivity {
 
 function activityToForm(a: GlobalActivity): Record<string, unknown> {
   const meta = parseMeta(a.remarks);
+  const cat = a.categoryTag || a.category || "resource-heavy";
   return {
     type: "activities",
     code: meta.code ?? `ACT-${a.id}`,
@@ -44,6 +48,8 @@ function activityToForm(a: GlobalActivity): Record<string, unknown> {
     phase: meta.phase ?? "Construction",
     duration: meta.duration ?? "",
     activityType: meta.activityType ?? "Standard",
+    categoryTag: cat,
+    category: cat,
     status: displayStatus(meta),
     remarks: stripMeta(a.remarks),
   };
@@ -58,8 +64,13 @@ function formToPayload(values: Record<string, unknown>) {
     status: String(values.status ?? "active"),
   });
   const isStandard = values.activityType === "Standard";
+  const actType = isStandard ? "units" : "lumpsum";
+  const catTag = String(values.categoryTag || values.category || "resource-heavy");
   return {
-    activityType: isStandard ? "units" : "lumpsum",
+    activityType: actType,
+    type: actType,
+    categoryTag: catTag,
+    category: catTag,
     name: String(values.name),
     description: String(values.description || "") || null,
     remarks: remarks || null,

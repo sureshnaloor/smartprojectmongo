@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users,
@@ -23,7 +24,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SideNavigation } from "@/components/project/side-navigation";
 import { useToast } from "@/hooks/use-toast";
 
 interface Project {
@@ -121,12 +121,31 @@ interface DeploymentSuggestionsResponse {
 export default function ProjectResourceDeployment() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  // When mounted under /projects/:projectId/resource-deployment, the project is
+  // taken from the URL so the page matches the surrounding project shell.
+  // On the standalone /project-resource-deployment route there is no param,
+  // so the in-page project selector remains the source of truth.
+  const params = useParams<{ projectId?: string }>();
+  const urlProjectId = params?.projectId ?? "";
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(urlProjectId);
   const [selectedWbsId, setSelectedWbsId] = useState<string>("all");
   const [selectedWpId, setSelectedWpId] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().toISOString().slice(0, 7)
   );
+  const [prevUrlProjectId, setPrevUrlProjectId] = useState<string>(urlProjectId);
+
+  // Sync selection when navigating between projects via the sidebar
+  useEffect(() => {
+    if (urlProjectId !== prevUrlProjectId) {
+      setPrevUrlProjectId(urlProjectId);
+      if (urlProjectId) {
+        setSelectedProjectId(urlProjectId);
+        setSelectedWbsId("all");
+        setSelectedWpId("");
+      }
+    }
+  }, [urlProjectId, prevUrlProjectId]);
 
   // Fetch Projects
   const { data: projectsData } = useQuery<Project[]>({
@@ -250,12 +269,8 @@ export default function ProjectResourceDeployment() {
   const activeWp = workPackages.find((wp) => wp.id === Number(selectedWpId));
 
   return (
-    <div className="flex h-screen bg-zinc-50 overflow-hidden">
-      <SideNavigation currentProjectId={selectedProjectId ? Number(selectedProjectId) : undefined} />
-
-      <main className="flex-1 overflow-y-auto p-6 md:p-8">
-        <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header */}
+    <div className="mx-auto max-w-7xl space-y-6">
+      {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-zinc-200 shadow-sm">
             <div>
               <div className="flex items-center gap-2 text-primary font-semibold text-xs tracking-wider uppercase mb-1">
@@ -772,8 +787,6 @@ export default function ProjectResourceDeployment() {
               </Card>
             </div>
           ) : null}
-        </div>
-      </main>
     </div>
   );
 }

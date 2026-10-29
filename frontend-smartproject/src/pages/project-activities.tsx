@@ -47,13 +47,21 @@ import {
 import { type ActivityMilestone, validateMilestones } from "@shared/activity-types";
 
 function formToGlobalPayload(values: ProjectActivityFormValues) {
+  const cat = values.categoryTag || values.category || "resource-heavy";
   return {
     activityType: values.activityType,
+    type: values.activityType,
+    categoryTag: cat,
+    category: cat,
     name: values.name,
     description: values.description || null,
     remarks: values.remarks || null,
     unitOfMeasure: values.activityType === "units" ? values.unitOfMeasure : "ea",
     unitRate: values.activityType === "units" ? values.unitRate : "0",
+    milestones: values.activityType === "milestone" ? values.milestones : null,
+    duration: values.duration ?? null,
+    totalBudget: null,
+    quantity: null,
   };
 }
 
@@ -92,6 +100,19 @@ export default function ProjectActivities() {
   const [editingActivity, setEditingActivity] = useState<ProjectActivityAssignment | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [addActivityOpen, setAddActivityOpen] = useState(false);
+  const [editForm, setEditForm] = useState<{
+    name: string;
+    description: string;
+    unitOfMeasure: string;
+    unitRate: string;
+    quantity: string;
+    categoryTag: string;
+    remarks: string;
+    duration: string;
+  }>({
+    name: "", description: "", unitOfMeasure: "", unitRate: "",
+    quantity: "1", categoryTag: "resource-heavy", remarks: "", duration: "0",
+  });
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 200);
@@ -404,11 +425,14 @@ export default function ProjectActivities() {
       : totalBudget;
     const calculatedRate = type === "units" ? (draggedActivity.unitRate || "0") : totalBudget;
 
+    const cat = categoryTag || "resource-heavy";
     createMutation.mutate({
       wpId: pendingWpId,
       globalActivityId: isCustom ? null : draggedActivity.id,
       activityType: type,
-      categoryTag: categoryTag || "resource-heavy",
+      type: type,
+      categoryTag: cat,
+      category: cat,
       name: draggedActivity.name,
       description: draggedActivity.description,
       unitOfMeasure: finalUom,
@@ -542,6 +566,16 @@ export default function ProjectActivities() {
                 return;
               }
               setEditingActivity(row);
+              setEditForm({
+                name: row.name ?? "",
+                description: row.description ?? "",
+                unitOfMeasure: row.unitOfMeasure ?? "",
+                unitRate: String(row.unitRate ?? "0"),
+                quantity: String(row.quantity ?? "1"),
+                categoryTag: row.categoryTag || row.category || "resource-heavy",
+                remarks: row.remarks ?? "",
+                duration: String(row.duration ?? "0"),
+              });
               setIsEditDialogOpen(true);
             }}
             onDelete={handleDelete}
@@ -727,47 +761,43 @@ export default function ProjectActivities() {
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit assignment</DialogTitle>
+            <DialogTitle>Edit Activity Assignment</DialogTitle>
           </DialogHeader>
           {editingActivity && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                updateMutation.mutate({
-                  id: editingActivity.id,
-                  data: {
-                    name: formData.get("name") as string,
-                    description: formData.get("description") as string,
-                    unitOfMeasure: formData.get("unitOfMeasure") as string,
-                    unitRate: formData.get("unitRate") as string,
-                    quantity: formData.get("quantity") as string,
-                    categoryTag: (formData.get("categoryTag") as string) || "resource-heavy",
-                    remarks: formData.get("remarks") as string,
-                    duration: formData.get("duration") ? parseInt(formData.get("duration") as string, 10) : null,
-                    plannedFromDate: editingActivity.plannedFromDate,
-                    plannedToDate: editingActivity.plannedToDate,
-                  },
-                });
-              }}
-              className="space-y-4"
-            >
-              <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" defaultValue={editingActivity.name} required />
+            <div className="space-y-4 py-2">
+              {/* Read-only: Activity Type */}
+              <div className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Activity Type:</span>
+                <span className="font-semibold capitalize">
+                  {editingActivity.activityType || (editingActivity as any).type || "units"}
+                </span>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="categoryTag">Activity Tag / Cost Category *</Label>
-                <Select name="categoryTag" defaultValue={editingActivity.categoryTag || "resource-heavy"}>
-                  <SelectTrigger id="categoryTag" className="mt-1">
+                <Label htmlFor="edit-name">Name *</Label>
+                <Input
+                  id="edit-name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Activity Tag / Cost Category *</Label>
+                <Select
+                  value={editForm.categoryTag}
+                  onValueChange={(v) => setEditForm((f) => ({ ...f, categoryTag: v }))}
+                >
+                  <SelectTrigger>
                     <SelectValue placeholder="Select Category Tag" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="materials-heavy">
-                      📦 Materials Heavy (High-value equipment & materials)
+                      📦 Materials Heavy (High-value equipment &amp; materials)
                     </SelectItem>
                     <SelectItem value="subcontract-heavy">
-                      🤝 Subcontract Heavy (External services & subcontracts)
+                      🤝 Subcontract Heavy (External services &amp; subcontracts)
                     </SelectItem>
                     <SelectItem value="resource-heavy">
                       🚜 Resource Heavy (Normal installation, manpower, tools)
@@ -775,41 +805,54 @@ export default function ProjectActivities() {
                   </SelectContent>
                 </Select>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea id="description" name="description" defaultValue={editingActivity.description || ""} />
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                />
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="unitOfMeasure">Unit</Label>
-                  <Input id="unitOfMeasure" name="unitOfMeasure" defaultValue={editingActivity.unitOfMeasure} required />
+                  <Label htmlFor="edit-uom">Unit of Measure</Label>
+                  <Input
+                    id="edit-uom"
+                    value={editForm.unitOfMeasure}
+                    onChange={(e) => setEditForm((f) => ({ ...f, unitOfMeasure: e.target.value }))}
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="unitRate">Rate</Label>
+                  <Label htmlFor="edit-rate">Unit Rate</Label>
                   <Input
-                    id="unitRate"
-                    name="unitRate"
+                    id="edit-rate"
                     type="number"
                     step="0.01"
-                    defaultValue={editingActivity.unitRate}
+                    value={editForm.unitRate}
+                    onChange={(e) => setEditForm((f) => ({ ...f, unitRate: e.target.value }))}
                     required
                   />
                 </div>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="quantity">Quantity</Label>
+                <Label htmlFor="edit-quantity">Quantity</Label>
                 <Input
-                  id="quantity"
-                  name="quantity"
+                  id="edit-quantity"
                   type="number"
                   step="0.01"
-                  defaultValue={editingActivity.quantity}
+                  value={editForm.quantity}
+                  onChange={(e) => setEditForm((f) => ({ ...f, quantity: e.target.value }))}
                   required
                 />
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Planned date range</Label>
+                  <Label>Planned Date Range</Label>
                   <DateRangePicker
                     value={{
                       from: editingActivity.plannedFromDate ? new Date(editingActivity.plannedFromDate) : undefined,
@@ -828,25 +871,55 @@ export default function ProjectActivities() {
                   <Label htmlFor="edit-duration">Duration (days)</Label>
                   <Input
                     id="edit-duration"
-                    name="duration"
                     type="number"
-                    defaultValue={editingActivity.duration || 0}
+                    value={editForm.duration}
+                    onChange={(e) => setEditForm((f) => ({ ...f, duration: e.target.value }))}
                   />
                 </div>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="remarks">Remarks</Label>
-                <Textarea id="remarks" name="remarks" defaultValue={editingActivity.remarks || ""} />
+                <Label htmlFor="edit-remarks">Remarks</Label>
+                <Textarea
+                  id="edit-remarks"
+                  value={editForm.remarks}
+                  onChange={(e) => setEditForm((f) => ({ ...f, remarks: e.target.value }))}
+                />
               </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={updateMutation.isPending}>
-                  Update
+                <Button
+                  disabled={updateMutation.isPending}
+                  onClick={() => {
+                    const actType = editingActivity.activityType || (editingActivity as any).type || "units";
+                    const cat = editForm.categoryTag || "resource-heavy";
+                    updateMutation.mutate({
+                      id: editingActivity.id,
+                      data: {
+                        name: editForm.name,
+                        description: editForm.description || null,
+                        unitOfMeasure: editForm.unitOfMeasure,
+                        unitRate: editForm.unitRate,
+                        quantity: editForm.quantity,
+                        categoryTag: cat,
+                        category: cat,
+                        activityType: actType,
+                        type: actType,
+                        remarks: editForm.remarks || null,
+                        duration: editForm.duration ? parseInt(editForm.duration, 10) : null,
+                        plannedFromDate: editingActivity.plannedFromDate,
+                        plannedToDate: editingActivity.plannedToDate,
+                      },
+                    });
+                  }}
+                >
+                  {updateMutation.isPending ? "Saving…" : "Save Changes"}
                 </Button>
               </div>
-            </form>
+            </div>
           )}
         </DialogContent>
       </Dialog>
