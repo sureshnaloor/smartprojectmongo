@@ -1,13 +1,22 @@
 import type { Db } from "mongodb";
 
-function resolveRole(email: string): "admin" | "user" {
-  const adminEmails = (process.env.ADMIN_EMAILS || "")
+export type UserRole = "admin" | "demorequest-admin" | "user";
+
+function emailList(envVar: string): string[] {
+  return (process.env[envVar] || "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
+}
+
+function resolveRole(email: string): UserRole {
+  const lower = email.toLowerCase();
+  const adminEmails = emailList("ADMIN_EMAILS");
+  const demoRequestAdminEmails = emailList("DEMO_REQUEST_ADMIN_EMAILS");
   // Local bypass account is admin so amendments can be tested without env setup
-  if (email.toLowerCase() === "dev@example.com") return "admin";
-  if (adminEmails.includes(email.toLowerCase())) return "admin";
+  if (lower === "dev@example.com") return "admin";
+  if (adminEmails.includes(lower)) return "admin";
+  if (demoRequestAdminEmails.includes(lower)) return "demorequest-admin";
   return "user";
 }
 

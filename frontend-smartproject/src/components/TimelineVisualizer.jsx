@@ -117,15 +117,16 @@ const TimelineVisualizer = () => {
   const currentPhase = phaseData[activePhase]
 
   return (
-    <section className="section-padding bg-gray-50">
+    <section className="section-padding" style={{ background: '#F6F4FF' }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16 fade-in">
-          <h2 className="font-display text-4xl md:text-5xl font-bold mb-6">Project Lifecycle Management</h2>
-          <p className="text-xl text-gray-600">
+          <span className="section-eyebrow">How it works</span>
+          <h2 className="font-display text-4xl md:text-5xl font-extrabold mb-6 text-[#0A1B33]">Project Lifecycle Management</h2>
+          <p className="text-xl text-[#505E6B]">
             Navigate through every phase of your construction project with precision and control
           </p>
         </div>
-        
+
         <div className="timeline-container fade-in">
           <div className="timeline-line"></div>
           <div className="flex justify-between">
@@ -134,37 +135,48 @@ const TimelineVisualizer = () => {
               { phase: 'procurement', title: 'Procurement', description: 'Vendor selection, material ordering, and logistics coordination' },
               { phase: 'construction', title: 'Construction', description: 'Site preparation, building execution, and quality control' },
               { phase: 'commissioning', title: 'Commissioning', description: 'Testing, handover, and project closeout activities' }
-            ].map((item) => (
+            ].map((item, idx) => (
               <div
                 key={item.phase}
-                className="timeline-item"
+                className={`timeline-item ${activePhase === item.phase ? 'active' : ''}`}
                 onClick={() => handlePhaseClick(item.phase)}
               >
-                <div className="timeline-dot"></div>
-                <h3 className="font-semibold text-lg mb-2">{item.title}</h3>
-                <p className="text-sm text-gray-600">{item.description}</p>
+                <div className="timeline-dot">
+                  <span>{idx + 1}</span>
+                </div>
+                <h3 className="font-display font-bold text-lg mb-2 text-[#0A1B33]">{item.title}</h3>
+                <p className="text-sm text-[#505E6B]">{item.description}</p>
               </div>
             ))}
           </div>
         </div>
-        
-        <div id="phase-details" className="mt-16 bg-white rounded-lg p-8 shadow-lg fade-in">
+
+        <div id="phase-details" className="mt-16 bg-white rounded-2xl p-8 md:p-10 fade-in" style={{ boxShadow: '0 20px 60px rgba(10,27,51,0.10)', border: '1px solid #E7E3F5' }}>
           <div id="phase-content">
-            <h3 className="font-semibold text-2xl mb-4">{currentPhase.title}</h3>
-            <div className="grid md:grid-cols-2 gap-8">
+            <div className="flex items-center gap-3 mb-6">
+              <span className="w-1.5 h-8 rounded-full" style={{ background: 'linear-gradient(180deg, #FCBC45, #E8A020)' }}></span>
+              <h3 className="font-display font-bold text-2xl text-[#0A1B33]">{currentPhase.title}</h3>
+            </div>
+            <div className="grid md:grid-cols-2 gap-10">
               <div>
-                <h4 className="font-medium text-lg mb-3">Key Activities</h4>
-                <ul className="space-y-2 text-gray-600">
+                <h4 className="font-semibold text-sm uppercase tracking-[0.14em] text-[#074E84] mb-4">Key Activities</h4>
+                <ul className="space-y-3 text-[#505E6B]">
                   {currentPhase.activities.map((activity, index) => (
-                    <li key={index}>• {activity}</li>
+                    <li key={index} className="flex items-start gap-2.5">
+                      <svg className="w-4 h-4 text-[#074E84] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                      {activity}
+                    </li>
                   ))}
                 </ul>
               </div>
               <div>
-                <h4 className="font-medium text-lg mb-3">Platform Benefits</h4>
-                <ul className="space-y-2 text-gray-600">
+                <h4 className="font-semibold text-sm uppercase tracking-[0.14em] text-[#E8A020] mb-4">Platform Benefits</h4>
+                <ul className="space-y-3 text-[#505E6B]">
                   {currentPhase.benefits.map((benefit, index) => (
-                    <li key={index}>• {benefit}</li>
+                    <li key={index} className="flex items-start gap-2.5">
+                      <svg className="w-4 h-4 text-[#E8A020] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                      {benefit}
+                    </li>
                   ))}
                 </ul>
               </div>

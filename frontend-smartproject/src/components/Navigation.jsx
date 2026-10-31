@@ -9,7 +9,7 @@ const Navigation = () => {
     const handleScroll = () => {
       const header = document.querySelector('nav')
       if (window.scrollY > 100) {
-        header.style.boxShadow = '0 4px 20px rgba(44, 62, 80, 0.1)'
+        header.style.boxShadow = '0 4px 20px rgba(10, 27, 51, 0.1)'
       } else {
         header.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
       }

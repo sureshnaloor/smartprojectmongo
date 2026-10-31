@@ -61,6 +61,10 @@ app.use(express.urlencoded({ extended: false }));
 // Auth routes (must be before registerRoutes)
 app.use("/api/auth", authRoutes);
 
+// Public lead-capture route for the landing page (no auth required)
+import demoRequestRoutes from "./demo-request-routes";
+app.use("/api/demo-requests", demoRequestRoutes);
+
 // Health check entpoint
 app.get('/api/hello', (req, res) => {
   res.status(200).json({ status: 'healthy', message: 'API is running' });

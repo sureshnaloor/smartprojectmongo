@@ -6,7 +6,7 @@ export interface User {
   name: string;
   picture?: string | null;
   provider: string;
-  role?: "admin" | "user";
+  role?: "admin" | "demorequest-admin" | "user";
 }
 
 interface AuthContextType {

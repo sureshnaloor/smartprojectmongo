@@ -1,6 +1,8 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
+import DemoRequestModal from './DemoRequestModal.jsx'
 
 const Pricing = () => {
+  const [modalIntent, setModalIntent] = useState(null) // null | 'trial' | 'sales'
   useEffect(() => {
     // Fade in animation
     const observer = new IntersectionObserver((entries) => {
@@ -28,11 +30,11 @@ const Pricing = () => {
 
   const handleButtonClick = (action) => {
     if (action === 'trial') {
-      alert('Free trial signup coming soon! Please contact our sales team for immediate access.')
+      setModalIntent('trial')
     } else if (action === 'sales') {
-      alert('Sales contact form coming soon! Please call 1-800-CONSTRUCT or email sales@constructpro.com')
+      setModalIntent('sales')
     } else {
-      alert('Demo request functionality - integrate with your backend')
+      setModalIntent(null)
     }
   }
 
@@ -88,28 +90,34 @@ const Pricing = () => {
     <section id="pricing" className="section-padding bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16 fade-in">
-          <h2 className="font-display text-4xl md:text-5xl font-bold mb-6">Choose Your Plan</h2>
-          <p className="text-xl text-gray-600">
+          <span className="section-eyebrow">Pricing</span>
+          <h2 className="font-display text-4xl md:text-5xl font-extrabold mb-6 text-[#0A1B33]">Choose Your Plan</h2>
+          <p className="text-xl text-[#505E6B]">
             Flexible pricing to match your project needs and scale
           </p>
         </div>
-        
-        <div className="grid md:grid-cols-3 gap-8">
+
+        <div className="grid md:grid-cols-3 gap-8 items-stretch">
           {plans.map((plan, index) => (
             <div key={index} className={`pricing-card fade-in ${plan.featured ? 'featured' : ''}`}>
-              <h3 className="font-semibold text-2xl mb-4">{plan.name}</h3>
-              <div className="text-4xl font-bold mb-2">{plan.price}</div>
-              <div className="text-gray-500 mb-6">{plan.period}</div>
+              {plan.featured && (
+                <span className="featured-badge">Most Popular</span>
+              )}
+              <h3 className="font-display font-bold text-2xl mb-4">{plan.name}</h3>
+              <div className="text-5xl font-display font-extrabold mb-2">{plan.price}</div>
+              <div className={`mb-8 text-sm uppercase tracking-wide ${plan.featured ? 'text-white/60' : 'text-[#505E6B]'}`}>{plan.period}</div>
               <ul className="text-left space-y-3 mb-8">
                 {plan.features.map((feature, featureIndex) => (
-                  <li key={featureIndex} className="flex items-center">
-                    <span className="text-green-500 mr-2">✓</span>
+                  <li key={featureIndex} className="flex items-center gap-2.5">
+                    <svg className={`w-4 h-4 flex-shrink-0 ${plan.featured ? 'text-[#FCBC45]' : 'text-[#074E84]'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
                     {feature}
                   </li>
                 ))}
               </ul>
-              <button 
-                className={plan.featured ? 'btn-primary w-full' : 'btn-secondary w-full'}
+              <button
+                className={plan.featured ? 'btn-primary btn-gold w-full' : 'btn-secondary w-full'}
                 onClick={() => handleButtonClick(plan.buttonAction)}
               >
                 {plan.buttonText}
@@ -118,6 +126,7 @@ const Pricing = () => {
           ))}
         </div>
       </div>
+      <DemoRequestModal open={modalIntent !== null} intent={modalIntent} onClose={() => setModalIntent(null)} />
     </section>
   )
 }

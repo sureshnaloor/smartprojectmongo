@@ -127,6 +127,7 @@ import AllocationRentalManpower from "@/pages/allocation-rental-manpower";
 import AllocationRentalEquipment from "@/pages/allocation-rental-equipment";
 import AllocationTools from "@/pages/allocation-tools";
 import TimesheetsPage from "@/pages/timesheets";
+import AdminDemoRequests from "@/pages/admin-demo-requests";
 
 
 // Implementing a flatter routing approach without nesting
@@ -136,6 +137,7 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/" component={Landing} />
       <Route path="/playground" component={Home} />
+      <Route path="/admin/demo-requests" component={AdminDemoRequests} />
 
       {/* Project WBS & Work Packages (project home) */}
       <Route path="/projects/:projectId">

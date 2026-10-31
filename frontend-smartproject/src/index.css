@@ -58,13 +58,20 @@
   }
 }
 
-/* Landing Page Styles */
+/* Landing Page Styles — EPCORA brand theme (scoped to .app so inner pages are unaffected) */
 :root {
-  --deep-charcoal: #2C3E50;
-  --warm-copper: #B87333;
-  --soft-cream: #F8F6F0;
-  --accent-sage: #7D8471;
-  --dark-copper: #8B4513;
+  --deep-charcoal: #0A1B33;
+  --warm-copper: #074E84;
+  --soft-cream: #F6F4FF;
+  --accent-sage: #2380C6;
+  --dark-copper: #2380C6;
+  --epcora-primary: #074E84;
+  --epcora-secondary: #2380C6;
+  --epcora-gold: #FCBC45;
+  --epcora-golddeep: #E8A020;
+  --epcora-ink: #05052D;
+  --epcora-mist: #F6F4FF;
+  --epcora-line: #E7E3F5;
 }
 
 /* Landing page specific body styles - only apply when on landing page */
@@ -74,10 +81,19 @@
   color: var(--deep-charcoal);
   margin: 0;
   padding: 0;
+  /* Re-point the app's copper tokens to EPCORA blue ONLY inside the landing */
+  --copper-400: #2380C6;
+  --copper-500: #074E84;
+  --copper-600: #074E84;
+}
+
+.app ::selection {
+  background: #FCBC45;
+  color: #05052D;
 }
 
 .font-display {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Heebo', 'Inter', sans-serif;
 }
 
 .font-mono {
@@ -86,7 +102,7 @@
 
 .hero-bg {
   position: relative;
-  background: #1a1a1a;
+  background: #0A1B33;
 }
 
 .hero-background-image {
@@ -101,6 +117,17 @@
 .hero-overlay {
   z-index: 1;
   animation: overlayFadeIn 2s ease-out;
+  background: linear-gradient(100deg, rgba(5, 5, 45, 0.94) 0%, rgba(10, 27, 51, 0.82) 42%, rgba(10, 27, 51, 0.38) 100%);
+}
+
+.hero-grid-overlay {
+  z-index: 1;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(to bottom, black 0%, transparent 90%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 90%);
 }
 
 .hero-overlay-secondary {
@@ -232,13 +259,85 @@
   background-clip: text;
 }
 
+.gradient-text-gold {
+  background: linear-gradient(135deg, #FCBC45 0%, #E8A020 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Section eyebrow labels (EPCORA style) */
+.section-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #E8A020;
+  margin-bottom: 16px;
+}
+
+.section-eyebrow::before {
+  content: '';
+  width: 28px;
+  height: 2px;
+  background: linear-gradient(90deg, #FCBC45, #E8A020);
+  border-radius: 1px;
+}
+
+.section-eyebrow-light {
+  color: #FCBC45;
+}
+
+/* Hero mockup frame */
+.mockup-frame {
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(10, 27, 51, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    0 40px 90px rgba(5, 5, 45, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+
+.mockup-chrome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  background: rgba(5, 5, 45, 0.65);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Floating cards over mockup */
+.float-anim-1 {
+  animation: floatY 7s ease-in-out infinite;
+}
+
+.float-anim-2 {
+  animation: floatY 8.5s ease-in-out infinite 1.2s;
+}
+
+.float-anim-3 {
+  animation: floatY 9.5s ease-in-out infinite 0.6s;
+}
+
+@keyframes floatY {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-14px); }
+}
+
 .card-hover {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .card-hover:hover {
   transform: translateY(-4px) scale(1.02);
-  box-shadow: 0 20px 40px rgba(44, 62, 80, 0.15);
+  box-shadow: 0 20px 40px rgba(10, 27, 51, 0.15);
 }
 
 .btn-primary {
@@ -255,7 +354,7 @@
 .btn-primary:hover {
   background: var(--dark-copper);
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(184, 115, 51, 0.3);
+  box-shadow: 0 8px 20px rgba(7, 78, 132, 0.3);
 }
 
 .btn-secondary {
@@ -275,8 +374,35 @@
   transform: translateY(-2px);
 }
 
+/* Gold primary button (hero / featured CTAs) — must follow .btn-primary/.btn-secondary */
+.btn-gold {
+  background: linear-gradient(135deg, #FCBC45 0%, #E8A020 100%);
+  color: #05052D;
+  font-weight: 700;
+}
+
+.btn-gold:hover {
+  background: linear-gradient(135deg, #FFD066 0%, #FCBC45 100%);
+  box-shadow: 0 12px 30px rgba(252, 188, 69, 0.35);
+}
+
+/* Ghost button for dark backgrounds — must follow .btn-secondary */
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0A1B33;
+  border-color: transparent;
+}
+
 .nav-link {
-  color: #e5e7eb; /* light slate for dark header */
+  color: #E7E3F5; /* light slate for dark header */
   text-decoration: none;
   font-weight: 500;
   transition: color 0.3s ease;
@@ -331,14 +457,14 @@
   height: 500px;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(44, 62, 80, 0.1);
+  box-shadow: 0 10px 30px rgba(10, 27, 51, 0.1);
   overflow: hidden;
 }
 
 .sidebar {
   background: var(--soft-cream);
   padding: 24px;
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid #E7E3F5;
 }
 
 .main-content {
@@ -350,7 +476,7 @@
 .metrics-panel {
   background: var(--soft-cream);
   padding: 24px;
-  border-left: 1px solid #e5e7eb;
+  border-left: 1px solid #E7E3F5;
 }
 
 .nav-item {
@@ -365,7 +491,7 @@
 }
 
 .nav-item:hover {
-  background: rgba(184, 115, 51, 0.1);
+  background: rgba(7, 78, 132, 0.1);
   color: var(--warm-copper);
 }
 
@@ -378,7 +504,7 @@
   background: white;
   border-radius: 12px;
   padding: 32px;
-  box-shadow: 0 10px 30px rgba(44, 62, 80, 0.1);
+  box-shadow: 0 10px 30px rgba(10, 27, 51, 0.1);
 }
 
 .slider-container {
@@ -389,7 +515,7 @@
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: #e5e7eb;
+  background: #E7E3F5;
   outline: none;
   -webkit-appearance: none;
 }
@@ -414,16 +540,61 @@
 }
 
 .feature-card {
+  position: relative;
   background: white;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 4px 20px rgba(44, 62, 80, 0.08);
-  transition: all 0.3s ease;
+  border-radius: 16px;
+  padding: 32px 28px;
+  border: 1px solid #ECEAF7;
+  box-shadow: 0 4px 20px rgba(10, 27, 51, 0.06);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.35s ease;
+  overflow: hidden;
+}
+
+/* Gold top-bar reveal on hover (EPCORA cue) */
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #FCBC45, #E8A020);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .feature-card:hover {
   transform: translateY(-8px);
-  box-shadow: 0 12px 40px rgba(44, 62, 80, 0.15);
+  box-shadow: 0 18px 48px rgba(10, 27, 51, 0.14);
+}
+
+.feature-card:hover::before {
+  transform: scaleX(1);
+}
+
+/* Feature icon chips — brand tones */
+.icon-chip {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 20px rgba(10, 27, 51, 0.12);
+}
+
+.chip-blue {
+  background: linear-gradient(135deg, #074E84, #2380C6);
+}
+
+.chip-gold {
+  background: linear-gradient(135deg, #FCBC45, #E8A020);
+}
+
+.chip-navy {
+  background: linear-gradient(135deg, #0A1B33, #074E84);
 }
 
 .timeline-container {
@@ -455,49 +626,87 @@
 }
 
 .timeline-dot {
-  width: 16px;
-  height: 16px;
-  background: var(--warm-copper);
+  width: 44px;
+  height: 44px;
+  background: #ffffff;
+  border: 2px solid #074E84;
   border-radius: 50%;
   margin: 0 auto 16px;
   position: relative;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+  color: #074E84;
+  font-family: 'Heebo', 'Inter', sans-serif;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 14px rgba(7, 78, 132, 0.18);
+}
+
+.timeline-item.active .timeline-dot {
+  background: linear-gradient(135deg, #FCBC45, #E8A020);
+  border-color: transparent;
+  color: #05052D;
+  box-shadow: 0 6px 20px rgba(252, 188, 69, 0.4);
+}
+
+.timeline-item.active h3 {
+  color: #074E84;
 }
 
 .testimonial-card {
   background: white;
   border-radius: 12px;
   padding: 32px;
-  box-shadow: 0 8px 30px rgba(44, 62, 80, 0.1);
+  box-shadow: 0 8px 30px rgba(10, 27, 51, 0.1);
   text-align: center;
 }
 
 .pricing-card {
   background: white;
-  border-radius: 12px;
-  padding: 32px;
-  box-shadow: 0 8px 30px rgba(44, 62, 80, 0.1);
+  border-radius: 20px;
+  padding: 40px 32px;
+  box-shadow: 0 8px 30px rgba(10, 27, 51, 0.08);
   text-align: center;
   position: relative;
   overflow: hidden;
+  border: 1px solid #ECEAF7;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.35s ease, box-shadow 0.35s ease;
+}
+
+.pricing-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 50px rgba(10, 27, 51, 0.14);
 }
 
 .pricing-card.featured {
-  border: 2px solid var(--warm-copper);
-  transform: scale(1.05);
+  background: linear-gradient(160deg, #0A1B33 0%, #074E84 100%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 24px 60px rgba(7, 78, 132, 0.35);
 }
 
-.pricing-card.featured::before {
-  content: 'Most Popular';
+.pricing-card.featured:hover {
+  transform: translateY(-6px) scale(1.02);
+}
+
+.featured-badge {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  background: var(--warm-copper);
-  color: white;
-  padding: 8px;
-  font-size: 14px;
-  font-weight: 600;
+  top: 18px;
+  right: -34px;
+  transform: rotate(45deg);
+  background: linear-gradient(135deg, #FCBC45, #E8A020);
+  color: #05052D;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 40px;
+  box-shadow: 0 4px 14px rgba(252, 188, 69, 0.4);
 }
 
 .fade-in {
@@ -1110,4 +1319,16 @@
 
 .msr-list-item:hover {
   background-color: rgba(253, 246, 237, 0.35);
+}
+
+/* Landing page — demo request modal */
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }

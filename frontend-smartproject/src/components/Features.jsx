@@ -1,5 +1,11 @@
 import React, { useEffect } from 'react'
 
+const CheckIcon = () => (
+  <svg className="w-4 h-4 text-[#E8A020] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+  </svg>
+)
+
 const Features = () => {
   useEffect(() => {
     // Fade in animation
@@ -37,7 +43,7 @@ const Features = () => {
         'Milestone tracking',
         'Dependency management'
       ],
-      gradient: 'from-blue-500 to-blue-600'
+      chip: 'chip-blue'
     },
     {
       icon: '💰',
@@ -49,7 +55,7 @@ const Features = () => {
         'Change order tracking',
         'Cash flow projections'
       ],
-      gradient: 'from-green-500 to-green-600'
+      chip: 'chip-gold'
     },
     {
       icon: '👥',
@@ -61,7 +67,7 @@ const Features = () => {
         'Material procurement planning',
         'Capacity planning'
       ],
-      gradient: 'from-purple-500 to-purple-600'
+      chip: 'chip-navy'
     },
     {
       icon: '🤝',
@@ -73,7 +79,7 @@ const Features = () => {
         'Mobile field reporting',
         'Stakeholder portals'
       ],
-      gradient: 'from-orange-500 to-orange-600'
+      chip: 'chip-navy'
     },
     {
       icon: '⚠️',
@@ -85,7 +91,7 @@ const Features = () => {
         'Mitigation planning',
         'Performance dashboards'
       ],
-      gradient: 'from-red-500 to-red-600'
+      chip: 'chip-blue'
     },
     {
       icon: '📱',
@@ -97,33 +103,37 @@ const Features = () => {
         'Photo documentation',
         'Digital forms and checklists'
       ],
-      gradient: 'from-teal-500 to-teal-600'
+      chip: 'chip-gold'
     }
   ]
 
   return (
-    <section id="features" className="section-padding">
+    <section id="features" className="section-padding relative" style={{ background: 'linear-gradient(180deg, #F6F4FF 0%, #ffffff 100%)' }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16 fade-in">
-          <h2 className="font-display text-4xl md:text-5xl font-bold mb-6">Powerful Features</h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+          <span className="section-eyebrow">Capabilities</span>
+          <h2 className="font-display text-4xl md:text-5xl font-extrabold mb-6 text-[#0A1B33]">Powerful Features</h2>
+          <p className="text-xl text-[#505E6B] max-w-3xl mx-auto">
             Everything you need to manage complex construction projects from conception to completion
           </p>
         </div>
-        
+
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
           {features.map((feature, index) => (
             <div key={index} className="feature-card fade-in">
-              <div className={`w-16 h-16 bg-gradient-to-br ${feature.gradient} rounded-lg flex items-center justify-center mb-6`}>
+              <div className={`icon-chip ${feature.chip}`}>
                 <span className="text-2xl">{feature.icon}</span>
               </div>
-              <h3 className="font-semibold text-xl mb-4">{feature.title}</h3>
-              <p className="text-gray-600 mb-4">
+              <h3 className="font-display font-bold text-xl mb-3 text-[#0A1B33]">{feature.title}</h3>
+              <p className="text-[#505E6B] mb-5 leading-relaxed">
                 {feature.description}
               </p>
-              <ul className="text-sm text-gray-500 space-y-1">
+              <ul className="text-sm text-[#505E6B] space-y-2">
                 {feature.items.map((item, itemIndex) => (
-                  <li key={itemIndex}>• {item}</li>
+                  <li key={itemIndex} className="flex items-start gap-2">
+                    <CheckIcon />
+                    {item}
+                  </li>
                 ))}
               </ul>
             </div>

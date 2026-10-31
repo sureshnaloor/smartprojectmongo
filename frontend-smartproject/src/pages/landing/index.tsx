@@ -16,18 +16,24 @@ import Testimonials from '@/components/Testimonials.jsx'
 import Pricing from '@/components/Pricing.jsx'
 // @ts-expect-error - JSX file without type definitions
 import Footer from '@/components/Footer.jsx'
+// @ts-expect-error - JSX file without type definitions
+import TrustBar from '@/components/TrustBar.jsx'
+// @ts-expect-error - JSX file without type definitions
+import CTABanner from '@/components/CTABanner.jsx'
 
 function Landing() {
   return (
     <div className="app">
       <SharedNavigation variant="landing" />
       <Hero />
+      <TrustBar />
       <DashboardDemo />
       <ROICalculator />
       <Features />
       <TimelineVisualizer />
       <Testimonials />
       <Pricing />
+      <CTABanner />
       <Footer />
     </div>
   )

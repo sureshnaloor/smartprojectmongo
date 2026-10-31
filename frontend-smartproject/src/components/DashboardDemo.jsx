@@ -45,7 +45,7 @@ const DashboardDemo = () => {
       text: 'Project Timeline',
       left: 'center',
       textStyle: {
-        color: '#2C3E50',
+        color: '#0A1B33',
         fontSize: 18,
         fontWeight: 'bold'
       }
@@ -99,7 +99,7 @@ const DashboardDemo = () => {
               height: height
             },
             style: {
-              fill: '#B87333',
+              fill: '#074E84',
               opacity: 0.3
             }
           }, {
@@ -111,7 +111,7 @@ const DashboardDemo = () => {
               height: height
             },
             style: {
-              fill: '#B87333'
+              fill: '#074E84'
             }
           }]
         }
@@ -151,11 +151,11 @@ const DashboardDemo = () => {
       type: 'line',
       smooth: true,
       lineStyle: {
-        color: '#B87333',
+        color: '#074E84',
         width: 3
       },
       itemStyle: {
-        color: '#B87333'
+        color: '#074E84'
       },
       areaStyle: {
         color: {
@@ -165,9 +165,9 @@ const DashboardDemo = () => {
           x2: 0,
           y2: 1,
           colorStops: [{
-            offset: 0, color: 'rgba(184, 115, 51, 0.3)'
+            offset: 0, color: 'rgba(7, 78, 132, 0.3)'
           }, {
-            offset: 1, color: 'rgba(184, 115, 51, 0.1)'
+            offset: 1, color: 'rgba(7, 78, 132, 0.1)'
           }]
         }
       }
@@ -186,8 +186,8 @@ const DashboardDemo = () => {
       type: 'pie',
       radius: ['40%', '70%'],
       data: [
-        { value: 68, name: 'Spent', itemStyle: { color: '#B87333' } },
-        { value: 32, name: 'Remaining', itemStyle: { color: '#7D8471' } }
+        { value: 68, name: 'Spent', itemStyle: { color: '#074E84' } },
+        { value: 32, name: 'Remaining', itemStyle: { color: '#FCBC45' } }
       ],
       label: {
         show: true,
@@ -217,7 +217,7 @@ const DashboardDemo = () => {
       type: 'bar',
       itemStyle: {
         color: (params) => {
-          const colors = ['#B87333', '#7D8471', '#8B4513', '#2C3E50']
+          const colors = ['#074E84', '#FCBC45', '#2380C6', '#0A1B33']
           return colors[params.dataIndex]
         }
       }
@@ -330,9 +330,10 @@ const DashboardDemo = () => {
     <section id="demo" className="section-padding">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16 fade-in">
-          <h2 className="font-display text-4xl md:text-5xl font-bold mb-6">Experience the Platform</h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            See how our intelligent dashboard transforms complex construction projects into manageable, 
+          <span className="section-eyebrow">Platform Tour</span>
+          <h2 className="font-display text-4xl md:text-5xl font-extrabold mb-6 text-[#0A1B33]">Experience the Platform</h2>
+          <p className="text-xl text-[#505E6B] max-w-3xl mx-auto">
+            See how our intelligent dashboard transforms complex construction projects into manageable,
             profitable operations with real-time insights and collaborative tools.
           </p>
         </div>

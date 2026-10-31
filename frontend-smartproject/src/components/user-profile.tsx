@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import * as React from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Loader2, LogOut } from "lucide-react";
+import { Inbox, Loader2, LogOut } from "lucide-react";
 
 export function UserProfile() {
   const { user, loading, authenticated, checkAuth, logout } = useAuth();
@@ -116,6 +116,15 @@ export function UserProfile() {
             onMouseEnter={handleMenuMouseEnter}
             onMouseLeave={handleMenuMouseLeave}
           >
+            {(user.role === "admin" || user.role === "demorequest-admin") && (
+              <a
+                href="/admin/demo-requests"
+                className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+              >
+                <Inbox className="h-4 w-4" />
+                Demo Requests
+              </a>
+            )}
             <button
               onClick={() => {
                 setShowMenu(false);

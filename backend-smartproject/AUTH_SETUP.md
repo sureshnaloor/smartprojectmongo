@@ -25,6 +25,12 @@ GOOGLE_CALLBACK_URL=http://localhost:8080/api/auth/google/callback
 LINKEDIN_CLIENT_ID=your-linkedin-client-id
 LINKEDIN_CLIENT_SECRET=your-linkedin-client-secret
 LINKEDIN_CALLBACK_URL=http://localhost:8080/api/auth/linkedin/callback
+
+# Admin roles (comma-separated emails; roles re-sync on every login)
+# Full app admins — can amend projects + everything below
+ADMIN_EMAILS=owner@yourcompany.com
+# Demo-request admins — access to /admin/demo-requests and its API only
+DEMO_REQUEST_ADMIN_EMAILS=sales@yourcompany.com
 ```
 
 ## Setting up Google OAuth
@@ -54,6 +60,22 @@ LINKEDIN_CALLBACK_URL=http://localhost:8080/api/auth/linkedin/callback
 5. Copy the Client ID and Client Secret to your `.env` file
 
 **Note:** LinkedIn deprecated the old `r_emailaddress` and `r_liteprofile` scopes. The app now uses OpenID Connect scopes: `openid`, `profile`, `email`.
+
+## User Roles
+
+Every account gets a `role` stored on its `users` document. Roles are resolved from the email env vars above and **re-synced on every login**, so adding or removing an email takes effect the next time that user signs in. Sessions re-read the role from the database on each request, so changes apply without waiting for sessions to expire.
+
+| Role | How it's assigned | Access |
+| --- | --- | --- |
+| `admin` | `ADMIN_EMAILS` env var, or the local bypass account (`dev@example.com`) | Everything, including project amendments and the demo-requests admin panel |
+| `demorequest-admin` | `DEMO_REQUEST_ADMIN_EMAILS` env var | Demo-requests admin panel (`/admin/demo-requests`) and `GET/PATCH/DELETE /api/demo-requests` only — no project amendment or other admin powers |
+| `user` | Default for everyone else | Standard app features |
+
+Notes:
+
+- Full `admin` users implicitly have demo-request access (the API accepts either `admin` or `demorequest-admin`).
+- The local dev bypass (`GET /api/auth/bypass`, email `dev@example.com`) is always `admin` so amendments can be tested without env setup.
+- Demo requests from the landing page are captured by the public endpoint `POST /api/demo-requests` (no auth required) into the `demoRequests` MongoDB collection, tagged with `interest: demo \| trial \| sales`.
 
 ## API Endpoints
 
@@ -99,6 +121,7 @@ The `users` table is automatically created when you run `npm run db:push`. It st
 - `picture` - Profile picture URL
 - `provider` - OAuth provider (google, linkedin, email)
 - `providerId` - Provider-specific user ID
+- `role` - `admin` | `demorequest-admin` | `user` (see User Roles above)
 - `createdAt` - Account creation timestamp
 - `updatedAt` - Last update timestamp
 

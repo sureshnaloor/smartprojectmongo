@@ -49,9 +49,9 @@ const ROICalculator = () => {
       radius: ['30%', '70%'],
       center: ['50%', '50%'],
       data: [
-        { value: parseFloat(savings.timeSave), name: 'Time Savings', itemStyle: { color: '#10B981' } },
-        { value: parseFloat(savings.costSave), name: 'Cost Reduction', itemStyle: { color: '#3B82F6' } },
-        { value: parseFloat(savings.efficiency), name: 'Efficiency Gain', itemStyle: { color: '#8B5CF6' } }
+        { value: parseFloat(savings.timeSave), name: 'Time Savings', itemStyle: { color: '#074E84' } },
+        { value: parseFloat(savings.costSave), name: 'Cost Reduction', itemStyle: { color: '#FCBC45' } },
+        { value: parseFloat(savings.efficiency), name: 'Efficiency Gain', itemStyle: { color: '#2380C6' } }
       ],
       label: {
         show: true,
@@ -61,11 +61,20 @@ const ROICalculator = () => {
   })
 
   return (
-    <section className="section-padding bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section className="section-padding relative overflow-hidden" style={{
+      backgroundImage: 'linear-gradient(rgba(5, 5, 45, 0.72), rgba(10, 27, 51, 0.88)), url(/abstract-epcora.jpg)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center'
+    }}>
+      {/* glow accents */}
+      <div className="absolute top-0 left-1/4 w-[420px] h-[420px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(35,128,198,0.18) 0%, transparent 65%)' }}></div>
+      <div className="absolute bottom-0 right-10 w-[380px] h-[380px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(252,188,69,0.10) 0%, transparent 65%)' }}></div>
+
+      <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16 fade-in">
-          <h2 className="font-display text-4xl md:text-5xl font-bold mb-6">Calculate Your ROI</h2>
-          <p className="text-xl text-gray-600">
+          <span className="section-eyebrow section-eyebrow-light">ROI Calculator</span>
+          <h2 className="font-display text-4xl md:text-5xl font-extrabold mb-6 text-white">Calculate Your ROI</h2>
+          <p className="text-xl text-white/60">
             See how much you can save with intelligent project management
           </p>
         </div>
@@ -137,25 +146,23 @@ const ROICalculator = () => {
               </div>
               
               <div className="mt-6 space-y-4">
-                <div className="flex justify-between items-center p-4 bg-green-50 rounded-lg">
-                  <span className="font-medium">Time Savings</span>
-                  <span className="font-bold text-green-600">{savings.timeSave}%</span>
+                <div className="flex justify-between items-center p-4 rounded-lg" style={{ background: '#EAF3FB' }}>
+                  <span className="font-medium text-[#0A1B33]">Time Savings</span>
+                  <span className="font-bold text-[#074E84]">{savings.timeSave}%</span>
                 </div>
-                <div className="flex justify-between items-center p-4 bg-blue-50 rounded-lg">
-                  <span className="font-medium">Cost Reduction</span>
-                  <span className="font-bold text-blue-600">{savings.costSave}%</span>
+                <div className="flex justify-between items-center p-4 rounded-lg" style={{ background: '#FEF6E4' }}>
+                  <span className="font-medium text-[#0A1B33]">Cost Reduction</span>
+                  <span className="font-bold text-[#E8A020]">{savings.costSave}%</span>
                 </div>
-                <div className="flex justify-between items-center p-4 bg-purple-50 rounded-lg">
-                  <span className="font-medium">Efficiency Gain</span>
-                  <span className="font-bold text-purple-600">{savings.efficiency}%</span>
+                <div className="flex justify-between items-center p-4 rounded-lg" style={{ background: '#EDF6FD' }}>
+                  <span className="font-medium text-[#0A1B33]">Efficiency Gain</span>
+                  <span className="font-bold text-[#2380C6]">{savings.efficiency}%</span>
                 </div>
               </div>
-              
-              <div className="mt-6 p-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg">
-                <div className="text-center">
-                  <div className="text-sm text-gray-600">Total Annual Savings</div>
-                  <div className="text-3xl font-bold text-orange-600">${savings.total}M</div>
-                </div>
+
+              <div className="mt-6 p-5 rounded-xl text-center" style={{ background: 'linear-gradient(120deg, #074E84, #2380C6)' }}>
+                <div className="text-sm text-white/70 uppercase tracking-[0.14em]">Total Annual Savings</div>
+                <div className="text-4xl font-display font-extrabold text-[#FCBC45]">${savings.total}M</div>
               </div>
             </div>
           </div>
