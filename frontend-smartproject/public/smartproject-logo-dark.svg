@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="SmartProject by EPCORA Stack dark mode mark">
+  <defs>
+    <linearGradient id="spdNavyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0E2749"/>
+      <stop offset="100%" stop-color="#07162C"/>
+    </linearGradient>
+    <linearGradient id="spdBlueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4DB5FF"/>
+      <stop offset="100%" stop-color="#2380C6"/>
+    </linearGradient>
+    <linearGradient id="spdGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE08A"/>
+      <stop offset="55%" stop-color="#FCBC45"/>
+      <stop offset="100%" stop-color="#E8730C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Outer frame with bright gold/cyan rim for dark backgrounds -->
+  <rect x="18" y="18" width="204" height="204" rx="46" fill="url(#spdNavyGrad)" stroke="#FCBC45" stroke-width="3.5" stroke-opacity="0.75"/>
+
+  <!-- Subtle blueprint engineering grid inside -->
+  <g stroke="#4DB5FF" stroke-width="1" opacity="0.2">
+    <line x1="60" y1="24" x2="60" y2="216"/>
+    <line x1="100" y1="24" x2="100" y2="216"/>
+    <line x1="140" y1="24" x2="140" y2="216"/>
+    <line x1="180" y1="24" x2="180" y2="216"/>
+    <line x1="24" y1="60" x2="216" y2="60"/>
+    <line x1="24" y1="100" x2="216" y2="100"/>
+    <line x1="24" y1="140" x2="216" y2="140"/>
+    <line x1="24" y1="180" x2="216" y2="180"/>
+  </g>
+
+  <!-- Precision outer control ring -->
+  <circle cx="120" cy="120" r="82" fill="none" stroke="#4DB5FF" stroke-width="2" stroke-dasharray="8 6" opacity="0.5"/>
+
+  <!-- Structural Crane Mast & Jib -->
+  <g fill="none" stroke="url(#spdGoldGrad)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M58 182 L58 64" stroke-width="7"/>
+    <path d="M72 182 L72 64" stroke-width="4" opacity="0.9"/>
+    <path d="M58 82 L72 96 L58 110 L72 124 L58 138 L72 152 L58 166" stroke-width="2.5"/>
+    <path d="M44 68 L186 68" stroke-width="6"/>
+    <path d="M65 44 L65 68" stroke-width="5"/>
+    <path d="M65 45 L154 68" stroke-width="2.5" opacity="0.9"/>
+    <path d="M65 45 L46 68" stroke-width="2.5" opacity="0.9"/>
+  </g>
+
+  <!-- Smart WBS & Gantt Schedule Bars -->
+  <rect x="88" y="88" width="94" height="18" rx="6" fill="url(#spdBlueGrad)"/>
+  <circle cx="97" cy="97" r="3.5" fill="#FFFFFF"/>
+
+  <rect x="104" y="116" width="84" height="20" rx="6" fill="url(#spdGoldGrad)"/>
+  <circle cx="114" cy="126" r="3.5" fill="#05052D"/>
+  <path d="M148 106 L148 116" stroke="#FCBC45" stroke-width="3" stroke-linecap="round"/>
+
+  <rect x="88" y="146" width="70" height="18" rx="6" fill="#FFFFFF"/>
+  <rect x="88" y="146" width="48" height="18" rx="6" fill="#2380C6"/>
+
+  <!-- Milestone Diamond -->
+  <polygon points="184,143 196,155 184,167 172,155" fill="url(#spdGoldGrad)" stroke="#FFFFFF" stroke-width="2"/>
+
+  <!-- Base Foundation Bar -->
+  <rect x="46" y="182" width="148" height="10" rx="5" fill="#2380C6"/>
+  <rect x="46" y="182" width="76" height="10" rx="5" fill="url(#spdGoldGrad)"/>
+
+  <circle cx="65" cy="44" r="5" fill="#FFE08A"/>
+  <circle cx="186" cy="68" r="4.5" fill="#FFE08A"/>
+</svg>

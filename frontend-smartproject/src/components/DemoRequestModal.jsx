@@ -98,9 +98,9 @@ const DemoRequestModal = ({ open, onClose, intent = null }) => {
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
           </button>
-          <h3 className="font-display text-2xl font-extrabold text-white">Request a Demo</h3>
+          <h3 className="font-display text-2xl font-extrabold text-white">Request a SmartProject Demo</h3>
           <p className="mt-1 text-sm text-white/70">
-            {INTENT_COPY[intent]?.subtitle || 'See ConstructPro in action with your own projects.'}
+            {INTENT_COPY[intent]?.subtitle || 'See SmartProject by EPCORA Stack in action with your own projects.'}
           </p>
         </div>
 

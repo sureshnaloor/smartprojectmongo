@@ -1,89 +1,250 @@
-import React from 'react'
+import React from "react";
+import { motion } from "framer-motion";
+import { useLocation } from "wouter";
+import {
+  Mail,
+  Phone,
+  MapPin,
+  Linkedin,
+  Github,
+  Twitter,
+  ArrowUp,
+} from "lucide-react";
 
 const Footer = () => {
-  return (
-    <footer id="contact" className="relative overflow-hidden text-white" style={{ background: '#05052D' }}>
-      {/* subtle top gold line */}
-      <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg, transparent, #FCBC45, #2380C6, transparent)' }}></div>
+  const [, setLocation] = useLocation();
+  const scrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-8">
-        <div className="grid md:grid-cols-12 gap-10 mb-14">
-          {/* Brand column */}
-          <div className="md:col-span-4">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #074E84, #2380C6)' }}>
-                <svg className="w-5 h-5 text-[#FCBC45]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8v-5h4v5" />
-                </svg>
+  return (
+    <footer
+      id="contact"
+      className="bg-ink text-white/80 pt-16 pb-10 border-t border-white/10"
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-10 pb-12 border-b border-white/10">
+          {/* Brand Column */}
+          <div className="lg:col-span-2">
+            <div className="flex items-center gap-3.5 mb-4">
+              <div
+                className="relative w-14 h-14 shrink-0 flex items-center justify-center"
+                style={{ perspective: "500px" }}
+              >
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -bottom-1 left-2 right-2 h-2 rounded-full mark-floor-shadow"
+                />
+                <motion.img
+                  src="/smartproject-logo-dark.svg"
+                  alt="SmartProject by EPCORA Stack mark"
+                  className="w-12 h-12 relative z-10 select-none"
+                  style={{
+                    transformStyle: "preserve-3d",
+                    filter:
+                      "drop-shadow(0 4px 6px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 12px rgba(252, 188, 69, 0.35))",
+                  }}
+                  animate={{
+                    rotateY: [0, 360],
+                    rotateX: [4, -4, 4],
+                    y: [0, -2, 0],
+                  }}
+                  transition={{
+                    rotateY: {
+                      duration: 14,
+                      repeat: Infinity,
+                      ease: "linear",
+                    },
+                    rotateX: {
+                      duration: 4.5,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    },
+                    y: {
+                      duration: 3.5,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    },
+                  }}
+                />
               </div>
-              <span className="font-display text-2xl font-extrabold tracking-tight">Construct<span className="text-[#FCBC45]">Pro</span></span>
+              <div>
+                <div className="font-display font-black text-2xl tracking-wider leading-none text-3d-gold">
+                  SMARTPROJECT
+                </div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-gold font-semibold mt-1">
+                  An EPCORA Stack Product
+                </div>
+                <div className="text-[11px] text-white/75 font-medium tracking-wide mt-0.5 flex flex-wrap items-center gap-x-1">
+                  <span>Engineer · Procure · Construct ·</span>
+                  <span className="agentically">agentically</span>
+                </div>
+              </div>
             </div>
-            <p className="text-white/55 mb-6 leading-relaxed max-w-sm">
-              Transforming construction project management through intelligent technology and innovative solutions.
+            <p className="text-sm text-white/70 leading-relaxed mb-6 max-w-md">
+              Enterprise project controls, 9-level WBS governance, Critical Path
+              scheduling, Earned Value Management, and cross-project resource
+              optimization for EPC and capital construction programs.
             </p>
-            <div className="flex gap-3">
+            <div className="flex items-center gap-2">
               {[
-                { label: 'LinkedIn', path: 'M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z' },
-                { label: 'X', path: 'M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z' },
-                { label: 'YouTube', path: 'M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z' }
-              ].map((social, i) => (
-                <a key={i} href="#" aria-label={social.label} className="w-9 h-9 rounded-lg border border-white/10 flex items-center justify-center text-white/60 hover:text-[#FCBC45] hover:border-[#FCBC45]/50 transition-colors duration-300">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d={social.path} /></svg>
+                { Icon: Linkedin, label: "LinkedIn" },
+                { Icon: Twitter, label: "Twitter" },
+                { Icon: Github, label: "GitHub" },
+              ].map(({ Icon, label }) => (
+                <a
+                  key={label}
+                  href="#overview"
+                  aria-label={label}
+                  className="w-9 h-9 rounded-sm bg-white/5 hover:bg-gold hover:text-ink flex items-center justify-center transition-colors"
+                >
+                  <Icon className="w-4 h-4" />
                 </a>
               ))}
             </div>
           </div>
 
-          <div className="md:col-span-2">
-            <h4 className="font-display font-bold text-sm uppercase tracking-[0.14em] text-white/90 mb-5">Product</h4>
-            <ul className="space-y-3 text-white/55 text-sm">
-              <li><a href="#features" className="hover:text-[#FCBC45] transition-colors">Features</a></li>
-              <li><a href="#pricing" className="hover:text-[#FCBC45] transition-colors">Pricing</a></li>
-              <li><a href="#demo" className="hover:text-[#FCBC45] transition-colors">Demo</a></li>
-              <li><a href="#" className="hover:text-[#FCBC45] transition-colors">Integrations</a></li>
+          {/* Platform Navigation */}
+          <div>
+            <h4 className="font-display font-bold text-white uppercase tracking-wider text-sm mb-4">
+              Navigation
+            </h4>
+            <ul className="space-y-2.5 text-sm">
+              {[
+                { label: "Product Overview", href: "#overview" },
+                { label: "How It Works", href: "#how-it-works" },
+                { label: "21 Core Modules", href: "#features" },
+                { label: "Product Showcase", href: "#showcase" },
+                { label: "Live Control Demo", href: "#demo" },
+                { label: "ROI Calculator", href: "#roi" },
+                { label: "Engagement & FAQ", href: "#engagement" },
+              ].map((l) => (
+                <li key={l.href}>
+                  <a
+                    href={l.href}
+                    className="hover:text-gold transition-colors"
+                  >
+                    {l.label}
+                  </a>
+                </li>
+              ))}
             </ul>
           </div>
 
-          <div className="md:col-span-2">
-            <h4 className="font-display font-bold text-sm uppercase tracking-[0.14em] text-white/90 mb-5">Company</h4>
-            <ul className="space-y-3 text-white/55 text-sm">
-              <li><a href="#" className="hover:text-[#FCBC45] transition-colors">About</a></li>
-              <li><a href="#" className="hover:text-[#FCBC45] transition-colors">Careers</a></li>
-              <li><a href="#contact" className="hover:text-[#FCBC45] transition-colors">Contact</a></li>
-              <li><a href="#" className="hover:text-[#FCBC45] transition-colors">Blog</a></li>
+          {/* Core Modules */}
+          <div>
+            <h4 className="font-display font-bold text-white uppercase tracking-wider text-sm mb-4">
+              Core Modules
+            </h4>
+            <ul className="space-y-2.5 text-sm">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setLocation("/newlanding")}
+                  className="hover:text-gold transition-colors text-left"
+                >
+                  9-Level WBS &amp; Work Packages
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setLocation("/newlanding")}
+                  className="hover:text-gold transition-colors text-left"
+                >
+                  CPM Gantt &amp; PERT Network
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setLocation("/newlanding")}
+                  className="hover:text-gold transition-colors text-left"
+                >
+                  Earned Value (CPI / SPI / EAC)
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setLocation("/newlanding")}
+                  className="hover:text-gold transition-colors text-left"
+                >
+                  Resource Utilization &amp; Timesheets
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setLocation("/newlanding")}
+                  className="hover:text-gold transition-colors text-left"
+                >
+                  PR-to-PO Procurement &amp; Masters
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setLocation("/newlanding")}
+                  className="hover:text-gold transition-colors text-left"
+                >
+                  HSE, Risk &amp; Lessons Learnt Wiki
+                </button>
+              </li>
             </ul>
           </div>
 
-          <div className="md:col-span-4">
-            <h4 className="font-display font-bold text-sm uppercase tracking-[0.14em] text-white/90 mb-5">Stay in the loop</h4>
-            <p className="text-white/55 text-sm mb-4">Product updates and EPC insights, once a month. No spam.</p>
-            <form className="flex gap-2" onSubmit={(e) => e.preventDefault()}>
-              <input
-                type="email"
-                required
-                placeholder="Work email"
-                className="flex-1 min-w-0 px-4 py-2.5 rounded-lg bg-white/5 border border-white/15 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#FCBC45]/60 focus:bg-white/10 transition-colors"
-              />
-              <button type="submit" className="btn-primary btn-gold px-5 py-2.5 text-sm whitespace-nowrap">Subscribe</button>
-            </form>
-            <div className="mt-6 flex items-center gap-2 text-white/45 text-xs">
-              <svg className="w-4 h-4 text-[#2380C6]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-              sales@constructpro.com
-            </div>
+          {/* Contact */}
+          <div>
+            <h4 className="font-display font-bold text-white uppercase tracking-wider text-sm mb-4">
+              Get In Touch
+            </h4>
+            <ul className="space-y-3 text-sm">
+              <li className="flex items-start gap-2.5">
+                <MapPin className="w-4 h-4 text-gold shrink-0 mt-1" />
+                <span>
+                  Global Delivery · Houston · London · Dubai · Bengaluru
+                </span>
+              </li>
+              <li className="flex items-center gap-2.5">
+                <Phone className="w-4 h-4 text-gold shrink-0" />
+                <a
+                  href="tel:+18005550199"
+                  className="hover:text-gold transition-colors"
+                >
+                  +1 (800) 555-0199
+                </a>
+              </li>
+              <li className="flex items-center gap-2.5">
+                <Mail className="w-4 h-4 text-gold shrink-0" />
+                <a
+                  href="mailto:info@epcorastack.com"
+                  className="hover:text-gold transition-colors"
+                >
+                  info@epcorastack.com
+                </a>
+              </li>
+            </ul>
           </div>
         </div>
 
-        <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-3 text-sm text-white/40">
-          <p>&copy; 2024 ConstructPro. All rights reserved. Built with precision for the construction industry.</p>
-          <div className="flex gap-6">
-            <a href="#" className="hover:text-white/70 transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white/70 transition-colors">Terms</a>
-            <a href="#" className="hover:text-white/70 transition-colors">Security</a>
+        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-white/60">
+          <div>
+            © {new Date().getFullYear()} SmartProject · An EPCORA Stack Product.
+            All rights reserved.
           </div>
+          <button
+            type="button"
+            onClick={scrollTop}
+            className="inline-flex items-center gap-2 text-white/80 hover:text-gold transition-colors"
+          >
+            <span>Back to top</span>
+            <span className="w-7 h-7 rounded-sm bg-white/10 flex items-center justify-center">
+              <ArrowUp className="w-3.5 h-3.5" />
+            </span>
+          </button>
         </div>
       </div>
     </footer>
-  )
-}
+  );
+};
 
-export default Footer
+export default Footer;

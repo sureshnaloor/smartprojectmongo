@@ -47,7 +47,7 @@ export function ActivityNetworkTab({
           Create First Activity
         </Button>
         <a
-          href="https://docs.constructpro.app/activity-planning"
+          href="https://smartproject.epcorastack.com/docs/activity-planning"
           target="_blank"
           rel="noopener noreferrer"
           className="mt-4 inline-flex items-center gap-1 kanban-body-sm text-[var(--copper-500)] hover:underline"

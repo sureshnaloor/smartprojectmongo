@@ -134,8 +134,8 @@ export default function ProjectLayout({ children, projectId }: ProjectLayoutProp
 
       <footer className="cp-app-footer">
         <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 px-4 py-3">
-          <img src="/smartproject.png" alt="ConstructPro Logo" className="h-4 w-auto opacity-70" />
-          <span>© {new Date().getFullYear()} ConstructPro. All rights reserved.</span>
+          <img src="/smartproject-logo.svg" alt="SmartProject Logo" className="h-4 w-4 opacity-85" />
+          <span>© {new Date().getFullYear()} SmartProject · An EPCORA Stack Product. All rights reserved.</span>
         </div>
       </footer>
     </div>

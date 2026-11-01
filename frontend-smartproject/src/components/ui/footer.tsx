@@ -8,24 +8,24 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="col-span-1 md:col-span-2">
             <div className="flex items-center mb-4">
-              <div className="mr-2">
-                <img src="/smartproject.png" alt="ConstructPro Logo" className="h-6 w-auto" />
+              <div className="mr-2.5">
+                <img src="/smartproject-logo.svg" alt="SmartProject Logo" className="h-7 w-7" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-800">ConstructPro</h3>
+              <h3 className="text-lg font-display font-bold text-gray-900">SmartProject</h3>
             </div>
             <p className="text-gray-600 mb-4 max-w-md">
-              Streamline your construction project management with powerful tools for scheduling, 
-              cost control, and performance tracking.
+              Streamline your EPC and construction project controls with 9-level WBS governance,
+              Critical Path scheduling, Earned Value Management, and cross-project resource optimization.
             </p>
           </div>
           
           <div>
             <h4 className="font-medium text-gray-900 mb-4">Quick Links</h4>
             <ul className="space-y-2">
-              <li><a href="#" className="text-gray-600 hover:text-primary-600">Features</a></li>
-              <li><a href="#" className="text-gray-600 hover:text-primary-600">Documentation</a></li>
-              <li><a href="#" className="text-gray-600 hover:text-primary-600">Pricing</a></li>
-              <li><a href="#" className="text-gray-600 hover:text-primary-600">About Us</a></li>
+              <li><a href="/#features" className="text-gray-600 hover:text-primary-600">Capabilities</a></li>
+              <li><a href="/#showcase" className="text-gray-600 hover:text-primary-600">Showcase</a></li>
+              <li><a href="/#engagement" className="text-gray-600 hover:text-primary-600">Engagement</a></li>
+              <li><a href="/#faq" className="text-gray-600 hover:text-primary-600">FAQ</a></li>
             </ul>
           </div>
           
@@ -34,11 +34,11 @@ export function Footer() {
             <ul className="space-y-2">
               <li className="flex items-center text-gray-600">
                 <Mail className="h-4 w-4 mr-2" />
-                <span>support@constructpro.com</span>
+                <span>info@epcorastack.com</span>
               </li>
               <li className="flex items-center text-gray-600">
                 <Phone className="h-4 w-4 mr-2" />
-                <span>+1 (555) 123-4567</span>
+                <span>+1 (800) 555-0199</span>
               </li>
             </ul>
             <Button variant="outline" className="mt-4">
@@ -49,7 +49,7 @@ export function Footer() {
         
         <div className="border-t border-gray-200 mt-8 pt-6 flex flex-col md:flex-row justify-between items-center">
           <p className="text-gray-500 text-sm">
-            © 2025 xbeyond. All rights reserved.
+            © {new Date().getFullYear()} SmartProject · An EPCORA Stack Product. All rights reserved.
           </p>
           <div className="flex space-x-6 mt-4 md:mt-0">
             <a href="#" className="text-gray-400 hover:text-gray-500">

@@ -5,6 +5,6 @@ import "./styles/constructpro-app.css";
 import "./styles/global-masters.css";
 
 // Set the page title
-document.title = "ConstructPro - Project Management";
+document.title = "SmartProject — Intelligent Project Controls & Resource Optimization | EPCORA Stack";
 
 createRoot(document.getElementById("root")!).render(<App />);

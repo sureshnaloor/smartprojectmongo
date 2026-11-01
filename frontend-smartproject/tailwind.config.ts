@@ -13,7 +13,22 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+        display: ['Heebo', 'Inter', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
       colors: {
+        epcPrimary: "#074E84",
+        epcSecondary: "#2380C6",
+        gold: "#FCBC45",
+        golddeep: "#E8A020",
+        saffron: "#E8730C",
+        ink: "#05052D",
+        navy: "#0A1B33",
+        body: "#505E6B",
+        mist: "#F6F4FF",
+        line: "#E7E3F5",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {
@@ -64,6 +79,10 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+      },
+      boxShadow: {
+        card: "0 10px 30px -10px rgba(7, 78, 132, 0.12)",
+        cardhover: "0 20px 45px -12px rgba(7, 78, 132, 0.22)",
       },
       keyframes: {
         "accordion-down": {

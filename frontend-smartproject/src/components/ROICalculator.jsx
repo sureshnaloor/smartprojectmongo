@@ -1,175 +1,256 @@
-import React, { useState, useEffect } from 'react'
-import ReactECharts from 'echarts-for-react'
+import React, { useState, useEffect } from "react";
+import ReactECharts from "echarts-for-react";
+import { Calculator, TrendingUp, Clock, DollarSign, ShieldCheck } from "lucide-react";
 
 const ROICalculator = () => {
-  const [budget, setBudget] = useState(25)
-  const [duration, setDuration] = useState(24)
-  const [team, setTeam] = useState(50)
+  const [projectCount, setProjectCount] = useState(12);
+  const [avgProjectValue, setAvgProjectValue] = useState(5000000);
+  const [teamSize, setTeamSize] = useState(40);
+  const [delayPercentage, setDelayPercentage] = useState(18);
+  const [results, setResults] = useState({
+    annualSavings: 0,
+    timeSaved: 0,
+    roiPercentage: 0,
+    paybackMonths: 0,
+  });
 
   useEffect(() => {
-    // Fade in animation
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible')
-        }
-      })
-    }, { threshold: 0.1 })
+    const totalAnnualValue = projectCount * avgProjectValue;
+    const delayCost =
+      totalAnnualValue * (delayPercentage / 100) * 0.08;
+    const resourceOptimizationSavings = teamSize * 2500 * 12 * 0.14;
+    const totalAnnualSavings = delayCost * 0.42 + resourceOptimizationSavings;
 
-    const elements = document.querySelectorAll('.fade-in')
-    elements.forEach(el => observer.observe(el))
+    const smartProjectCost = teamSize * 89 * 12;
+    const netSavings = totalAnnualSavings - smartProjectCost;
+    const roi = (netSavings / smartProjectCost) * 100;
+    const payback = smartProjectCost / (totalAnnualSavings / 12);
 
-    return () => {
-      elements.forEach(el => observer.unobserve(el))
-    }
-  }, [])
-
-  const calculateSavings = () => {
-    const timeSavePercent = Math.min(25, 10 + (budget * 0.3) + (team * 0.1))
-    const costSavePercent = Math.min(15, 5 + (budget * 0.2) + (duration * 0.1))
-    const efficiencyGainPercent = Math.min(35, 15 + (team * 0.2) + (duration * 0.15))
-    const annualSavings = (budget * 1000000) * (costSavePercent / 100) * (12 / duration)
-
-    return {
-      timeSave: timeSavePercent.toFixed(0),
-      costSave: costSavePercent.toFixed(0),
-      efficiency: efficiencyGainPercent.toFixed(0),
-      total: (annualSavings / 1000000).toFixed(1)
-    }
-  }
-
-  const savings = calculateSavings()
+    setResults({
+      annualSavings: Math.round(totalAnnualSavings),
+      timeSaved: Math.round(projectCount * delayPercentage * 0.4 * 2.2),
+      roiPercentage: Math.max(120, Math.round(roi)),
+      paybackMonths: Math.max(0.8, Math.round(payback * 10) / 10),
+    });
+  }, [projectCount, avgProjectValue, teamSize, delayPercentage]);
 
   const getChartOption = () => ({
-    tooltip: {
-      trigger: 'item'
+    title: {
+      text: "Projected Annual Value Recovery Breakdown",
+      textStyle: {
+        color: "#05052D",
+        fontSize: 15,
+        fontWeight: "bold",
+        fontFamily: "Heebo, sans-serif",
+      },
     },
-    series: [{
-      type: 'pie',
-      radius: ['30%', '70%'],
-      center: ['50%', '50%'],
-      data: [
-        { value: parseFloat(savings.timeSave), name: 'Time Savings', itemStyle: { color: '#074E84' } },
-        { value: parseFloat(savings.costSave), name: 'Cost Reduction', itemStyle: { color: '#FCBC45' } },
-        { value: parseFloat(savings.efficiency), name: 'Efficiency Gain', itemStyle: { color: '#2380C6' } }
-      ],
-      label: {
-        show: true,
-        formatter: '{b}\n{c}%'
-      }
-    }]
-  })
+    tooltip: {
+      trigger: "item",
+      formatter: "{b}: ${c} ({d}%)",
+    },
+    series: [
+      {
+        name: "Savings Breakdown",
+        type: "pie",
+        radius: ["42%", "72%"],
+        center: ["50%", "56%"],
+        data: [
+          {
+            value: Math.round(results.annualSavings * 0.45),
+            name: "WBS Scope & Budget Creep Prevention",
+            itemStyle: { color: "#074E84" },
+          },
+          {
+            value: Math.round(results.annualSavings * 0.35),
+            name: "Idle Resource & Equipment Reallocation",
+            itemStyle: { color: "#2380C6" },
+          },
+          {
+            value: Math.round(results.annualSavings * 0.2),
+            name: "Critical Path Delay Mitigation",
+            itemStyle: { color: "#FCBC45" },
+          },
+        ],
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10,
+            shadowOffsetX: 0,
+            shadowColor: "rgba(7, 78, 132, 0.35)",
+          },
+        },
+      },
+    ],
+  });
+
+  const formatCurrency = (value) => {
+    if (value >= 1000000) {
+      return `$${(value / 1000000).toFixed(2)}M`;
+    } else if (value >= 1000) {
+      return `$${(value / 1000).toFixed(0)}K`;
+    }
+    return `$${value}`;
+  };
 
   return (
-    <section className="section-padding relative overflow-hidden" style={{
-      backgroundImage: 'linear-gradient(rgba(5, 5, 45, 0.72), rgba(10, 27, 51, 0.88)), url(/abstract-epcora.jpg)',
-      backgroundSize: 'cover',
-      backgroundPosition: 'center'
-    }}>
-      {/* glow accents */}
-      <div className="absolute top-0 left-1/4 w-[420px] h-[420px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(35,128,198,0.18) 0%, transparent 65%)' }}></div>
-      <div className="absolute bottom-0 right-10 w-[380px] h-[380px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(252,188,69,0.10) 0%, transparent 65%)' }}></div>
-
-      <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16 fade-in">
-          <span className="section-eyebrow section-eyebrow-light">ROI Calculator</span>
-          <h2 className="font-display text-4xl md:text-5xl font-extrabold mb-6 text-white">Calculate Your ROI</h2>
-          <p className="text-xl text-white/60">
-            See how much you can save with intelligent project management
+    <section id="roi" className="py-20 lg:py-24 bg-mist border-t border-line">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center max-w-3xl mx-auto mb-14">
+          <span className="eyebrow">Measurable Financial Impact</span>
+          <h2 className="font-display font-extrabold text-3xl sm:text-4xl text-ink mt-2 mb-3">
+            Calculate Your SmartProject ROI
+          </h2>
+          <p className="text-body">
+            Estimate how much margin your organization recovers by locking WBS
+            baselines, preventing critical-path slippages, and reallocating idle
+            resources across projects.
           </p>
         </div>
-        
-        <div className="roi-calculator fade-in">
-          <div className="grid md:grid-cols-2 gap-8">
-            <div>
-              <h3 className="font-semibold text-xl mb-6">Project Parameters</h3>
-              
-              <div className="slider-container">
-                <label className="block text-sm font-medium mb-2">Project Budget ($ millions)</label>
-                <input 
-                  type="range" 
-                  className="slider" 
-                  min="1" 
-                  max="100" 
-                  value={budget}
-                  onChange={(e) => setBudget(parseInt(e.target.value))}
-                />
-                <div className="flex justify-between text-sm text-gray-500 mt-1">
-                  <span>$1M</span>
-                  <span>${budget}M</span>
-                  <span>$100M</span>
-                </div>
+
+        <div className="bg-white border border-line rounded-md shadow-card p-6 lg:p-10">
+          <div className="grid lg:grid-cols-2 gap-10 items-center">
+            {/* Sliders */}
+            <div className="space-y-6">
+              <div className="flex items-center gap-2 pb-3 border-b border-line">
+                <Calculator className="w-5 h-5 text-epcPrimary" />
+                <h3 className="font-display font-extrabold text-xl text-ink">
+                  Portfolio Parameters
+                </h3>
               </div>
-              
-              <div className="slider-container">
-                <label className="block text-sm font-medium mb-2">Project Duration (months)</label>
-                <input 
-                  type="range" 
-                  className="slider" 
-                  min="6" 
-                  max="60" 
-                  value={duration}
-                  onChange={(e) => setDuration(parseInt(e.target.value))}
-                />
-                <div className="flex justify-between text-sm text-gray-500 mt-1">
-                  <span>6 months</span>
-                  <span>{duration} months</span>
-                  <span>60 months</span>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-semibold text-ink">
+                    Active Capital / EPC Projects per Year
+                  </label>
+                  <span className="font-mono font-bold text-sm px-2.5 py-0.5 rounded bg-mist text-epcPrimary border border-line">
+                    {projectCount} Projects
+                  </span>
                 </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="50"
+                  value={projectCount}
+                  onChange={(e) => setProjectCount(parseInt(e.target.value))}
+                  className="slider"
+                />
               </div>
-              
-              <div className="slider-container">
-                <label className="block text-sm font-medium mb-2">Team Size</label>
-                <input 
-                  type="range" 
-                  className="slider" 
-                  min="10" 
-                  max="200" 
-                  value={team}
-                  onChange={(e) => setTeam(parseInt(e.target.value))}
-                />
-                <div className="flex justify-between text-sm text-gray-500 mt-1">
-                  <span>10</span>
-                  <span>{team} people</span>
-                  <span>200</span>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-semibold text-ink">
+                    Average Contract Value per Project
+                  </label>
+                  <span className="font-mono font-bold text-sm px-2.5 py-0.5 rounded bg-mist text-epcPrimary border border-line">
+                    {formatCurrency(avgProjectValue)}
+                  </span>
                 </div>
+                <input
+                  type="range"
+                  min="500000"
+                  max="50000000"
+                  step="500000"
+                  value={avgProjectValue}
+                  onChange={(e) => setAvgProjectValue(parseInt(e.target.value))}
+                  className="slider"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-semibold text-ink">
+                    Planners, Engineers &amp; Site Leads
+                  </label>
+                  <span className="font-mono font-bold text-sm px-2.5 py-0.5 rounded bg-mist text-epcPrimary border border-line">
+                    {teamSize} Users
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="250"
+                  value={teamSize}
+                  onChange={(e) => setTeamSize(parseInt(e.target.value))}
+                  className="slider"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-semibold text-ink">
+                    Current Schedule / Cost Variance Exposure
+                  </label>
+                  <span className="font-mono font-bold text-sm px-2.5 py-0.5 rounded bg-gold/25 text-ink border border-gold/50">
+                    {delayPercentage}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="40"
+                  value={delayPercentage}
+                  onChange={(e) => setDelayPercentage(parseInt(e.target.value))}
+                  className="slider"
+                />
               </div>
             </div>
-            
+
+            {/* Results & Pie Chart */}
             <div>
-              <h3 className="font-semibold text-xl mb-6">Projected Savings</h3>
-              <div className="chart-container">
-                <ReactECharts 
-                  option={getChartOption()} 
-                  style={{ height: '300px' }}
-                />
-              </div>
-              
-              <div className="mt-6 space-y-4">
-                <div className="flex justify-between items-center p-4 rounded-lg" style={{ background: '#EAF3FB' }}>
-                  <span className="font-medium text-[#0A1B33]">Time Savings</span>
-                  <span className="font-bold text-[#074E84]">{savings.timeSave}%</span>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-navy text-white p-4 rounded-md border border-white/10">
+                  <div className="flex items-center justify-between text-xs text-white/70 mb-1">
+                    <span>Projected Annual Savings</span>
+                    <DollarSign className="w-4 h-4 text-gold" />
+                  </div>
+                  <div className="font-display font-black text-2xl sm:text-3xl text-gold">
+                    {formatCurrency(results.annualSavings)}
+                  </div>
                 </div>
-                <div className="flex justify-between items-center p-4 rounded-lg" style={{ background: '#FEF6E4' }}>
-                  <span className="font-medium text-[#0A1B33]">Cost Reduction</span>
-                  <span className="font-bold text-[#E8A020]">{savings.costSave}%</span>
+
+                <div className="bg-mist p-4 rounded-md border border-line">
+                  <div className="flex items-center justify-between text-xs text-body mb-1">
+                    <span>Schedule Days Recovered</span>
+                    <Clock className="w-4 h-4 text-epcPrimary" />
+                  </div>
+                  <div className="font-display font-black text-2xl sm:text-3xl text-epcPrimary">
+                    {results.timeSaved}d
+                  </div>
                 </div>
-                <div className="flex justify-between items-center p-4 rounded-lg" style={{ background: '#EDF6FD' }}>
-                  <span className="font-medium text-[#0A1B33]">Efficiency Gain</span>
-                  <span className="font-bold text-[#2380C6]">{savings.efficiency}%</span>
+
+                <div className="bg-mist p-4 rounded-md border border-line">
+                  <div className="flex items-center justify-between text-xs text-body mb-1">
+                    <span>Estimated Annual ROI</span>
+                    <TrendingUp className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="font-display font-black text-2xl sm:text-3xl text-emerald-600">
+                    {results.roiPercentage}%
+                  </div>
+                </div>
+
+                <div className="bg-mist p-4 rounded-md border border-line">
+                  <div className="flex items-center justify-between text-xs text-body mb-1">
+                    <span>Payback Period</span>
+                    <ShieldCheck className="w-4 h-4 text-epcSecondary" />
+                  </div>
+                  <div className="font-display font-black text-2xl sm:text-3xl text-ink">
+                    {results.paybackMonths} mo
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-6 p-5 rounded-xl text-center" style={{ background: 'linear-gradient(120deg, #074E84, #2380C6)' }}>
-                <div className="text-sm text-white/70 uppercase tracking-[0.14em]">Total Annual Savings</div>
-                <div className="text-4xl font-display font-extrabold text-[#FCBC45]">${savings.total}M</div>
+              <div className="h-[250px] bg-[#FAF9FE] border border-line rounded-md p-2">
+                <ReactECharts
+                  option={getChartOption()}
+                  style={{ height: "100%", width: "100%" }}
+                />
               </div>
             </div>
           </div>
         </div>
       </div>
     </section>
-  )
-}
+  );
+};
 
-export default ROICalculator
+export default ROICalculator;

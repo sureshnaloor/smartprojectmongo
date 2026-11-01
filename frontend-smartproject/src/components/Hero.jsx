@@ -1,226 +1,504 @@
-import React, { useEffect, useRef, useState } from 'react'
-import anime from 'animejs'
-import DemoRequestModal from './DemoRequestModal.jsx'
+import React, { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence, useInView } from "framer-motion";
+import { useLocation } from "wouter";
+import {
+  ArrowRight,
+  Compass,
+  AlertTriangle,
+  Sparkles,
+} from "lucide-react";
+import DemoRequestModal from "./DemoRequestModal.jsx";
 
-const Hero = () => {
-  const heroRef = useRef(null)
-  const backgroundRef = useRef(null)
-  const [demoOpen, setDemoOpen] = useState(false)
+const flipWords = [
+  "Schedules",
+  "Budgets",
+  "Crews",
+  "Equipment",
+  "Risks",
+  "Procurement",
+];
+
+const ganttRows = [
+  {
+    wbs: "1.0",
+    name: "Engineering & Design",
+    start: 0,
+    len: 35,
+    crit: false,
+    prog: 100,
+    type: "L1",
+  },
+  {
+    wbs: "1.1",
+    name: "Process Flow Diagrams",
+    start: 0,
+    len: 15,
+    crit: true,
+    prog: 100,
+    type: "WP",
+  },
+  {
+    wbs: "1.2",
+    name: "3D Piping Model Review",
+    start: 15,
+    len: 20,
+    crit: true,
+    prog: 100,
+    type: "WP",
+  },
+  {
+    wbs: "2.0",
+    name: "Civil & Structural",
+    start: 20,
+    len: 45,
+    crit: false,
+    prog: 65,
+    type: "L1",
+  },
+  {
+    wbs: "2.1",
+    name: "Foundation Piling (Critical)",
+    start: 20,
+    len: 25,
+    crit: true,
+    prog: 80,
+    type: "WP",
+  },
+  {
+    wbs: "2.2",
+    name: "Steel Structure Erection",
+    start: 45,
+    len: 20,
+    crit: true,
+    prog: 40,
+    type: "WP",
+  },
+  {
+    wbs: "3.0",
+    name: "Mechanical & Piping",
+    start: 50,
+    len: 50,
+    crit: false,
+    prog: 15,
+    type: "L1",
+  },
+  {
+    wbs: "3.1",
+    name: "Heavy Vessel Lift (Milestone)",
+    start: 65,
+    len: 5,
+    crit: true,
+    prog: 0,
+    type: "MS",
+  },
+];
+
+const marqueeItems = [
+  "9-Level WBS Hierarchy",
+  "Primavera P6 XML & Excel Import",
+  "Critical Path Method (CPM)",
+  "Earned Value Management (CPI / SPI)",
+  "Strict Lock-on-Finalize Baseline",
+  "Auditable Project Amendments",
+  "Cross-Project Resource Utilization",
+  "9-Stage Resource Onboarding Engine",
+  "PR-to-PO Procurement Tracking",
+  "Integrated HSE, Risk & Lessons Learnt Wiki",
+  "Cloud Document & Correspondence Control",
+  "Real-Time Collaboration Hub & Kanban",
+];
+
+function CountUp({ to = 100, suffix = "", duration = 1.6 }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  const [val, setVal] = useState(0);
 
   useEffect(() => {
-    // Hero text animation
-    anime({
-      targets: '.hero-bg h1',
-      opacity: [0, 1],
-      translateY: [50, 0],
-      duration: 1000,
-      delay: 400,
-      easing: 'easeOutQuart'
-    })
-
-    anime({
-      targets: '.hero-bg .hero-lead',
-      opacity: [0, 1],
-      translateY: [30, 0],
-      duration: 800,
-      delay: 700,
-      easing: 'easeOutQuart'
-    })
-
-    anime({
-      targets: '.hero-bg .hero-eyebrow',
-      opacity: [0, 1],
-      translateX: [-20, 0],
-      duration: 700,
-      delay: 250,
-      easing: 'easeOutQuart'
-    })
-
-    anime({
-      targets: '.hero-bg .btn-primary, .hero-bg .btn-secondary',
-      opacity: [0, 1],
-      translateY: [20, 0],
-      duration: 600,
-      delay: (el, i) => 1000 + (i * 200),
-      easing: 'easeOutQuart'
-    })
-
-    anime({
-      targets: '.hero-mockup',
-      opacity: [0, 1],
-      translateY: [60, 0],
-      scale: [0.96, 1],
-      duration: 1100,
-      delay: 600,
-      easing: 'easeOutQuart'
-    })
-
-    anime({
-      targets: '.float-card',
-      opacity: [0, 1],
-      translateY: [30, 0],
-      duration: 800,
-      delay: (el, i) => 1200 + (i * 250),
-      easing: 'easeOutQuart'
-    })
-
-    // Gentle drift on the background photo
-    const kenBurnsAnimation = anime({
-      targets: backgroundRef.current,
-      scale: [1, 1.08],
-      translateX: [0, '2%'],
-      duration: 24000,
-      easing: 'easeInOutQuad',
-      loop: true,
-      direction: 'alternate'
-    })
-
-    return () => {
-      if (kenBurnsAnimation) {
-        kenBurnsAnimation.pause()
+    if (!inView) return;
+    let start = 0;
+    const stepTime = 16;
+    const totalSteps = Math.max(1, Math.floor((duration * 1000) / stepTime));
+    const inc = to / totalSteps;
+    const id = setInterval(() => {
+      start += inc;
+      if (start >= to) {
+        setVal(to);
+        clearInterval(id);
+      } else {
+        setVal(Math.floor(start));
       }
-    }
-  }, [])
-
-  const handleRequestDemo = () => {
-    setDemoOpen(true)
-  }
-
-  const handleViewFeatures = () => {
-    const featuresSection = document.querySelector('#features')
-    if (featuresSection) {
-      const offsetTop = featuresSection.offsetTop - 80
-      window.scrollTo({
-        top: offsetTop,
-        behavior: 'smooth'
-      })
-    }
-  }
+    }, stepTime);
+    return () => clearInterval(id);
+  }, [inView, to, duration]);
 
   return (
-    <section ref={heroRef} className="hero-bg relative overflow-hidden">
-      {/* Background photo + brand gradients */}
+    <span ref={ref}>
+      {val}
+      {suffix}
+    </span>
+  );
+}
+
+const Hero = () => {
+  const [, setLocation] = useLocation();
+  const [idx, setIdx] = useState(0);
+  const [demoOpen, setDemoOpen] = useState(false);
+
+  useEffect(() => {
+    const id = setInterval(
+      () => setIdx((i) => (i + 1) % flipWords.length),
+      2200
+    );
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <section
+      id="overview"
+      className="relative bg-denim text-white overflow-hidden"
+    >
+      {/* Decorative glows & blueprint grid */}
+      <div className="pointer-events-none absolute -top-24 -left-24 w-96 h-96 rounded-full bg-epcSecondary/25 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 w-96 h-96 rounded-full bg-gold/15 blur-3xl" />
       <div
-        ref={backgroundRef}
-        className="hero-background-image absolute inset-0 w-full h-full"
+        className="pointer-events-none absolute inset-0 opacity-[0.07]"
         style={{
-          backgroundImage: 'url(/hero-epcora.jpg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          willChange: 'transform'
+          backgroundImage:
+            "linear-gradient(to right, #fff 1px, transparent 1px), linear-gradient(to bottom, #fff 1px, transparent 1px)",
+          backgroundSize: "48px 48px",
         }}
       />
-      <div className="hero-overlay absolute inset-0"></div>
-      <div className="hero-grid-overlay absolute inset-0 pointer-events-none"></div>
 
-      {/* Gold glow accents */}
-      <div className="absolute -top-40 -right-40 w-[540px] h-[540px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(252,188,69,0.14) 0%, transparent 65%)' }}></div>
-      <div className="absolute -bottom-56 -left-40 w-[620px] h-[620px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(35,128,198,0.22) 0%, transparent 65%)' }}></div>
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-20">
+        {/* Breadcrumb */}
+        <div className="text-xs text-white/70 mb-6 flex items-center gap-2">
+          <span className="hover:text-gold transition-colors">EPCORA Stack</span>
+          <span>/</span>
+          <span className="text-white/80">Products</span>
+          <span>/</span>
+          <span className="text-gold font-semibold">SmartProject</span>
+        </div>
 
-      {/* Content — split layout */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-32 pb-20 lg:pt-40 lg:pb-28">
-        <div className="grid lg:grid-cols-2 gap-16 items-center">
-          {/* Left: copy */}
-          <div className="text-left">
-            <div className="hero-eyebrow inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/15 bg-white/5 backdrop-blur-sm mb-8">
-              <span className="w-2 h-2 rounded-full bg-[#FCBC45] animate-pulse"></span>
-              <span className="text-xs font-semibold tracking-[0.18em] uppercase text-white/85">EPC Project Management Platform</span>
+        <div className="grid lg:grid-cols-12 gap-12 items-center">
+          {/* Left Copy */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="lg:col-span-6"
+          >
+            <div className="inline-flex items-center gap-2 bg-white/10 border border-white/15 rounded-full px-3.5 py-1.5 mb-5">
+              <span className="w-2 h-2 rounded-full bg-gold pulse-dot" />
+              <span className="font-display text-[11px] font-bold uppercase tracking-[0.2em] text-gold">
+                Epcora Product · Project Controls
+              </span>
             </div>
 
-            <h1 className="font-display text-5xl md:text-6xl xl:text-[4.25rem] font-extrabold text-white leading-[1.06] mb-6 drop-shadow-2xl">
-              Transform Your <span className="gradient-text-gold">Construction Projects</span> with Intelligent Management
-            </h1>
+            <div className="flex items-center gap-4 mb-3">
+              <img
+                src="/smartproject-logo-dark.svg"
+                alt="SmartProject Mark"
+                className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 drop-shadow-lg"
+              />
+              <h1 className="font-display font-black text-4xl sm:text-5xl lg:text-6xl leading-[1.05] bordered-heading">
+                SmartProject
+              </h1>
+            </div>
 
-            <p className="hero-lead text-lg md:text-xl text-white/75 mb-10 max-w-xl leading-relaxed">
-              One platform to plan, control cost, allocate resources, and deliver
-              complex EPC projects on time — from design to commissioning.
+            <div className="font-display font-bold text-xl sm:text-2xl text-gold mb-4">
+              Every Package. Every Dollar. Every Hour.
+            </div>
+
+            {/* Rotating flip-word subline */}
+            <div className="font-display text-base sm:text-lg text-white/90 mb-5 flex flex-wrap items-center gap-2">
+              <span>Built to command your</span>
+              <span className="relative inline-flex items-center justify-center px-3 py-0.5 rounded bg-gold text-ink font-extrabold min-w-[140px] h-8 overflow-hidden">
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={flipWords[idx]}
+                    initial={{ y: 18, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -18, opacity: 0 }}
+                    transition={{ duration: 0.28 }}
+                    className="absolute"
+                  >
+                    {flipWords[idx]}
+                  </motion.span>
+                </AnimatePresence>
+              </span>
+              <span>in real time.</span>
+            </div>
+
+            <p className="text-white/85 text-base sm:text-lg leading-relaxed mb-8">
+              An enterprise-grade project controls and resource optimization
+              platform built for high-stakes capital projects. Unify{" "}
+              <strong className="text-white">9-level WBS hierarchies</strong>,{" "}
+              <strong className="text-white">Critical Path scheduling</strong>,{" "}
+              <strong className="text-white">Earned Value Management</strong>,
+              and{" "}
+              <strong className="text-white">
+                cross-project resource utilization
+              </strong>{" "}
+              into one auditable command center.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 mb-12">
-              <button className="btn-primary btn-gold text-base px-8 py-4 shadow-2xl" onClick={handleRequestDemo}>
-                Request Demo
-                <svg className="inline-block ml-2 -mt-0.5 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+            {/* Primary CTA Buttons */}
+            <div className="flex flex-wrap gap-3 mb-10">
+              <button
+                type="button"
+                onClick={() => setLocation("/newlanding")}
+                className="btn-gold px-6 py-3.5 rounded-sm font-display text-sm uppercase tracking-wider inline-flex items-center gap-2 shadow-lg"
+              >
+                <Compass className="w-4 h-4" />
+                <span>Launch Project Testbench</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
               <button
-                className="btn-secondary btn-ghost text-base px-8 py-4"
-                onClick={handleViewFeatures}
+                type="button"
+                onClick={() => setDemoOpen(true)}
+                className="btn-epc-outline"
               >
-                Explore Features
+                Request Live Demo
               </button>
+              <a
+                href="#features"
+                className="inline-flex items-center gap-2 text-xs font-display font-bold uppercase tracking-wider text-gold hover:text-white px-3 py-2 transition-colors"
+              >
+                Explore 21 Modules →
+              </a>
             </div>
 
-            {/* Mini proof stats */}
-            <div className="flex flex-wrap gap-x-10 gap-y-6">
+            {/* Animated Stat Counters */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-6 border-t border-white/15">
               {[
-                { value: '98%', label: 'On-time delivery' },
-                { value: '$4.2B', label: 'Projects managed' },
-                { value: '40+', label: 'Countries served' }
-              ].map((stat, i) => (
-                <div key={i} className="flex flex-col">
-                  <span className="font-display text-3xl font-extrabold text-white">{stat.value}</span>
-                  <span className="text-xs uppercase tracking-[0.14em] text-white/55 mt-1">{stat.label}</span>
+                { val: 9, suf: "", lbl: "WBS Levels Deep" },
+                { val: 0, suf: "", lbl: "Budget Leakages" },
+                { val: 21, suf: "+", lbl: "Integrated Modules" },
+                { val: 100, suf: "%", lbl: "Audit-Proof History" },
+              ].map((s, i) => (
+                <div
+                  key={i}
+                  className="bg-white/5 border border-white/10 rounded p-3 backdrop-blur-sm"
+                >
+                  <div className="font-display font-black text-2xl text-gold leading-none">
+                    <CountUp to={s.val} suffix={s.suf} />
+                  </div>
+                  <div className="text-[11px] uppercase tracking-wider text-white/75 mt-1">
+                    {s.lbl}
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
 
-          {/* Right: product mockup */}
-          <div className="relative hidden lg:block">
-            <div className="hero-mockup relative">
-              <div className="mockup-frame">
-                <div className="mockup-chrome">
-                  <span className="w-3 h-3 rounded-full bg-[#FCBC45]"></span>
-                  <span className="w-3 h-3 rounded-full bg-white/25"></span>
-                  <span className="w-3 h-3 rounded-full bg-white/25"></span>
-                  <span className="ml-3 text-[11px] text-white/50 font-mono tracking-wide">app.constructpro.com/dashboard</span>
+          {/* Right: Interactive Gantt & Critical Path Engine Mockup */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.7, delay: 0.15 }}
+            className="lg:col-span-6 relative"
+          >
+            <div className="bg-ink/90 border border-white/15 rounded-md shadow-2xl overflow-hidden backdrop-blur">
+              {/* Browser top bar */}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-white/5 border-b border-white/10">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-400/80" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-yellow-400/80" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-400/80" />
+                  <span className="ml-2 text-[11px] text-white/60 font-mono">
+                    smartproject.epcorastack.com — Refinery Expansion Ph-2
+                  </span>
                 </div>
-                <img
-                  src="/dashboard-preview.png"
-                  alt="ConstructPro project dashboard"
-                  className="w-full h-auto block"
-                />
+                <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded bg-emerald-400/15 text-emerald-300 border border-emerald-400/30 font-semibold">
+                  Baseline Locked
+                </span>
               </div>
 
-              {/* Floating stat cards */}
-              <div className="float-card float-anim-1 absolute -left-10 top-16 bg-white rounded-xl shadow-2xl px-5 py-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-[#EAF3FB] flex items-center justify-center">
-                  <svg className="w-5 h-5 text-[#074E84]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              {/* Toolbar */}
+              <div className="px-4 py-2 bg-navy/80 border-b border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <div className="flex items-center gap-3">
+                  <span className="text-white/90 font-semibold">
+                    View:{" "}
+                    <span className="text-gold">Gantt &amp; Critical Path</span>
+                  </span>
+                  <span className="text-white/30">|</span>
+                  <span className="text-white/70">WBS Depth: All 9 Levels</span>
                 </div>
-                <div>
-                  <div className="text-sm font-bold text-[#0A1B33]">Milestone reached</div>
-                  <div className="text-xs text-[#505E6B]">Structure 75% complete</div>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1 text-red-400">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />{" "}
+                    Critical Path
+                  </span>
+                  <span className="flex items-center gap-1 text-epcSecondary">
+                    <span className="w-2 h-2 rounded-full bg-epcSecondary" />{" "}
+                    Standard Task
+                  </span>
                 </div>
               </div>
 
-              <div className="float-card float-anim-2 absolute -right-6 bottom-24 bg-white rounded-xl shadow-2xl px-5 py-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-[#FEF6E4] flex items-center justify-center">
-                  <svg className="w-5 h-5 text-[#E8A020]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              {/* Gantt Grid */}
+              <div className="p-4 bg-[#071120]">
+                <div className="grid grid-cols-12 gap-2 text-[10px] uppercase tracking-wider text-white/40 pb-2 border-b border-white/10 font-mono">
+                  <div className="col-span-5">WBS / Activity Name</div>
+                  <div className="col-span-7 grid grid-cols-4 text-center">
+                    <span>Q1</span>
+                    <span>Q2</span>
+                    <span>Q3</span>
+                    <span>Q4</span>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-sm font-bold text-[#0A1B33]">$1.8M saved</div>
-                  <div className="text-xs text-[#505E6B]">Cost variance this quarter</div>
+
+                <div className="divide-y divide-white/5 mt-1">
+                  {ganttRows.map((r, i) => (
+                    <motion.div
+                      key={r.wbs}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.2 + i * 0.08 }}
+                      className={`grid grid-cols-12 gap-2 py-2 items-center text-xs ${
+                        r.type === "L1"
+                          ? "bg-white/[0.03] font-semibold text-white"
+                          : "text-white/80"
+                      }`}
+                    >
+                      <div className="col-span-5 flex items-center gap-1.5 truncate pr-2">
+                        <span
+                          className={`font-mono text-[10px] px-1 rounded ${
+                            r.type === "L1"
+                              ? "bg-epcPrimary text-gold"
+                              : "text-white/50 pl-2"
+                          }`}
+                        >
+                          {r.wbs}
+                        </span>
+                        <span className="truncate text-[11px]">{r.name}</span>
+                      </div>
+                      <div className="col-span-7 relative h-5 bg-white/[0.02] rounded overflow-hidden flex items-center">
+                        <div className="absolute inset-0 grid grid-cols-4 pointer-events-none">
+                          <div className="border-r border-white/5" />
+                          <div className="border-r border-white/5" />
+                          <div className="border-r border-white/5" />
+                          <div />
+                        </div>
+
+                        {r.type === "MS" ? (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ delay: 1, type: "spring" }}
+                            style={{ left: `${r.start}%` }}
+                            className="absolute w-3 h-3 bg-gold rotate-45 -ml-1.5 border border-ink shadow-[0_0_8px_#FCBC45]"
+                          />
+                        ) : (
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${r.len}%` }}
+                            transition={{
+                              duration: 1,
+                              delay: 0.4 + i * 0.1,
+                              ease: "easeOut",
+                            }}
+                            style={{ left: `${r.start}%` }}
+                            className={`absolute h-3 rounded-sm overflow-hidden ${
+                              r.type === "L1"
+                                ? "bg-white/30 h-2"
+                                : r.crit
+                                ? "bg-red-500/40 border border-red-500"
+                                : "bg-epcSecondary/40 border border-epcSecondary"
+                            }`}
+                          >
+                            <div
+                              style={{ width: `${r.prog}%` }}
+                              className={`h-full ${
+                                r.type === "L1"
+                                  ? "bg-white"
+                                  : r.crit
+                                  ? "bg-red-500"
+                                  : "bg-epcSecondary"
+                              }`}
+                            />
+                          </motion.div>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
               </div>
 
-              <div className="float-card float-anim-3 absolute left-10 -bottom-6 bg-white rounded-xl shadow-2xl px-5 py-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-[#EAF3FB] flex items-center justify-center">
-                  <svg className="w-5 h-5 text-[#2380C6]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-[#0A1B33]">142 team members</div>
-                  <div className="text-xs text-[#505E6B]">Across 6 subcontractors</div>
-                </div>
+              {/* Bottom EVM Status Bar */}
+              <div className="px-4 py-3 bg-navy border-t border-white/10 grid grid-cols-3 gap-2 text-center">
+                {[
+                  {
+                    k: "CPI (Cost Index)",
+                    v: "1.04 (Under Budget)",
+                    c: "text-emerald-400",
+                  },
+                  {
+                    k: "SPI (Schedule Index)",
+                    v: "0.98 (On Track)",
+                    c: "text-gold",
+                  },
+                  {
+                    k: "Active Resources",
+                    v: "142 / 150 (94.6% Util.)",
+                    c: "text-white",
+                  },
+                ].map((m, i) => (
+                  <div
+                    key={i}
+                    className="bg-white/5 rounded py-1.5 px-2 border border-white/5"
+                  >
+                    <div className="font-display font-bold text-xs">{m.v}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-white/60">
+                      {m.k}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+
+            {/* Floating Live EVM Alert Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.2 }}
+              className="hidden sm:flex absolute -bottom-5 -left-6 bg-white text-ink p-3.5 rounded shadow-cardhover border-l-4 border-gold items-center gap-3 max-w-xs float-soft"
+            >
+              <div className="w-9 h-9 rounded bg-gold/20 text-ink flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-golddeep" />
+              </div>
+              <div>
+                <div className="font-display font-bold text-xs">
+                  Cost Performance Alert (CPI: 0.94)
+                </div>
+                <div className="text-[11px] text-body">
+                  WP 2.1 Foundation Piling trending +$42k over BAC. View EAC
+                  forecast.
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
         </div>
       </div>
 
-      {/* Bottom fade into next section */}
-      <div className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none" style={{ background: 'linear-gradient(to bottom, transparent, #F6F4FF)' }}></div>
+      {/* Scrolling Marquee Strip */}
+      <div className="bg-ink text-white border-y border-white/10 overflow-hidden py-3">
+        <div className="marquee-track">
+          {[...marqueeItems, ...marqueeItems].map((item, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 px-6 text-xs uppercase tracking-[0.18em] text-white/80 whitespace-nowrap font-display font-semibold"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-gold shrink-0" />
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <DemoRequestModal open={demoOpen} onClose={() => setDemoOpen(false)} />
     </section>
-  )
-}
+  );
+};
 
-export default Hero
+export default Hero;

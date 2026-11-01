@@ -185,7 +185,7 @@ export default function Home() {
               viewport={{ once: true }}
               transition={{ duration: 0.6 }}
             >
-              How ConstructPro Works
+              How SmartProject Works
             </motion.h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <motion.div

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="SmartProject by EPCORA Stack mark">
+  <defs>
+    <linearGradient id="spNavyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#074E84"/>
+      <stop offset="100%" stop-color="#052C52"/>
+    </linearGradient>
+    <linearGradient id="spBlueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2FA0F0"/>
+      <stop offset="100%" stop-color="#1C6FB2"/>
+    </linearGradient>
+    <linearGradient id="spGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFD26A"/>
+      <stop offset="55%" stop-color="#FCBC45"/>
+      <stop offset="100%" stop-color="#E8730C"/>
+    </linearGradient>
+    <filter id="spShadow" x="-12%" y="-12%" width="124%" height="124%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#05052D" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <!-- Outer blueprint octagon / compass frame -->
+  <g filter="url(#spShadow)">
+    <rect x="20" y="20" width="200" height="200" rx="44" fill="url(#spNavyGrad)" stroke="#2380C6" stroke-width="3"/>
+  </g>
+
+  <!-- Subtle blueprint engineering grid inside -->
+  <g stroke="#2380C6" stroke-width="1" opacity="0.22">
+    <line x1="60" y1="26" x2="60" y2="214"/>
+    <line x1="100" y1="26" x2="100" y2="214"/>
+    <line x1="140" y1="26" x2="140" y2="214"/>
+    <line x1="180" y1="26" x2="180" y2="214"/>
+    <line x1="26" y1="60" x2="214" y2="60"/>
+    <line x1="26" y1="100" x2="214" y2="100"/>
+    <line x1="26" y1="140" x2="214" y2="140"/>
+    <line x1="26" y1="180" x2="214" y2="180"/>
+  </g>
+
+  <!-- Precision outer control ring -->
+  <circle cx="120" cy="120" r="82" fill="none" stroke="#2380C6" stroke-width="2" stroke-dasharray="8 6" opacity="0.55"/>
+
+  <!-- Structural Crane Mast & Jib (Left & Top) representing EPC Construction -->
+  <g fill="none" stroke="url(#spGoldGrad)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Vertical Tower Mast -->
+    <path d="M58 182 L58 64" stroke-width="7"/>
+    <path d="M72 182 L72 64" stroke-width="4" opacity="0.85"/>
+    <!-- Lattice bracing -->
+    <path d="M58 82 L72 96 L58 110 L72 124 L58 138 L72 152 L58 166" stroke-width="2.5" opacity="0.9"/>
+    <!-- Horizontal Jib Boom -->
+    <path d="M44 68 L186 68" stroke-width="6"/>
+    <!-- Top apex & stay cables -->
+    <path d="M65 44 L65 68" stroke-width="5"/>
+    <path d="M65 45 L154 68" stroke-width="2.5" opacity="0.85"/>
+    <path d="M65 45 L46 68" stroke-width="2.5" opacity="0.85"/>
+  </g>
+
+  <!-- Smart WBS & Gantt Schedule Bars (Center-Right) -->
+  <!-- Bar 1: Level 1 WBS Summary (Blue) -->
+  <rect x="88" y="88" width="94" height="18" rx="6" fill="url(#spBlueGrad)"/>
+  <circle cx="97" cy="97" r="3.5" fill="#FFFFFF"/>
+
+  <!-- Bar 2: Critical Path Activity (Gold-Saffron) -->
+  <rect x="104" y="116" width="84" height="20" rx="6" fill="url(#spGoldGrad)"/>
+  <circle cx="114" cy="126" r="3.5" fill="#05052D"/>
+  <!-- Critical Path dependency link -->
+  <path d="M148 106 L148 116" stroke="#FCBC45" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Bar 3: Work Package / EVM Progress Bar -->
+  <rect x="88" y="146" width="70" height="18" rx="6" fill="#FFFFFF" opacity="0.95"/>
+  <rect x="88" y="146" width="48" height="18" rx="6" fill="#2380C6"/>
+
+  <!-- Milestone Diamond on Critical Path (Right) -->
+  <polygon points="184,143 196,155 184,167 172,155" fill="url(#spGoldGrad)" stroke="#FFFFFF" stroke-width="2"/>
+
+  <!-- Base Foundation Bar -->
+  <rect x="46" y="182" width="148" height="10" rx="5" fill="#2380C6"/>
+  <rect x="46" y="182" width="76" height="10" rx="5" fill="url(#spGoldGrad)"/>
+
+  <!-- Corner Precision Nodes -->
+  <circle cx="65" cy="44" r="5" fill="#FCBC45"/>
+  <circle cx="186" cy="68" r="4.5" fill="#FCBC45"/>
+</svg>

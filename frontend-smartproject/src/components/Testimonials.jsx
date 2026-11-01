@@ -28,7 +28,7 @@ const Testimonials = () => {
 
   const testimonials = [
     {
-      quote: "ConstructPro reduced our project delays by 40% and improved cost control significantly. The real-time insights are invaluable for decision-making.",
+      quote: "SmartProject reduced our project delays by 40% and improved cost control significantly. The real-time insights are invaluable for decision-making.",
       author: "Sarah Johnson",
       role: "Project Director, SkyBuild Construction"
     },

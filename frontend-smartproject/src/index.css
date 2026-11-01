@@ -100,6 +100,212 @@
   font-family: 'JetBrains Mono', monospace;
 }
 
+/* EPCORA Stack & SmartProject Shared Component Utilities */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'Heebo', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #2380C6;
+}
+
+.bordered-heading {
+  border-left: 5px solid #FCBC45;
+  padding-left: 1.25rem;
+}
+
+.btn-epc-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  background-color: #074E84;
+  color: #ffffff;
+  font-family: 'Heebo', sans-serif;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.875rem 1.75rem;
+  border-radius: 0.125rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.btn-epc-primary:hover {
+  background-color: #2380C6;
+}
+
+.btn-epc-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  color: #ffffff;
+  font-family: 'Heebo', sans-serif;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.875rem 1.75rem;
+  border-radius: 0.125rem;
+  transition: all 0.2s ease;
+}
+
+.btn-epc-outline:hover {
+  background-color: #ffffff;
+  color: #05052D;
+}
+
+.service-card {
+  position: relative;
+  background-color: #ffffff;
+  border: 1px solid #E7E3F5;
+  border-radius: 0.375rem;
+  padding: 1.75rem;
+  box-shadow: 0 10px 30px -10px rgba(7, 78, 132, 0.12);
+  transition: all 0.3s ease;
+}
+
+.service-card:hover {
+  box-shadow: 0 20px 45px -12px rgba(7, 78, 132, 0.22);
+  transform: translateY(-4px);
+}
+
+.check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  color: #505E6B;
+}
+
+.check-badge {
+  margin-top: 0.125rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 9999px;
+  background-color: rgba(35, 128, 198, 0.12);
+  color: #2380C6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Denim diagonal twill weave — EPCORA Stack hero & feature band surface */
+.bg-denim {
+  background-color: #33517d;
+  background-image:
+    repeating-linear-gradient(
+      63deg,
+      rgba(255, 255, 255, 0.05) 0px,
+      rgba(255, 255, 255, 0.05) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      153deg,
+      rgba(4, 16, 38, 0.1) 0px,
+      rgba(4, 16, 38, 0.1) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    radial-gradient(ellipse 90% 70% at 50% 0%, rgba(255, 255, 255, 0.07), transparent 65%);
+}
+
+/* 3D beveled gold lettering for EPCORA brand lockups */
+.text-3d-gold {
+  color: #FFE49E;
+  background: linear-gradient(180deg, #FFF3C4 0%, #FFD466 38%, #FCBC45 70%, #C88419 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter:
+    drop-shadow(0 1px 0 #8F5A0A)
+    drop-shadow(0 2px 0 #6B4206)
+    drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
+}
+
+.mark-floor-shadow {
+  background: radial-gradient(
+    ellipse 50% 50% at 50% 50%,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(232, 115, 12, 0.25) 45%,
+    transparent 75%
+  );
+  filter: blur(2px);
+}
+
+.agentically {
+  position: relative;
+  display: inline-block;
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 0 0.15em;
+  background: linear-gradient(95deg, #FFF3C4 0%, #FCBC45 35%, #FF8A2B 70%, #FFD466 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: agenticShimmer 6s ease-in-out infinite;
+  filter: drop-shadow(0 2px 8px rgba(252, 188, 69, 0.35));
+}
+
+.agentically::after {
+  content: '';
+  position: absolute;
+  left: 0.1em;
+  right: 0.05em;
+  bottom: -0.08em;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #FCBC45 0%, #E8730C 60%, transparent 100%);
+  box-shadow: 0 0 8px rgba(252, 188, 69, 0.65);
+}
+
+@keyframes agenticShimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 38s linear infinite;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+@keyframes floatSoft {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+.float-soft {
+  animation: floatSoft 6s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.6); opacity: 0.35; }
+}
+
+.pulse-dot {
+  animation: pulseDot 2.2s ease-in-out infinite;
+}
+
 .hero-bg {
   position: relative;
   background: #0A1B33;
