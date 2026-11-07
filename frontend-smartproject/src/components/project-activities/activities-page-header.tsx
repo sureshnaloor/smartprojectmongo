@@ -43,7 +43,7 @@ export function ActivitiesPageHeader({
   };
 
   return (
-    <div className="bg-[var(--bg-cream)] px-6 pb-5 pt-6 lg:px-8">
+    <div className="bg-[var(--bg-cream)] px-3 pb-3 pt-3">
       <p className="mb-2 kanban-body-sm text-[var(--text-secondary)]">
         <button type="button" className="hover:text-[var(--text-primary)]" onClick={() => setLocation("/")}>
           Projects

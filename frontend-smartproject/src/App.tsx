@@ -116,6 +116,7 @@ import ProjectItpAndReports from "@/pages/project-itp-and-reports";
 import ProjectOtherDocuments from "@/pages/project-other-documents";
 import ProjectEquipmentCatalogue from "@/pages/project-equipment-catalogue";
 import NewLanding from "@/pages/new-landing";
+import PortfoliosPage from "@/pages/portfolios";
 import NewProject from "@/pages/new-project";
 import ProjectCharts from "@/pages/project-charts";
 import PurchaseOrdersPage from "@/pages/purchase-orders";
@@ -817,8 +818,12 @@ function Router() {
 
       {/* New Pages Ported from Vanilla JS */}
       <Route path="/newlanding" component={NewLanding} />
+      <Route path="/portfolios" component={PortfoliosPage} />
+      <Route path="/newproject/:projectId/:section">
+        {() => <NewProject />}
+      </Route>
       <Route path="/newproject/:projectId">
-        {params => <NewProject />}
+        {() => <NewProject />}
       </Route>
 
       <Route path="/purchase-orders">

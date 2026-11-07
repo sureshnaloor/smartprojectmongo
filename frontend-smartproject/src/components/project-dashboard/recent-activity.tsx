@@ -9,14 +9,14 @@ const ICON_MAP = {
 
 export function RecentActivity() {
   return (
-    <div className="pd-bottom-card flex h-full flex-col rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-white)] shadow-[var(--shadow-sm)] transition-shadow hover:shadow-[var(--shadow-md)]">
-      <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
-        <h2 className="kanban-heading-lg text-[var(--text-primary)]">Recent Activity</h2>
+    <div className="pd-bottom-card flex h-full flex-col overflow-hidden rounded-lg border-2 border-sky-800 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b-2 border-sky-800 bg-sky-50 px-4 py-2">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-sky-950">Recent Activity</h2>
         <button type="button" className="kanban-body-sm font-medium text-[var(--copper-500)] hover:underline">
           View All
         </button>
       </div>
-      <ul className="flex-1 divide-y divide-[var(--border-subtle)] px-5">
+      <ul className="flex-1 divide-y divide-sky-100 px-3">
         {RECENT_ACTIVITIES.map((item, i) => {
           const meta = ICON_MAP[item.type];
           const Icon = meta.icon;
@@ -24,7 +24,7 @@ export function RecentActivity() {
             <li key={i}>
               <button
                 type="button"
-                className="flex w-full items-center gap-3 py-3.5 text-left transition-colors hover:bg-[var(--bg-cream)]/50"
+                className="flex w-full items-center gap-3 py-2 text-left transition-colors hover:bg-sky-50/60"
               >
                 <div
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"

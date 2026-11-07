@@ -572,9 +572,9 @@ export default function ProjectConsolidatedReport() {
       </div>
 
       {/* Screen Container */}
-      <main className="max-w-7xl mx-auto space-y-6 print:hidden">
+      <main className="mx-auto space-y-3 print:hidden">
         {/* Cover / Executive Title Banner */}
-        <div className="bg-gradient-to-r from-zinc-900 via-zinc-800 to-amber-950 text-white p-6 sm:p-8 rounded-2xl shadow-md flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="flex flex-col justify-between gap-3 rounded-lg border-2 border-amber-800 bg-zinc-900 p-4 text-white md:flex-row md:items-center">
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-amber-400 font-semibold text-xs tracking-wider uppercase">
               <Sparkles className="h-4 w-4" /> Master Project Intelligence Report

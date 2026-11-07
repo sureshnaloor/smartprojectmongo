@@ -64,7 +64,7 @@ function StatCard({ icon, value, label, percent, stagger = 0, className }: StatC
   return (
     <div
       className={cn(
-        "pd-kpi-card rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-white)] p-5 shadow-[var(--shadow-sm)] transition-shadow hover:shadow-[var(--shadow-md)]",
+        "pd-kpi-card rounded-lg border-2 bg-white p-3 shadow-sm",
         className
       )}
       style={{ animationDelay: `${stagger}ms` }}
@@ -112,9 +112,10 @@ export function KpiStatsRow({
   const teamAnim = useCountUp(teamCount, 600, inView);
 
   return (
-    <div ref={ref} className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+    <div ref={ref} className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard
         stagger={0}
+        className="border-amber-400"
         icon={
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--copper-50)]">
             <Wallet className="h-5 w-5 text-[var(--copper-500)]" />
@@ -126,6 +127,7 @@ export function KpiStatsRow({
       />
       <StatCard
         stagger={150}
+        className="border-sky-400"
         icon={
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--status-info-bg)]">
             <CalendarClock className="h-5 w-5 text-[var(--status-info)]" />
@@ -137,6 +139,7 @@ export function KpiStatsRow({
       />
       <StatCard
         stagger={300}
+        className="border-emerald-400"
         icon={
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--status-success-bg)]">
             <PackageCheck className="h-5 w-5 text-[var(--status-success)]" />
@@ -148,6 +151,7 @@ export function KpiStatsRow({
       />
       <StatCard
         stagger={450}
+        className="border-slate-400"
         icon={
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--bg-warm-gray)]">
             <Users className="h-5 w-5 text-[var(--text-secondary)]" />

@@ -30,7 +30,7 @@ interface ChatHeaderProps {
 export function ChatHeader({ thread, projectId, memberCount = 1, onSearch, onMembers }: ChatHeaderProps) {
   if (!thread) {
     return (
-      <header className="flex h-[60px] shrink-0 items-center border-b border-[var(--border-subtle)] bg-[var(--bg-white)] px-6">
+      <header className="flex min-h-[72px] shrink-0 items-center border-b border-[var(--border-subtle)] bg-[var(--bg-white)] px-6 py-4">
         <p className="kanban-body-md text-[var(--text-secondary)]">Select a conversation to start chatting</p>
       </header>
     );
@@ -43,7 +43,7 @@ export function ChatHeader({ thread, projectId, memberCount = 1, onSearch, onMem
   const expiry = formatExpiry(thread.expiresAt);
 
   return (
-    <header className="flex h-[60px] shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-white)] px-6">
+    <header className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--border-subtle)] bg-[var(--bg-white)] px-6 py-4">
       <div className="flex min-w-0 items-center gap-3">
         <div
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
@@ -57,8 +57,8 @@ export function ChatHeader({ thread, projectId, memberCount = 1, onSearch, onMem
             <h2 className="kanban-heading-lg truncate text-[var(--text-primary)]">{thread.title}</h2>
             {thread.isClosed && <Lock className="h-3.5 w-3.5 text-[var(--text-muted)]" />}
           </div>
-          <p className="truncate kanban-body-sm text-[var(--text-secondary)]">{thread.subject}</p>
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+          <p className="mt-0.5 truncate kanban-body-sm text-[var(--text-secondary)]">{thread.subject}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <span
               className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 kanban-caption"
               style={{ backgroundColor: "var(--status-success-bg, #F0FDF4)", color: "var(--status-success)" }}

@@ -162,6 +162,7 @@ import {
   type MaterialMaster,
   insertServiceMasterSchema,
   insertServiceTypeSchema,
+  insertPortfolioSchema,
   insertServiceGroupSchema,
   insertVendorMasterSchema,
   type InsertVendorMaster,
@@ -419,6 +420,7 @@ async function loadWpAssignmentsByGlobalResourceIds(
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  await storage.preparePortfolios();
   const httpServer = createServer(app);
 
   // Simple test endpoint that doesn't need database
@@ -460,7 +462,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/projects", async (req: Request, res: Response) => {
     try {
-      const projectData = projectSchema.parse(req.body);
+      const parsedProject = projectSchema.parse(req.body);
+      const projectData = await storage.resolveProjectPortfolio(parsedProject);
+      await storage.validateProjectAssignments(projectData);
       const creatorId = req.user?.id ?? null;
       const project = await storage.createProject({
         ...projectData,
@@ -542,7 +546,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Use the project schema in partial mode for validation
-      const projectData = projectSchema.partial().parse(req.body);
+      const parsedProject = projectSchema.partial().parse(req.body);
+      const projectData = await storage.resolveProjectPortfolio({
+        ...parsedProject,
+        projectVersion: project.projectVersion,
+      });
+      await storage.validateProjectAssignments({
+        id,
+        projectVersion: projectData.projectVersion ?? project.projectVersion,
+        mappedEstimationProjectId: projectData.mappedEstimationProjectId,
+        mappedPlanningProjectId: projectData.mappedPlanningProjectId,
+        projectManagerId: projectData.projectManagerId,
+        projectPlannerId: projectData.projectPlannerId,
+      });
 
       // WBS finalize flag is controlled only via /wbs/finalize (and never un-finalized)
       if ("wbsFinalized" in projectData) {
@@ -625,6 +641,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.deleteProject(id);
+      res.status(204).end();
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  // ========================================
+  // PORTFOLIO ROUTES
+  // ========================================
+
+  app.get("/api/portfolios", async (_req: Request, res: Response) => {
+    try {
+      const all = await storage.getPortfolios();
+      res.json(all);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.get("/api/portfolios/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const portfolio = await storage.getPortfolio(id);
+      if (!portfolio) return res.status(404).json({ message: "Portfolio not found" });
+      res.json(portfolio);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.post("/api/portfolios", async (req: Request, res: Response) => {
+    try {
+      const data = insertPortfolioSchema.parse(req.body);
+      const portfolio = await storage.createPortfolio(data);
+      res.status(201).json(portfolio);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.patch("/api/portfolios/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      const data = insertPortfolioSchema.partial().parse(req.body);
+      const updated = await storage.updatePortfolio(id, data);
+      if (!updated) return res.status(404).json({ message: "Portfolio not found" });
+      res.json(updated);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.delete("/api/portfolios/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+      await storage.deletePortfolio(id);
       res.status(204).end();
     } catch (err) {
       handleError(err, res);

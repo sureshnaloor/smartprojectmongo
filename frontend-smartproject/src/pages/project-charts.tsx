@@ -8,7 +8,6 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateRange } from "react-day-picker";
 import { format, differenceInDays, addDays, isWithinInterval, parseISO } from "date-fns";
 import { Loader2, AlertCircle, TrendingUp, Calendar, Network } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface ProjectActivity {
@@ -378,53 +377,55 @@ export default function ProjectCharts() {
 
     if (isLoadingActivities || isLoadingDeps) {
         return (
-            <div className="flex h-96 items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="flex min-h-[320px] items-center justify-center rounded-lg border-2 border-slate-300 bg-white shadow-sm">
+                <Loader2 className="h-8 w-8 animate-spin text-violet-700" />
             </div>
         );
     }
 
     return (
-        <div className="space-y-6 p-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">PERT & Gantt Charts</h1>
-                    <p className="text-muted-foreground">Visualization of project activities and critical path.</p>
+        <div className="flex flex-col gap-4 pb-4">
+            <section className="flex flex-col gap-3 rounded-lg border-2 border-slate-300 bg-white px-4 py-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">Activity window</p>
+                    <p className="mt-0.5 text-xs text-slate-500">Charts include activities that overlap this date range.</p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                <div className="flex shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                    <Calendar className="h-4 w-4 text-violet-700" />
                     <DateRangePicker
                         value={dateRange}
                         onChange={setDateRange}
                         placeholder="Filter activities by date"
                     />
                 </div>
-            </div>
+            </section>
 
             {cpmData.length === 0 ? (
-                <Alert>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>No Data Found</AlertTitle>
-                    <AlertDescription>
-                        No activities found within the selected date range. Please adjust the filter or add activities to the project.
-                    </AlertDescription>
-                </Alert>
+                <section className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border-2 border-slate-300 bg-white px-6 py-12 text-center shadow-sm">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-50 text-violet-700">
+                        <AlertCircle className="h-6 w-6" />
+                    </div>
+                    <h2 className="mt-4 text-base font-semibold text-slate-900">No data found</h2>
+                    <p className="mt-1 max-w-md text-sm text-slate-500">
+                        No activities fall inside the selected date range. Adjust the window above, or add activities to the project.
+                    </p>
+                </section>
             ) : (
                 <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Card>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        <Card className="border-2 border-slate-300 shadow-sm">
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium text-muted-foreground uppercase flex items-center gap-2">
-                                    <TrendingUp className="h-4 w-4" /> Total Activities
+                                <CardTitle className="flex items-center gap-2 text-sm font-medium uppercase text-slate-500">
+                                    <TrendingUp className="h-4 w-4 text-violet-700" /> Total Activities
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold">{cpmData.length}</div>
+                                <div className="text-2xl font-bold text-slate-900">{cpmData.length}</div>
                             </CardContent>
                         </Card>
-                        <Card>
+                        <Card className="border-2 border-slate-300 shadow-sm">
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium text-muted-foreground uppercase flex items-center gap-2">
+                                <CardTitle className="flex items-center gap-2 text-sm font-medium uppercase text-slate-500">
                                     <AlertCircle className="h-4 w-4 text-destructive" /> Critical Activities
                                 </CardTitle>
                             </CardHeader>
@@ -434,27 +435,27 @@ export default function ProjectCharts() {
                                 </div>
                             </CardContent>
                         </Card>
-                        <Card>
+                        <Card className="border-2 border-slate-300 shadow-sm">
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium text-muted-foreground uppercase flex items-center gap-2">
-                                    <Network className="h-4 w-4 text-primary" /> Dependencies
+                                <CardTitle className="flex items-center gap-2 text-sm font-medium uppercase text-slate-500">
+                                    <Network className="h-4 w-4 text-violet-700" /> Dependencies
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold">
+                                <div className="text-2xl font-bold text-slate-900">
                                     {dependencies.filter(d => cpmData.some(a => a.id === d.predecessorId)).length}
                                 </div>
                             </CardContent>
                         </Card>
                     </div>
 
-                    <Tabs defaultValue="gantt" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2 max-w-md">
+                    <Tabs defaultValue="gantt" className="w-full rounded-lg border-2 border-slate-300 bg-white p-4 shadow-sm">
+                        <TabsList className="grid w-full max-w-md grid-cols-2">
                             <TabsTrigger value="gantt">Gantt Chart</TabsTrigger>
                             <TabsTrigger value="pert">PERT Chart</TabsTrigger>
                         </TabsList>
                         <TabsContent value="gantt" className="mt-4">
-                            <Card>
+                            <Card className="border-slate-200 shadow-none">
                                 <CardHeader>
                                     <CardTitle>Gantt Chart (Timeline)</CardTitle>
                                 </CardHeader>
@@ -477,7 +478,7 @@ export default function ProjectCharts() {
                             </Card>
                         </TabsContent>
                         <TabsContent value="pert" className="mt-4">
-                            <Card>
+                            <Card className="border-slate-200 shadow-none">
                                 <CardHeader>
                                     <CardTitle>PERT Chart (Network View)</CardTitle>
                                 </CardHeader>

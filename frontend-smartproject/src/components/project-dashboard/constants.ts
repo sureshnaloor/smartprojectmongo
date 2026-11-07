@@ -12,12 +12,21 @@ export type DashboardTabKey = "home" | "activities" | "register" | "cost" | "sch
 
 export const DASHBOARD_TABS: { key: DashboardTabKey; label: string; href: (projectId: string) => string }[] = [
   { key: "home", label: "Home", href: (id) => `/newproject/${id}` },
-  { key: "activities", label: "Activities", href: (id) => `/projects/${id}` },
-  { key: "register", label: "WP & Activities", href: (id) => `/projects/${id}#register` },
-  { key: "cost", label: "Cost", href: (id) => `/projects/${id}/costs` },
-  { key: "schedule", label: "Schedule", href: (id) => `/projects/${id}/schedule` },
-  { key: "progress", label: "Progress", href: (id) => `/projects/${id}/project-daily-progress` },
+  { key: "activities", label: "Activities", href: (id) => `/newproject/${id}/activities` },
+  { key: "register", label: "WP & Activities", href: (id) => `/newproject/${id}/wp-activities` },
+  { key: "cost", label: "Cost", href: (id) => `/newproject/${id}/cost` },
+  { key: "schedule", label: "Schedule", href: (id) => `/newproject/${id}/schedule` },
+  { key: "progress", label: "Progress", href: (id) => `/newproject/${id}/progress` },
 ];
+
+/** URL segment under /newproject/:id → tab that stays inside this project shell. */
+export const SECTION_TO_TAB: Record<string, DashboardTabKey> = {
+  activities: "activities",
+  "wp-activities": "register",
+  cost: "cost",
+  schedule: "schedule",
+  progress: "progress",
+};
 
 export interface QuickActionItem {
   icon: LucideIcon;

@@ -41,8 +41,14 @@ import { WbsWorkPackagesCard } from "@/components/project-dashboard/wbs-work-pac
 import { KpiStatsRow } from "@/components/project-dashboard/kpi-stats-row";
 import { RecentActivity } from "@/components/project-dashboard/recent-activity";
 import { QuickActions } from "@/components/project-dashboard/quick-actions";
+import { SECTION_TO_TAB, type DashboardTabKey } from "@/components/project-dashboard/constants";
 import type { QuickActionItem } from "@/components/project-dashboard/constants";
+import { SectionPlaceholder } from "@/components/project-dashboard/section-placeholder";
 import { WbsVersionsPanel } from "@/components/wbs-activities/wbs-versions-panel";
+import ProjectWbsWorkPackages from "@/pages/project-wbs-work-packages";
+import Schedule from "@/pages/schedule";
+import CostControl from "@/pages/cost-control";
+import ProjectDailyProgress from "@/pages/project-daily-progress";
 
 // Types for the hierarchical WBS tree used in the UI
 interface WbsTreeNode extends WbsItem {
@@ -53,7 +59,8 @@ interface WbsTreeNode extends WbsItem {
 }
 
 export default function NewProject() {
-    const { projectId } = useParams<{ projectId: string }>();
+    const { projectId, section } = useParams<{ projectId: string; section?: string }>();
+    const activeTab: DashboardTabKey = (section && SECTION_TO_TAB[section]) || "home";
     const [, setLocation] = useLocation();
     const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
     const initializedRef = useRef<boolean>(false);
@@ -450,7 +457,7 @@ export default function NewProject() {
             <div key={item.id}>
                 <div
                     className={cn(
-                        "group flex items-center justify-between border-b border-[var(--border-subtle)] py-2.5 pr-2 transition-colors duration-100",
+                        "group flex items-center justify-between border-b border-slate-200 py-1.5 pr-2 transition-colors duration-100",
                         isSelected
                             ? "border-l-[3px] border-l-[var(--copper-500)] bg-[var(--copper-50)]"
                             : "border-l-[3px] border-l-transparent hover:bg-[rgba(253,246,237,0.5)]",
@@ -561,15 +568,43 @@ export default function NewProject() {
     return (
         <MasterLayout projectId={project.id}>
             <div className="min-h-screen bg-[var(--bg-cream)]">
-                <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+                <div className="mx-auto max-w-[1180px] space-y-3 px-3 py-3">
                     <ProjectDashboardHeader
                         project={project}
-                        activeTab="home"
+                        activeTab={activeTab}
                         onImportWbs={() => setIsImportWbsOpen(true)}
                         scheduleStatus={timelineMetrics.scheduleStatus}
                         wbsFinalized={isWbsFinalized}
                     />
 
+                    {section ? (
+                        activeTab === "activities" ? (
+                            <div className="overflow-hidden rounded-lg border-2 border-slate-300 bg-white">
+                                <ProjectWbsWorkPackages />
+                            </div>
+                        ) : activeTab === "cost" ? (
+                            <div className="overflow-hidden rounded-lg border-2 border-emerald-800 bg-white">
+                                <CostControl />
+                            </div>
+                        ) : activeTab === "schedule" ? (
+                            <div className="overflow-hidden rounded-lg border-2 border-sky-800 bg-white">
+                                <Schedule />
+                            </div>
+                        ) : activeTab === "progress" ? (
+                            <div className="overflow-hidden rounded-lg border-2 border-violet-800 bg-white">
+                                <ProjectDailyProgress />
+                            </div>
+                        ) : (
+                        <SectionPlaceholder
+                            title={
+                                activeTab === "register"
+                                    ? "WP & Activities"
+                                    : section.replace(/-/g, " ")
+                            }
+                        />
+                        )
+                    ) : (
+                    <>
                     <WbsWorkPackagesCard
                         projectId={project.id}
                         projectName={project.name}
@@ -604,10 +639,12 @@ export default function NewProject() {
                         teamCount={projectResources.length}
                     />
 
-                    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[2fr_3fr]">
+                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-[2fr_3fr]">
                         <QuickActions onAction={handleQuickAction} />
                         <RecentActivity />
                     </div>
+                    </>
+                    )}
                 </div>
             </div>
 

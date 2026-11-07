@@ -269,20 +269,19 @@ export default function ProjectResourceDeployment() {
   const activeWp = workPackages.find((wp) => wp.id === Number(selectedWpId));
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-zinc-200 shadow-sm">
-            <div>
-              <div className="flex items-center gap-2 text-primary font-semibold text-xs tracking-wider uppercase mb-1">
-                <Sparkles className="h-4 w-4" /> System-Suggested Deployment
+    <div className="space-y-3">
+          <div className="flex flex-col justify-between gap-2 overflow-hidden rounded-lg border-2 border-emerald-800 bg-white md:flex-row md:items-center">
+            <div className="bg-emerald-50 px-4 py-2">
+              <div className="mb-0.5 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-emerald-800">
+                <Sparkles className="h-3.5 w-3.5" /> System-Suggested Deployment
               </div>
-              <h1 className="text-2xl font-bold text-zinc-900">Project Resource Deployment</h1>
-              <p className="text-sm text-zinc-500">
+              <h1 className="text-sm font-bold uppercase tracking-wide text-emerald-950">Project Resource Deployment</h1>
+              <p className="text-xs text-emerald-800">
                 Deploy active, unassigned Manpower and Equipment to Work Packages for the current month.
               </p>
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex flex-wrap items-center gap-3 px-3 py-2">
               <div className="flex items-center gap-2 bg-zinc-100 px-3 py-1.5 rounded-lg border border-zinc-200">
                 <Calendar className="h-4 w-4 text-zinc-500" />
                 <span className="text-xs font-medium text-zinc-700">Month:</span>
@@ -297,7 +296,7 @@ export default function ProjectResourceDeployment() {
           </div>
 
           {/* Selection Controls: Project -> WBS -> Work Package */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
             <Card className="border-zinc-200 shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-xs font-semibold uppercase text-zinc-500 flex items-center gap-1.5">

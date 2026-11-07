@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { EmployeeOption, employeeOptionLabel } from "@/lib/employees";
 import { Pencil, Upload, MoreHorizontal, Copy, Archive, Trash2, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
@@ -32,6 +34,17 @@ export function ProjectDashboardHeader({
 }: ProjectDashboardHeaderProps) {
   const [, setLocation] = useLocation();
   const [editOpen, setEditOpen] = useState(false);
+  const { data: employees = [] } = useQuery<EmployeeOption[]>({
+    queryKey: ["/api/employee-masters"],
+    enabled: Boolean(project.projectManagerId || project.projectPlannerId),
+  });
+  const personName = (id?: number | null) => {
+    if (!id) return null;
+    const match = employees.find((employee) => employee.id === id);
+    return match ? employeeOptionLabel(match) : null;
+  };
+  const managerName = personName(project.projectManagerId);
+  const plannerName = personName(project.projectPlannerId);
   const [nameHover, setNameHover] = useState(false);
 
   const budgetLabel = formatCurrency(Number(project.budget) || 0, project.currency ?? "INR");
@@ -46,15 +59,15 @@ export function ProjectDashboardHeader({
 
   return (
     <>
-      <header className="cp-card cp-card--compact pd-header-enter !p-5 !shadow-[var(--shadow-sm)]">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+      <header className="pd-header-enter overflow-hidden rounded-lg border-2 border-slate-300 bg-white shadow-sm">
+        <div className="flex flex-col gap-2 px-4 py-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
             <div
               className="group flex items-center gap-2"
               onMouseEnter={() => setNameHover(true)}
               onMouseLeave={() => setNameHover(false)}
             >
-              <h1 className="cp-display-lg truncate" style={{ fontSize: "2rem" }}>
+              <h1 className="truncate text-2xl font-bold tracking-tight text-slate-900">
                 {project.name}
               </h1>
               <button
@@ -69,7 +82,7 @@ export function ProjectDashboardHeader({
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 kanban-body-sm text-[var(--text-secondary)]">
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
               <span className="font-mono">Budget: {budgetLabel}</span>
               <span className="h-1 w-1 rounded-full bg-[var(--text-muted)]" />
               <span>Timeline: {timelineLabel}</span>
@@ -91,6 +104,12 @@ export function ProjectDashboardHeader({
                 {((project as any).projectVersion || "execution").toUpperCase()} VERSION
               </span>
             </div>
+            {(managerName || plannerName) && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
+                {managerName && <span>Project manager: {managerName}</span>}
+                {plannerName && <span>Project planner: {plannerName}</span>}
+              </div>
+            )}
             {((project as any).mappedEstimationProjectId || (project as any).mappedPlanningProjectId) && (
               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
                 <span className="font-medium text-[var(--text-secondary)]">Mapped Versions:</span>
@@ -161,7 +180,7 @@ export function ProjectDashboardHeader({
           </div>
         </div>
 
-        <nav className="mt-5 cp-tabs-underline overflow-x-auto">
+        <nav className="flex gap-1 overflow-x-auto border-t-2 border-slate-200 bg-slate-100 px-2">
           {DASHBOARD_TABS.map((tab) => {
             const isActive = activeTab === tab.key;
             return (
@@ -169,7 +188,12 @@ export function ProjectDashboardHeader({
                 key={tab.key}
                 type="button"
                 onClick={() => setLocation(tab.href(String(project.id)))}
-                className={cn("cp-tab-underline shrink-0", isActive && "cp-tab-underline--active")}
+                className={cn(
+                  "shrink-0 border-b-2 px-3 py-2 text-sm font-semibold",
+                  isActive
+                    ? "border-amber-600 bg-white text-slate-900"
+                    : "border-transparent text-slate-500 hover:bg-white/70 hover:text-slate-800"
+                )}
               >
                 {tab.label}
               </button>

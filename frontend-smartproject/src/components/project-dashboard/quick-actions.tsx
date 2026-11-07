@@ -6,11 +6,11 @@ interface QuickActionsProps {
 
 export function QuickActions({ onAction }: QuickActionsProps) {
   return (
-    <div className="pd-bottom-card flex h-full flex-col rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-white)] shadow-[var(--shadow-sm)] transition-shadow hover:shadow-[var(--shadow-md)]">
-      <div className="border-b border-[var(--border-subtle)] px-5 py-4">
-        <h2 className="kanban-heading-lg text-[var(--text-primary)]">Quick Actions</h2>
+    <div className="pd-bottom-card flex h-full flex-col overflow-hidden rounded-lg border-2 border-amber-700 bg-white shadow-sm">
+      <div className="border-b-2 border-amber-700 bg-amber-50 px-4 py-2">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-amber-900">Quick Actions</h2>
       </div>
-      <div className="grid flex-1 grid-cols-2 gap-3 p-5">
+      <div className="grid flex-1 grid-cols-2 gap-2 p-3">
         {QUICK_ACTIONS.map((action) => {
           const Icon = action.icon;
           return (
@@ -18,7 +18,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
               key={action.action}
               type="button"
               onClick={() => onAction(action.action)}
-              className="pd-action-tile flex flex-col items-center rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-cream)] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[rgba(212,144,61,0.3)] hover:bg-[var(--copper-50)] hover:shadow-[var(--shadow-sm)]"
+              className="pd-action-tile flex flex-col items-center rounded-md border border-amber-200 bg-amber-50/60 p-2.5 transition-colors hover:border-amber-400 hover:bg-amber-50"
             >
               <Icon className="h-6 w-6 text-[var(--copper-500)]" />
               <span className="mt-2 kanban-body-sm font-medium text-[var(--text-primary)]">{action.label}</span>

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Building2, ChevronDown, Plus, Settings, Loader2 } from "lucide-react";
+import { Building2, ChevronDown, Plus, Settings, Loader2, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { initials, formatChatTime } from "@/lib/collab-config";
 import type { Thread } from "@/types";
@@ -17,11 +17,61 @@ interface ChannelSidebarProps {
   activeChannel: CollabChannelHash;
   onChannelChange: (hash: CollabChannelHash) => void;
   threads: Thread[];
+  pinnedThreads?: Thread[];
   selectedThreadId: number | null;
   onSelectThread: (id: number) => void;
   onNewChat: () => void;
   loading?: boolean;
   userName?: string;
+}
+
+function ThreadList({
+  threads,
+  selectedThreadId,
+  onSelectThread,
+  pinned = false,
+}: {
+  threads: Thread[];
+  selectedThreadId: number | null;
+  onSelectThread: (id: number) => void;
+  pinned?: boolean;
+}) {
+  return (
+    <ul className="space-y-0.5">
+      {threads.map((t) => {
+        const unread = t.unreadMentionCount ?? 0;
+        const isSelected = selectedThreadId === t.id;
+        return (
+          <li key={t.id}>
+            <button
+              type="button"
+              onClick={() => onSelectThread(t.id)}
+              className={cn(
+                "flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors",
+                isSelected ? "bg-white shadow-sm ring-1 ring-stone-200" : "hover:bg-stone-200/50",
+                pinned && !isSelected && "bg-amber-50/80"
+              )}
+            >
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-stone-200 kanban-caption font-semibold text-[var(--copper-600)]">
+                {initials(t.title)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-1">
+                  <span className={cn("flex min-w-0 items-center gap-1 truncate kanban-body-sm", unread > 0 ? "font-semibold text-stone-900" : "text-stone-700")}>
+                    {pinned && <Pin className="h-3 w-3 shrink-0 text-amber-600" />}
+                    <span className="truncate">{t.title}</span>
+                  </span>
+                  <span className="shrink-0 kanban-caption text-stone-400">{formatChatTime(t.lastMessageAt)}</span>
+                </div>
+                <p className="truncate kanban-caption text-stone-500">{t.lastMessagePreview || t.subject}</p>
+              </div>
+              {unread > 0 && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[var(--copper-500)]" />}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 export function ChannelSidebar({
@@ -30,6 +80,7 @@ export function ChannelSidebar({
   activeChannel,
   onChannelChange,
   threads,
+  pinnedThreads = [],
   selectedThreadId,
   onSelectThread,
   onNewChat,
@@ -40,8 +91,12 @@ export function ChannelSidebar({
     queryKey: ["/api/projects"],
   });
 
-  const issueCount = threads.filter((t) => (t.category || t.type) === "issue" && !t.isClosed).length;
-  const safetyUnread = threads.some((t) => (t.category || t.type) === "safety" && (t.unreadMentionCount ?? 0) > 0);
+  const issueCount = [...pinnedThreads, ...threads].filter(
+    (t) => (t.category || t.type) === "issue" && !t.isClosed
+  ).length;
+  const safetyUnread = [...pinnedThreads, ...threads].some(
+    (t) => (t.category || t.type) === "safety" && (t.unreadMentionCount ?? 0) > 0
+  );
 
   return (
     <aside className="flex h-full w-[280px] shrink-0 flex-col border-l border-stone-200 bg-stone-100 shadow-[-4px_0_16px_rgba(0,0,0,0.04)]">
@@ -54,7 +109,7 @@ export function ChannelSidebar({
             >
               <Building2 className="h-4 w-4 shrink-0 text-[var(--copper-500)]" />
               <span className="kanban-body-md flex-1 truncate font-medium text-stone-800">
-                {projectName ?? `Project ${projectId}`}
+                {projectName || (projectId ? `Project ${projectId}` : "Select a project")}
               </span>
               <ChevronDown className="h-4 w-4 shrink-0 text-stone-400" />
             </button>
@@ -63,7 +118,12 @@ export function ChannelSidebar({
             {projects.length > 0 ? (
               projects.map((p) => (
                 <DropdownMenuItem key={p.id} asChild>
-                  <a href={`/projects/${p.id}/collab`}>{p.name}</a>
+                  <a
+                    href={`/projects/${p.id}/collab`}
+                    className={String(p.id) === String(projectId) ? "bg-stone-100 font-semibold" : undefined}
+                  >
+                    {p.name}
+                  </a>
                 </DropdownMenuItem>
               ))
             ) : (
@@ -132,41 +192,33 @@ export function ChannelSidebar({
             <div className="flex justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-stone-400" />
             </div>
-          ) : threads.length === 0 ? (
+          ) : threads.length === 0 && pinnedThreads.length === 0 ? (
             <p className="px-2 py-3 kanban-caption text-stone-500">No chats in this channel</p>
           ) : (
-            <ul className="space-y-0.5">
-              {threads.map((t) => {
-                const unread = t.unreadMentionCount ?? 0;
-                const isSelected = selectedThreadId === t.id;
-                return (
-                  <li key={t.id}>
-                    <button
-                      type="button"
-                      onClick={() => onSelectThread(t.id)}
-                      className={cn(
-                        "flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors",
-                        isSelected ? "bg-white shadow-sm ring-1 ring-stone-200" : "hover:bg-stone-200/50"
-                      )}
-                    >
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-stone-200 kanban-caption font-semibold text-[var(--copper-600)]">
-                        {initials(t.title)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className={cn("truncate kanban-body-sm", unread > 0 ? "font-semibold text-stone-900" : "text-stone-700")}>
-                            {t.title}
-                          </span>
-                          <span className="shrink-0 kanban-caption text-stone-400">{formatChatTime(t.lastMessageAt)}</span>
-                        </div>
-                        <p className="truncate kanban-caption text-stone-500">{t.lastMessagePreview || t.subject}</p>
-                      </div>
-                      {unread > 0 && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[var(--copper-500)]" />}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="space-y-3">
+              {activeChannel !== "pinned" && pinnedThreads.length > 0 && (
+                <div>
+                  <p className="mb-1 flex items-center gap-1 px-2 kanban-caption font-semibold uppercase tracking-wider text-amber-700">
+                    <Pin className="h-3 w-3" />
+                    Pinned
+                  </p>
+                  <ThreadList
+                    threads={pinnedThreads}
+                    selectedThreadId={selectedThreadId}
+                    onSelectThread={onSelectThread}
+                    pinned
+                  />
+                </div>
+              )}
+              {threads.length > 0 && (
+                <ThreadList
+                  threads={threads}
+                  selectedThreadId={selectedThreadId}
+                  onSelectThread={onSelectThread}
+                  pinned={activeChannel === "pinned"}
+                />
+              )}
+            </div>
           )}
         </div>
 

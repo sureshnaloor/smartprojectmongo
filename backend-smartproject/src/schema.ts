@@ -79,7 +79,10 @@ export const insertProjectSchema = z.object({
   description: z.string().optional().nullable(),
   budget: z.string().or(z.number()).transform(val => val.toString()),
   currency: projectCurrencySchema,
-  projectType: z.enum(['Highway', 'Infrastructure', 'Power', 'Commercial', 'Petrochem', 'Oil&Gas']).optional().nullable(),
+  /** Portfolio name (sector), kept in sync with portfolioId */
+  projectType: z.string().trim().min(1).optional().nullable(),
+  /** Portfolio (sector) this project belongs to */
+  portfolioId: z.number().int().positive().optional().nullable(),
   status: z.enum(['concept', 'planning', 'active', 'in progress', 'aborted', 'on-hold', 'completed']).optional().nullable(),
   startDate: z.date().or(z.string()).transform(val => {
     if (typeof val === 'string') return new Date(val).toISOString().split('T')[0];
@@ -103,10 +106,14 @@ export const insertProjectSchema = z.object({
   amendmentNumber: z.number().optional().nullable(),
   /** Project version: 'estimation' | 'planning' | 'execution' (defaults to 'execution') */
   projectVersion: z.enum(["estimation", "planning", "execution"]).optional().nullable().default("execution"),
-  /** Mapped estimation project ID (optional, when projectVersion is 'execution') */
-  mappedEstimationProjectId: z.number().optional().nullable(),
-  /** Mapped planning project ID (optional, when projectVersion is 'execution') */
-  mappedPlanningProjectId: z.number().optional().nullable(),
+  /** Estimation project linked from a planning or execution project */
+  mappedEstimationProjectId: z.number().int().positive().optional().nullable(),
+  /** Planning project linked from an execution project */
+  mappedPlanningProjectId: z.number().int().positive().optional().nullable(),
+  /** Employee responsible for managing this project */
+  projectManagerId: z.number().int().positive().optional().nullable(),
+  /** Employee responsible for planning this project */
+  projectPlannerId: z.number().int().positive().optional().nullable(),
 });
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Project = InsertProject & { id: number; createdAt: Date };
@@ -712,6 +719,21 @@ export const insertMaterialMasterSchema = z.object({
 export type InsertMaterialMaster = z.infer<typeof insertMaterialMasterSchema>;
 export type MaterialMaster = InsertMaterialMaster & { id: number; createdAt: Date; updatedAt: Date };
 
+// --- Portfolios (sectors that group projects) ---
+export const insertPortfolioSchema = z.object({
+  name: z.string().trim().min(1, "Portfolio name is required").max(80),
+  managerId: z.number({ required_error: "Portfolio manager is required" }).int().positive(),
+  description: z.string().trim().min(1, "Long description is required"),
+});
+export type InsertPortfolio = z.infer<typeof insertPortfolioSchema>;
+export type Portfolio = Omit<InsertPortfolio, "managerId"> & {
+  id: number;
+  managerId: number | null;
+  managerName: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 // --- Service Types/Groups ---
 export const insertServiceTypeSchema = z.object({
   name: z.string(),
@@ -1228,6 +1250,7 @@ export const indirectManpowerEntries = 'indirect_manpower_entries';
 export const plannedActivities = 'planned_activities';
 export const plannedActivityTasks = 'planned_activity_tasks';
 export const materialMaster = 'material_master';
+export const portfolios = 'portfolios';
 export const serviceTypes = 'service_types';
 export const serviceGroups = 'service_groups';
 export const serviceMaster = 'service_master';

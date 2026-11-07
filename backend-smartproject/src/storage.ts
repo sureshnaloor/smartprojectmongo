@@ -76,6 +76,8 @@ import {
   type InsertVendorMaster,
   type ServiceType,
   type InsertServiceType,
+  type Portfolio,
+  type InsertPortfolio,
   type ServiceGroup,
   type InsertServiceGroup,
   type ServiceMaster,
@@ -146,6 +148,47 @@ import {
 } from "./schema";
 
 const GLOBAL_DEFAULTS_ID = 1;
+
+const DEFAULT_PORTFOLIOS: { name: string; description: string }[] = [
+  { name: "Highway", description: "Highway and road corridor projects, including new alignments, widening, and rehabilitation." },
+  { name: "Infrastructure", description: "Civil and public infrastructure projects such as utilities, water, transport structures, and urban works." },
+  { name: "Power", description: "Power generation, transmission, and distribution projects." },
+  { name: "Commercial", description: "Commercial buildings, facilities, and mixed-use developments." },
+  { name: "Petrochem", description: "Petrochemical plants, process units, and related industrial facilities." },
+  { name: "Oil & Gas", description: "Upstream, midstream, and downstream oil and gas projects." },
+];
+
+function portfolioKey(name: string): string {
+  return name.trim().toLowerCase().replace(/&/g, "").replace(/[^a-z0-9]/g, "");
+}
+
+function visibleNamePart(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("@gm:")) {
+    const rest = trimmed.slice(4);
+    const space = rest.indexOf(" ");
+    return space === -1 ? "" : rest.slice(space + 1).trim();
+  }
+  return trimmed;
+}
+
+function formatEmployeeName(emp: {
+  empFirstName?: unknown;
+  empMiddleName?: unknown;
+  empLastName?: unknown;
+  employeeNumber?: unknown;
+}): string {
+  const name = [emp.empFirstName, emp.empMiddleName, emp.empLastName]
+    .map(visibleNamePart)
+    .filter(Boolean)
+    .join(" ");
+  if (name) return name;
+  return typeof emp.employeeNumber === "string" && emp.employeeNumber.trim()
+    ? emp.employeeNumber.trim()
+    : "Employee";
+}
 
 export class DatabaseStorage {
   private async getNextId(collectionName: string): Promise<number> {
@@ -1085,6 +1128,213 @@ export class DatabaseStorage {
       );
     }
     await db.collection("service_types").deleteOne({ id });
+  }
+
+  async preparePortfolios(): Promise<void> {
+    const count = await db.collection("portfolios").countDocuments();
+    if (count === 0) {
+      const now = new Date();
+      for (const item of DEFAULT_PORTFOLIOS) {
+        const id = await this.getNextId("portfolios");
+        await db.collection("portfolios").insertOne({
+          id,
+          name: item.name,
+          description: item.description,
+          managerId: null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+    await this.linkUnassignedProjects();
+  }
+
+  private async linkUnassignedProjects(): Promise<void> {
+    const portfolios = await db.collection("portfolios").find().toArray();
+    if (portfolios.length === 0) return;
+    const projects = await db.collection("projects").find({
+      projectType: { $nin: [null, ""] },
+      $or: [{ portfolioId: null }, { portfolioId: { $exists: false } }],
+    }).toArray();
+    for (const project of projects) {
+      const key = portfolioKey(String(project.projectType ?? ""));
+      const match = portfolios.find((p) => portfolioKey(String(p.name ?? "")) === key);
+      if (!match || project.id == null) continue;
+      await db.collection("projects").updateOne(
+        { id: project.id },
+        { $set: { portfolioId: match.id, projectType: match.name } }
+      );
+    }
+  }
+
+  private async managerNameMap(): Promise<Map<number, string>> {
+    const employees = await db.collection("employee_master").find().toArray();
+    const names = new Map<number, string>();
+    for (const emp of employees) {
+      if (typeof emp.id === "number") {
+        names.set(emp.id, formatEmployeeName(emp as unknown as {
+          empFirstName?: unknown;
+          empMiddleName?: unknown;
+          empLastName?: unknown;
+          employeeNumber?: unknown;
+        }));
+      }
+    }
+    return names;
+  }
+
+  private toPortfolio(doc: Record<string, unknown>, names: Map<number, string>): Portfolio {
+    const managerId = typeof doc.managerId === "number" ? doc.managerId : null;
+    return {
+      id: doc.id as number,
+      name: String(doc.name ?? ""),
+      description: typeof doc.description === "string" ? doc.description : "",
+      managerId,
+      managerName: managerId ? names.get(managerId) ?? null : null,
+      createdAt: doc.createdAt as Date,
+      updatedAt: doc.updatedAt as Date,
+    };
+  }
+
+  async getPortfolios(): Promise<Portfolio[]> {
+    const docs = await db.collection("portfolios").find().sort({ name: 1 }).toArray();
+    const names = await this.managerNameMap();
+    return docs.map((doc) => this.toPortfolio(doc as Record<string, unknown>, names));
+  }
+
+  async getPortfolio(id: number): Promise<Portfolio | undefined> {
+    const doc = await db.collection("portfolios").findOne({ id });
+    if (!doc) return undefined;
+    const names = await this.managerNameMap();
+    return this.toPortfolio(doc as Record<string, unknown>, names);
+  }
+
+  async getPortfolioByName(name: string): Promise<Portfolio | undefined> {
+    const key = portfolioKey(name);
+    if (!key) return undefined;
+    const docs = await db.collection("portfolios").find().toArray();
+    const match = docs.find((doc) => portfolioKey(String(doc.name ?? "")) === key);
+    if (!match) return undefined;
+    const names = await this.managerNameMap();
+    return this.toPortfolio(match as Record<string, unknown>, names);
+  }
+
+  private async assertPortfolioManager(managerId: number): Promise<void> {
+    const employee = await db.collection("employee_master").findOne({ id: managerId });
+    if (!employee) throw new Error("Portfolio manager not found");
+  }
+
+  async createPortfolio(data: InsertPortfolio): Promise<Portfolio> {
+    const name = data.name.trim();
+    const existing = await this.getPortfolioByName(name);
+    if (existing) throw new Error(`Portfolio "${name}" already exists`);
+    await this.assertPortfolioManager(data.managerId);
+    const id = await this.getNextId("portfolios");
+    const now = new Date();
+    await db.collection("portfolios").insertOne({
+      id,
+      name,
+      description: data.description.trim(),
+      managerId: data.managerId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const created = await this.getPortfolio(id);
+    if (!created) throw new Error("Failed to create portfolio");
+    return created;
+  }
+
+  async updatePortfolio(id: number, data: Partial<InsertPortfolio>): Promise<Portfolio | undefined> {
+    const existing = await this.getPortfolio(id);
+    if (!existing) return undefined;
+    const nextName = data.name?.trim();
+    if (nextName) {
+      const dup = await this.getPortfolioByName(nextName);
+      if (dup && dup.id !== id) throw new Error(`Portfolio "${nextName}" already exists`);
+    }
+    if (data.managerId != null) await this.assertPortfolioManager(data.managerId);
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (nextName) patch.name = nextName;
+    if (data.description != null) patch.description = data.description.trim();
+    if (data.managerId != null) patch.managerId = data.managerId;
+    await db.collection("portfolios").updateOne({ id }, { $set: patch });
+    if (nextName && portfolioKey(nextName) !== portfolioKey(existing.name)) {
+      await db.collection("projects").updateMany(
+        { $or: [{ portfolioId: id }, { projectType: existing.name }] },
+        { $set: { projectType: nextName, portfolioId: id } }
+      );
+    }
+    return this.getPortfolio(id);
+  }
+
+  async deletePortfolio(id: number): Promise<void> {
+    const portfolio = await this.getPortfolio(id);
+    if (!portfolio) return;
+    const inUse = await db.collection("projects").findOne({
+      $or: [{ portfolioId: id }, { projectType: portfolio.name }],
+    });
+    if (inUse) {
+      throw new Error(
+        `Cannot delete portfolio "${portfolio.name}" — it still has projects. Move those projects to another portfolio first.`
+      );
+    }
+    await db.collection("portfolios").deleteOne({ id });
+  }
+
+  async resolveProjectPortfolio<T extends { projectType?: string | null; portfolioId?: number | null }>(data: T): Promise<T> {
+    if (data.portfolioId != null) {
+      const portfolio = await this.getPortfolio(data.portfolioId);
+      if (!portfolio) throw new Error("Portfolio not found");
+      return { ...data, portfolioId: portfolio.id, projectType: portfolio.name };
+    }
+    if (data.projectType) {
+      const portfolio = await this.getPortfolioByName(data.projectType);
+      if (portfolio) return { ...data, portfolioId: portfolio.id, projectType: portfolio.name };
+    }
+    return data;
+  }
+
+  private async assertEmployee(id: number, label: string): Promise<void> {
+    const employee = await db.collection("employee_master").findOne({ id });
+    if (!employee) throw new Error(`${label} not found`);
+  }
+
+  async validateProjectAssignments(data: {
+    id?: number;
+    projectVersion?: string | null;
+    mappedEstimationProjectId?: number | null;
+    mappedPlanningProjectId?: number | null;
+    projectManagerId?: number | null;
+    projectPlannerId?: number | null;
+  }): Promise<void> {
+    const version = data.projectVersion || "execution";
+    if (data.projectManagerId != null) await this.assertEmployee(data.projectManagerId, "Project manager");
+    if (data.projectPlannerId != null) await this.assertEmployee(data.projectPlannerId, "Project planner");
+
+    if (version !== "execution" && version !== "planning" && data.mappedEstimationProjectId) {
+      throw new Error("Only planning and execution projects can link an estimation project");
+    }
+    if (version !== "execution" && data.mappedPlanningProjectId) {
+      throw new Error("Only execution projects can link a planning project");
+    }
+
+    if (data.mappedEstimationProjectId != null) {
+      const estimation = await this.getProject(data.mappedEstimationProjectId);
+      if (!estimation) throw new Error("Mapped estimation project not found");
+      if ((estimation.projectVersion || "execution") !== "estimation") {
+        throw new Error("Select a project whose version is estimation");
+      }
+      if (data.id != null && estimation.id === data.id) throw new Error("A project cannot link to itself");
+    }
+
+    if (data.mappedPlanningProjectId != null) {
+      const planning = await this.getProject(data.mappedPlanningProjectId);
+      if (!planning) throw new Error("Mapped planning project not found");
+      if ((planning.projectVersion || "execution") !== "planning") {
+        throw new Error("Select a project whose version is planning");
+      }
+      if (data.id != null && planning.id === data.id) throw new Error("A project cannot link to itself");
+    }
   }
 
   async getServiceGroups(serviceTypeId?: number): Promise<ServiceGroup[]> {

@@ -38,6 +38,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Portfolio } from "@/lib/portfolios";
+import { EmployeeOption, employeeOptionLabel } from "@/lib/employees";
 
 // Form schema for the frontend - uses Date objects
 const formSchema = z.object({
@@ -45,13 +47,15 @@ const formSchema = z.object({
   description: z.string().optional().nullable(),
   budget: z.coerce.number().positive("Budget must be a positive number"),
   currency: z.enum(["USD", "EUR", "SAR"]).default("USD"),
-  projectType: z.enum(["Highway", "Infrastructure", "Power", "Commercial", "Petrochem", "Oil&Gas"]).optional().nullable(),
+  portfolioId: z.string().optional(),
   status: z.enum(["concept", "planning", "active", "in progress", "aborted", "on-hold", "completed"]).optional().nullable(),
   startDate: z.date(),
   endDate: z.date(),
   projectVersion: z.enum(["estimation", "planning", "execution"]).default("execution"),
   mappedEstimationProjectId: z.number().optional().nullable(),
   mappedPlanningProjectId: z.number().optional().nullable(),
+  projectManagerId: z.string().optional(),
+  projectPlannerId: z.string().optional(),
 });
 
 type ProjectFormData = z.infer<typeof formSchema>;
@@ -76,6 +80,16 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
   // Fetch all projects for mapping dropdowns
   const { data: allProjects = [] } = useQuery<any[]>({
     queryKey: ["/api/projects"],
+    enabled: isOpen,
+  });
+
+  const { data: portfolios = [] } = useQuery<Portfolio[]>({
+    queryKey: ["/api/portfolios"],
+    enabled: isOpen,
+  });
+
+  const { data: employees = [] } = useQuery<EmployeeOption[]>({
+    queryKey: ["/api/employee-masters"],
     enabled: isOpen,
   });
 
@@ -105,17 +119,22 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
       startDate: new Date(),
       endDate: new Date(new Date().setMonth(new Date().getMonth() + 6)),
       currency: "USD",
-      projectType: undefined,
+      portfolioId: "",
       status: undefined,
       projectVersion: "execution",
       mappedEstimationProjectId: null,
       mappedPlanningProjectId: null,
+      projectManagerId: "",
+      projectPlannerId: "",
     },
   });
 
   // Initialize form with project data when loaded
   useEffect(() => {
     if (project) {
+      const match =
+        portfolios.find((item) => item.id === project.portfolioId) ??
+        portfolios.find((item) => item.name === project.projectType);
       form.reset({
         name: project.name,
         description: project.description || "",
@@ -123,14 +142,16 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
         startDate: project.startDate ? new Date(project.startDate) : new Date(),
         endDate: project.endDate ? new Date(project.endDate) : new Date(),
         currency: (project.currency || "USD") as "USD" | "EUR" | "SAR",
-        projectType: project.projectType as any,
+        portfolioId: match ? String(match.id) : "",
         status: project.status as any,
         projectVersion: (project as any).projectVersion || "execution",
         mappedEstimationProjectId: (project as any).mappedEstimationProjectId || null,
         mappedPlanningProjectId: (project as any).mappedPlanningProjectId || null,
+        projectManagerId: project.projectManagerId ? String(project.projectManagerId) : "",
+        projectPlannerId: project.projectPlannerId ? String(project.projectPlannerId) : "",
       });
     }
-  }, [project, form]);
+  }, [project, portfolios, form]);
 
   // Get form values
   const { startDate } = form.watch();
@@ -150,18 +171,22 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
   const updateProject = useMutation({
     mutationFn: async (data: ProjectFormData) => {
       // Transform dates to ISO strings for API
+      const portfolio = portfolios.find((item) => String(item.id) === data.portfolioId);
       const apiData = {
         name: data.name,
         description: data.description || null,
         budget: data.budget,
         currency: data.currency,
-        projectType: data.projectType || null,
+        portfolioId: portfolio ? portfolio.id : (project?.portfolioId ?? null),
+        projectType: portfolio ? portfolio.name : (project?.projectType ?? null),
         status: data.status || null,
         startDate: data.startDate.toISOString().split('T')[0],
         endDate: data.endDate.toISOString().split('T')[0],
         projectVersion: data.projectVersion || "execution",
-        mappedEstimationProjectId: data.mappedEstimationProjectId || null,
-        mappedPlanningProjectId: data.mappedPlanningProjectId || null,
+        mappedEstimationProjectId: data.projectVersion === "estimation" ? null : (data.mappedEstimationProjectId || null),
+        mappedPlanningProjectId: data.projectVersion === "execution" ? (data.mappedPlanningProjectId || null) : null,
+        projectManagerId: data.projectManagerId ? Number(data.projectManagerId) : null,
+        projectPlannerId: data.projectPlannerId ? Number(data.projectPlannerId) : null,
       };
       const response = await apiRequest("PATCH", `/api/projects/${projectId}`, apiData);
       return response.json();
@@ -299,28 +324,34 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="projectType"
+                name="portfolioId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Project Type</FormLabel>
+                    <FormLabel>Portfolio</FormLabel>
                     <Select
                       onValueChange={field.onChange}
                       value={field.value || undefined}
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select project type" />
+                          <SelectValue placeholder="Select portfolio" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="Highway">Highway</SelectItem>
-                        <SelectItem value="Infrastructure">Infrastructure</SelectItem>
-                        <SelectItem value="Power">Power</SelectItem>
-                        <SelectItem value="Commercial">Commercial</SelectItem>
-                        <SelectItem value="Petrochem">Petrochem</SelectItem>
-                        <SelectItem value="Oil&Gas">Oil & Gas</SelectItem>
+                        {portfolios.length === 0 ? (
+                          <SelectItem value="__none" disabled>No portfolios yet</SelectItem>
+                        ) : (
+                          portfolios.map((portfolio) => (
+                            <SelectItem key={portfolio.id} value={String(portfolio.id)}>
+                              {portfolio.name}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
+                    <FormDescription>
+                      Sector this project belongs to. Manage the list from Portfolios.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -331,7 +362,7 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
                 name="status"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Status</FormLabel>
+                    <FormLabel>Stage</FormLabel>
                     <Select
                       onValueChange={field.onChange}
                       value={field.value || undefined}
@@ -351,6 +382,9 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
                         <SelectItem value="completed">Completed</SelectItem>
                       </SelectContent>
                     </Select>
+                    <FormDescription>
+                      Stage can be updated at any time. Automatic updates from project progress will come later.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -364,17 +398,11 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
                 <FormItem>
                   <FormLabel>Project Version</FormLabel>
                   <Select
-                    onValueChange={(val) => {
-                      field.onChange(val);
-                      if (val !== "execution") {
-                        form.setValue("mappedEstimationProjectId", null);
-                        form.setValue("mappedPlanningProjectId", null);
-                      }
-                    }}
                     value={field.value || "execution"}
+                    disabled
                   >
                     <FormControl>
-                      <SelectTrigger>
+                      <SelectTrigger className="disabled:cursor-not-allowed disabled:opacity-60">
                         <SelectValue placeholder="Select project version" />
                       </SelectTrigger>
                     </FormControl>
@@ -385,14 +413,73 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    Select Estimation, Planning, or Execution (default).
+                    Version is set when the project is created and cannot be changed, the same way currency is locked.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {selectedVersion === "execution" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="projectManagerId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Project Manager</FormLabel>
+                    <Select
+                      onValueChange={(value) => field.onChange(value === "none" ? "" : value)}
+                      value={field.value || "none"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select project manager" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {employees.map((employee) => (
+                          <SelectItem key={employee.id} value={String(employee.id)}>
+                            {employeeOptionLabel(employee)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="projectPlannerId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Project Planner</FormLabel>
+                    <Select
+                      onValueChange={(value) => field.onChange(value === "none" ? "" : value)}
+                      value={field.value || "none"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select project planner" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {employees.map((employee) => (
+                          <SelectItem key={employee.id} value={String(employee.id)}>
+                            {employeeOptionLabel(employee)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {(selectedVersion === "planning" || selectedVersion === "execution") && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-md border border-slate-200 bg-slate-50/50 p-3">
                 <FormField
                   control={form.control}
@@ -428,6 +515,7 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
                   }}
                 />
 
+                {selectedVersion === "execution" && (
                 <FormField
                   control={form.control}
                   name="mappedPlanningProjectId"
@@ -461,6 +549,7 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
                     );
                   }}
                 />
+                )}
               </div>
             )}
 

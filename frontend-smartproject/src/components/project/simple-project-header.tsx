@@ -93,15 +93,17 @@ export function SimpleProjectHeader({ projectId, pageTitle, pageIcon, onClose }:
 
   const tabClass = (active: boolean) =>
     cn(
-      "cp-tab-underline inline-flex shrink-0 items-center gap-1.5 !py-2.5 !px-3",
-      active && "cp-tab-underline--active"
+      "inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-semibold",
+      active
+        ? "border-amber-600 bg-white text-slate-900"
+        : "border-transparent text-slate-500 hover:bg-white/70 hover:text-slate-800"
     );
 
   return (
-    <div className="cp-inline-page-header">
-      <div className="cp-inline-page-header__body">
+    <div className="overflow-hidden rounded-lg border-2 border-slate-300 bg-white shadow-sm">
+      <div className="px-4 py-3">
         <div className="flex min-w-0 items-center justify-between">
-          <div className="min-w-0 flex-1 space-y-2">
+          <div className="min-w-0 flex-1 space-y-1">
             <div className="flex min-w-0 items-center gap-3">
               {onClose && (
                 <Button
@@ -114,11 +116,11 @@ export function SimpleProjectHeader({ projectId, pageTitle, pageIcon, onClose }:
                   <span className="sr-only md:not-sr-only md:inline-block">Back to Projects</span>
                 </Button>
               )}
-              <h1 className={cn("cp-display-md truncate", (isHseHub || isDocumentsHub) && "!text-[2rem]")}>
+              <h1 className="truncate text-xl font-bold tracking-tight text-slate-900">
                 {project.name}
               </h1>
             </div>
-            <div className="flex flex-wrap items-center gap-2 kanban-body-sm text-[var(--text-secondary)]">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
               <span className="font-mono">Budget: {formatCurrency(Number(project.budget), project.currency || "USD")}</span>
               <span className="h-1 w-1 rounded-full bg-[var(--text-muted)]" />
               <span>
@@ -140,8 +142,8 @@ export function SimpleProjectHeader({ projectId, pageTitle, pageIcon, onClose }:
       </div>
 
       {isDocumentsRoute && !isDocumentsHub && (
-        <div className="cp-inline-page-header__tabs">
-          <nav className="cp-tabs-underline flex flex-wrap gap-x-1 overflow-x-auto py-1">
+        <div>
+          <nav className="flex gap-1 overflow-x-auto border-t-2 border-slate-200 bg-slate-100 px-2">
             {documentTabs.map((tab) => {
               const active = typeof location === "string" && location.includes(tab.match);
               const Icon = tab.Icon;
@@ -163,8 +165,8 @@ export function SimpleProjectHeader({ projectId, pageTitle, pageIcon, onClose }:
       )}
 
       {isWikiRoute && !isHseHub && (
-        <div className="cp-inline-page-header__tabs">
-          <nav className="cp-tabs-underline flex flex-wrap gap-x-1 overflow-x-auto py-1">
+        <div>
+          <nav className="flex gap-1 overflow-x-auto border-t-2 border-slate-200 bg-slate-100 px-2">
             {wikiTabs.map((tab) => {
               const active = typeof location === "string" && location.includes(tab.match);
               const Icon = tab.Icon;

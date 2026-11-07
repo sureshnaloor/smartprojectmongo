@@ -22,7 +22,8 @@ export const projects = pgTable("projects", {
   description: text("description"),
   budget: numeric("budget", { precision: 12, scale: 2 }).notNull(),
   currency: text("currency").default("USD").notNull(),
-  projectType: text("project_type"), // Highway, Infrastructure, Power, Commercial, Petrochem, Oil&Gas
+  projectType: text("project_type"), // Portfolio name (sector), e.g. Power, Oil & Gas
+  portfolioId: integer("portfolio_id"),
   status: text("status"), // concept, planning, active, in progress, aborted, on-hold, completed
   startDate: date("start_date"),
   endDate: date("end_date"),
@@ -40,10 +41,14 @@ export const projects = pgTable("projects", {
   amendmentNumber: integer("amendment_number"),
   /** Project version: 'estimation' | 'planning' | 'execution' (defaults to 'execution') */
   projectVersion: text("project_version").default("execution"),
-  /** Mapped estimation project ID (optional, when projectVersion is 'execution') */
+  /** Estimation project linked from a planning or execution project */
   mappedEstimationProjectId: integer("mapped_estimation_project_id"),
-  /** Mapped planning project ID (optional, when projectVersion is 'execution') */
+  /** Planning project linked from an execution project */
   mappedPlanningProjectId: integer("mapped_planning_project_id"),
+  /** Employee responsible for managing this project */
+  projectManagerId: integer("project_manager_id"),
+  /** Employee responsible for planning this project */
+  projectPlannerId: integer("project_planner_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -283,7 +288,8 @@ export const insertProjectSchema = createInsertSchema(projects)
     description: z.string().optional().nullable(),
     budget: z.string().or(z.number()).transform(val => val.toString()),
     currency: z.enum(["USD", "EUR", "SAR"]).default("USD"),
-    projectType: z.enum(["Highway", "Infrastructure", "Power", "Commercial", "Petrochem", "Oil&Gas"]).optional().nullable(),
+    projectType: z.string().optional().nullable(),
+    portfolioId: z.number().int().positive().optional().nullable(),
     status: z.enum(["concept", "planning", "active", "in progress", "aborted", "on-hold", "completed"]).optional().nullable(),
     startDate: z.date().or(z.string()).transform(val => {
       if (typeof val === 'string') return new Date(val).toISOString().split('T')[0];
@@ -295,8 +301,10 @@ export const insertProjectSchema = createInsertSchema(projects)
     }).optional().nullable(),
     allocationVersion: z.number().int().min(0).optional().nullable(),
     projectVersion: z.enum(["estimation", "planning", "execution"]).optional().nullable().default("execution"),
-    mappedEstimationProjectId: z.number().optional().nullable(),
-    mappedPlanningProjectId: z.number().optional().nullable(),
+    mappedEstimationProjectId: z.number().int().positive().optional().nullable(),
+    mappedPlanningProjectId: z.number().int().positive().optional().nullable(),
+    projectManagerId: z.number().int().positive().optional().nullable(),
+    projectPlannerId: z.number().int().positive().optional().nullable(),
   });
 
 // Base WBS schema - a simpler version without all the refinements

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useMobile } from "@/hooks/use-mobile";
 import { AddProjectModal } from "./add-project-modal";
+import { groupLinkedProjects } from "@/lib/project-groups";
 
 interface SideNavigationProps {
   currentProjectId?: number;
@@ -65,6 +66,12 @@ export function SideNavigation({ currentProjectId }: SideNavigationProps) {
   });
 
   const currentProject = projects.find((project) => project.id === currentProjectId);
+
+  useEffect(() => {
+    if (currentProjectId) {
+      sessionStorage.setItem("sp-active-project", String(currentProjectId));
+    }
+  }, [currentProjectId]);
 
   const isActive = (path: string) => location.includes(path);
 
@@ -146,31 +153,53 @@ export function SideNavigation({ currentProjectId }: SideNavigationProps) {
               </div>
             ) : (
               <>
+                <ul className="mb-2 space-y-0.5 border-b border-[var(--border-dark)] pb-2">
+                  <li>
+                    <SidebarLink href="/portfolios" active={location === "/portfolios"} icon={Briefcase}>
+                      Portfolios
+                    </SidebarLink>
+                  </li>
+                </ul>
                 <ul className="space-y-0.5">
-                  {projects.map((project) => (
-                    <li key={project.id}>
-                      <SidebarLink
-                        href={`/newproject/${project.id}`}
-                        active={currentProjectId === project.id && location.includes(`/newproject/${project.id}`)}
-                        icon={currentProjectId === project.id ? Building2 : Building}
-                      >
-                        {project.name}
-                      </SidebarLink>
+                  {groupLinkedProjects(projects).map((group) => (
+                    <li
+                      key={group.map((project) => project.id).join("-")}
+                      className={group.length > 1 ? "mx-3 my-1 rounded-lg border border-[var(--border-dark)] px-1 py-1" : undefined}
+                    >
+                      {group.map((project) => (
+                        <SidebarLink
+                          key={project.id}
+                          href={`/newproject/${project.id}`}
+                          active={currentProjectId === project.id && location.includes(`/newproject/${project.id}`)}
+                          icon={currentProjectId === project.id ? Building2 : Building}
+                        >
+                          {group.length > 1 ? `${(project.projectVersion || "execution").slice(0, 3).toUpperCase()} · ${project.name}` : project.name}
+                        </SidebarLink>
+                      ))}
                     </li>
                   ))}
                 </ul>
 
                 {currentProjectId && (
                   <>
-                    <div className="mt-6 border-t border-[var(--border-dark)] pt-4">
+                    <div className="mx-3 mt-4 rounded-lg border border-amber-400/50 bg-[var(--navy-800)] px-3 py-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-300">Active project</p>
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-semibold text-white">{currentProject?.name ?? "Project"}</p>
+                        <div className="flex shrink-0 gap-0.5">
+                          <button type="button" className="rounded p-1 text-slate-400 hover:bg-[var(--navy-700)] hover:text-white" title="Project Settings">
+                            <Settings size={14} strokeWidth={1.5} />
+                          </button>
+                          <button type="button" className="rounded p-1 text-slate-400 hover:bg-[var(--navy-700)] hover:text-white" title="Export Data">
+                            <Download size={14} strokeWidth={1.5} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 border-t border-[var(--border-dark)] pt-3">
                       <p className="cp-sidebar-section-label mb-2">Project Tools</p>
                     </div>
                     <ul className="space-y-0.5">
-                      <li>
-                        <SidebarLink href={`/newproject/${currentProjectId}`} active={isActive(`/newproject/${currentProjectId}`)} icon={Briefcase}>
-                          {currentProject?.name ?? "Dashboard"}
-                        </SidebarLink>
-                      </li>
                       <li>
                         <SidebarLink href={`/projects/${currentProjectId}`} active={location === `/projects/${currentProjectId}`} icon={LayoutDashboard}>
                           WBS &amp; Activities
@@ -238,22 +267,6 @@ export function SideNavigation({ currentProjectId }: SideNavigationProps) {
             )}
           </div>
 
-          {currentProject && (
-            <div className="cp-sidebar-current-project">
-              <p className="cp-caption mb-1.5 uppercase tracking-wider text-[var(--text-on-dark-muted)]">Current Project</p>
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate cp-body-md font-medium text-[var(--text-on-dark)]">{currentProject.name}</p>
-                <div className="flex shrink-0 gap-1">
-                  <button type="button" className="rounded p-1 text-[var(--text-on-dark-muted)] hover:bg-[var(--navy-700)] hover:text-[var(--text-on-dark)]" title="Project Settings">
-                    <Settings size={14} strokeWidth={1.5} />
-                  </button>
-                  <button type="button" className="rounded p-1 text-[var(--text-on-dark-muted)] hover:bg-[var(--navy-700)] hover:text-[var(--text-on-dark)]" title="Export Data">
-                    <Download size={14} strokeWidth={1.5} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </aside>
 

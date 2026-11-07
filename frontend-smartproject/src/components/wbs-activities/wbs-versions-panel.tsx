@@ -94,11 +94,10 @@ export function WbsVersionsPanel({ projectId }: WbsVersionsPanelProps) {
   }
 
   return (
-    <section className="space-y-3">
-      {/* Section heading */}
-      <div className="flex items-center gap-2 px-1">
-        <History className="h-4 w-4 text-[var(--copper-500)]" />
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+    <section className="overflow-hidden rounded-lg border-2 border-violet-800 bg-white shadow-sm">
+      <div className="flex items-center gap-2 border-b-2 border-violet-800 bg-violet-50 px-4 py-2">
+        <History className="h-4 w-4 text-violet-700" />
+        <h3 className="text-sm font-bold uppercase tracking-wide text-violet-950">
           WBS Version History
         </h3>
         <span className="rounded-full bg-[var(--bg-warm-gray)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
@@ -107,7 +106,7 @@ export function WbsVersionsPanel({ projectId }: WbsVersionsPanelProps) {
       </div>
 
       {/* Tab bar + content */}
-      <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] overflow-hidden bg-[var(--bg-white)]">
+      <div className="bg-white">
         {/* Tab bar */}
         <div className="flex items-center gap-0 border-b border-[var(--border-subtle)] bg-[var(--bg-warm-gray)] px-1 pt-1">
           {visibleTabs.map((tab) => (

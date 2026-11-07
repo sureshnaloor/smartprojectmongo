@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AddProjectModal } from "@/components/project/add-project-modal";
+import { groupLinkedProjects } from "@/lib/project-groups";
 import { DeleteProjectDialog } from "@/components/project/delete-project-dialog";
 import {
   Card,
@@ -322,7 +323,48 @@ export default function Home() {
               </motion.div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {projects.map((project, index) => (
+                {groupLinkedProjects(projects.map((project) => ({
+                  ...project,
+                  projectVersion: (project as { projectVersion?: string | null }).projectVersion,
+                  mappedEstimationProjectId: (project as { mappedEstimationProjectId?: number | null }).mappedEstimationProjectId,
+                  mappedPlanningProjectId: (project as { mappedPlanningProjectId?: number | null }).mappedPlanningProjectId,
+                }))).map((group, index) => group.length > 1 ? (
+                  <motion.div
+                    key={group.map((item) => item.id).join("-")}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.4, delay: index * 0.1 }}
+                  >
+                    <Card className="overflow-hidden bg-white">
+                      <CardHeader className="pb-2">
+                        <CardTitle>Linked projects</CardTitle>
+                        <CardDescription>Estimation, planning, and execution stay separate inside this card.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {group.map((project) => (
+                          <div key={project.id} className="rounded-lg border border-gray-200 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">
+                              {(project as { projectVersion?: string | null }).projectVersion || "execution"}
+                            </p>
+                            <p className="mt-1 font-semibold text-gray-900">{project.name}</p>
+                            <p className="mt-1 text-sm text-gray-500">{formatCurrency(project.budget, project.currency || "USD")}</p>
+                            <Button
+                              className="mt-3 w-full bg-teal-600 hover:bg-teal-700"
+                              onClick={() => handleProjectClick(project.id)}
+                            >
+                              Open Project
+                              <ArrowRight className="ml-2 h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ) : (
+                  (() => {
+                    const project = group[0];
+                    return (
                   <motion.div
                     key={project.id}
                     initial={{ opacity: 0, y: 20 }}
@@ -397,6 +439,8 @@ export default function Home() {
                       </CardFooter>
                     </Card>
                   </motion.div>
+                    );
+                  })()
                 ))}
               </div>
             )}

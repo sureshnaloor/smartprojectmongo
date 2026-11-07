@@ -32,7 +32,10 @@ interface ProjectCollabHubProps {
 
 export function ProjectCollabHub({ initialThreadId }: ProjectCollabHubProps) {
   const [, projectParams] = useRoute<{ projectId: string }>("/projects/:projectId/collab");
-  const projectId = projectParams?.projectId ?? "";
+  const [, threadParams] = useRoute<{ projectId: string; threadId: string }>(
+    "/projects/:projectId/collab/thread/:threadId"
+  );
+  const projectId = projectParams?.projectId || threadParams?.projectId || "";
   const { user } = useAuth();
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -73,15 +76,21 @@ export function ProjectCollabHub({ initialThreadId }: ProjectCollabHubProps) {
   const currentUserId = user ? String(user.id) : null;
 
   const fetchThreads = useCallback(async () => {
-    if (!projectId) return;
+    if (!projectId) {
+      setThreads([]);
+      setThreadsLoading(false);
+      return;
+    }
     try {
       setThreadsLoading(true);
       const params = new URLSearchParams();
       if (user?.id) params.set("viewerUserId", String(user.id));
-      const res = await fetch(`/api/projects/${projectId}/collaboration/threads?${params}`);
+      const res = await fetch(`/api/projects/${projectId}/collaboration/threads?${params}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
-      setThreads(data);
+      setThreads(Array.isArray(data) ? data : []);
     } catch {
       toast({ title: "Error", description: "Failed to load chats", variant: "destructive" });
     } finally {
@@ -137,14 +146,6 @@ export function ProjectCollabHub({ initialThreadId }: ProjectCollabHubProps) {
   }, [selectedThreadId, fetchMessages]);
 
   useEffect(() => {
-    if (!selectedThreadId || !projectId) return;
-    const target = `/projects/${projectId}/collab/thread/${selectedThreadId}`;
-    if (window.location.pathname !== target) {
-      window.history.replaceState(null, "", target + window.location.hash);
-    }
-  }, [selectedThreadId, projectId]);
-
-  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
@@ -154,15 +155,31 @@ export function ProjectCollabHub({ initialThreadId }: ProjectCollabHubProps) {
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   };
 
+  const byRecent = (a: Thread, b: Thread) =>
+    new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime();
+
+  const pinnedThreads = useMemo(
+    () => threads.filter((t) => t.isPinned).sort(byRecent),
+    [threads]
+  );
+
   const filteredThreads = useMemo(() => {
     const filter = HASH_TO_FILTER[activeChannel];
-    return threads.filter((t) => {
-      const cat = t.category || t.type;
-      if (filter === "all") return true;
-      if (filter === "pinned") return t.isPinned || cat === "issue" || t.criticality === "critical";
-      return cat === filter;
-    }).sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+    return threads
+      .filter((t) => {
+        const cat = t.category || t.type;
+        if (filter === "pinned") return t.isPinned;
+        if (t.isPinned) return false;
+        if (filter === "all") return true;
+        return cat === filter;
+      })
+      .sort(byRecent);
   }, [threads, activeChannel]);
+
+  useEffect(() => {
+    if (initialThreadId || selectedThreadId || threadsLoading || pinnedThreads.length === 0) return;
+    setSelectedThreadId(pinnedThreads[0].id);
+  }, [initialThreadId, selectedThreadId, threadsLoading, pinnedThreads]);
 
   const handleSend = async (content: string, mentions: { userId: number; userName: string }[]) => {
     if (!selectedThreadId || selectedThread?.isClosed) {
@@ -255,8 +272,8 @@ export function ProjectCollabHub({ initialThreadId }: ProjectCollabHubProps) {
   };
 
   return (
-    <div className="flex h-[calc(100vh-10rem)] min-h-[560px] overflow-hidden bg-[var(--bg-cream)]">
-      <div className="flex min-w-0 flex-1 flex-col border-r border-[var(--border-subtle)]">
+    <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border-2 border-slate-300 bg-[var(--bg-cream)] shadow-sm">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-[var(--border-subtle)]">
         <ChatHeader thread={selectedThread} projectId={projectId} />
         <MessageFeed
           thread={selectedThread}
@@ -280,6 +297,7 @@ export function ProjectCollabHub({ initialThreadId }: ProjectCollabHubProps) {
         activeChannel={activeChannel}
         onChannelChange={handleChannelChange}
         threads={filteredThreads}
+        pinnedThreads={pinnedThreads}
         selectedThreadId={selectedThreadId}
         onSelectThread={setSelectedThreadId}
         onNewChat={() => setIsModalOpen(true)}

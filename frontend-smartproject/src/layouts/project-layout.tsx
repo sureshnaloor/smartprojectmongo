@@ -8,6 +8,7 @@ import { useMobile } from "@/hooks/use-mobile";
 import { Toaster } from "sonner";
 import { AlertTriangle, FolderOpen, Lightbulb, MessageSquareText, PieChart, ShieldAlert, HardHat, Leaf } from "lucide-react";
 import { SharedNavigation } from "@/components/shared-navigation";
+import { cn } from "@/lib/utils";
 
 interface ProjectLayoutProps {
   children: React.ReactNode;
@@ -98,8 +99,10 @@ export default function ProjectLayout({ children, projectId }: ProjectLayoutProp
         new RegExp(`^/projects/${projectId}/tasks/?$`).test(location) ||
         new RegExp(`^/projects/${projectId}/tasks/page1/?$`).test(location)));
 
+  const isCollabPage = location.includes("/collab");
+
   return (
-    <div className="cp-app-shell">
+    <div className={cn("cp-app-shell", isCollabPage && "h-dvh overflow-hidden")}>
       <Toaster position="top-right" />
       <SharedNavigation variant="app" />
 
@@ -109,24 +112,28 @@ export default function ProjectLayout({ children, projectId }: ProjectLayoutProp
 
           <div className="cp-app-content">
             {projectId && (
-              isWikiPage || isDocumentPage ? (
-                <SimpleProjectHeader
-                  projectId={projectId}
-                  pageTitle={pageInfo.title}
-                  pageIcon={pageInfo.icon}
-                />
-              ) : isProjectRoot ? (
-                <ProjectRootHeader projectId={projectId} activeTab="activities" />
-              ) : (
-                <ProjectHeader
-                  projectId={projectId}
-                  onToggleSidebar={toggleSidebar}
-                />
-              )
+              <div className={cn("mx-auto w-full max-w-[1180px] shrink-0 px-3 pt-3", isCollabPage && "pb-3")}>
+                {isWikiPage || isDocumentPage ? (
+                  <SimpleProjectHeader
+                    projectId={projectId}
+                    pageTitle={pageInfo.title}
+                    pageIcon={pageInfo.icon}
+                  />
+                ) : isProjectRoot ? (
+                  <ProjectRootHeader projectId={projectId} activeTab="activities" />
+                ) : (
+                  <ProjectHeader
+                    projectId={projectId}
+                    onToggleSidebar={toggleSidebar}
+                  />
+                )}
+              </div>
             )}
 
-            <div className={isFullBleedPage ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "cp-app-content__inner cp-page-enter"}>
-              {children}
+            <div className={isFullBleedPage ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "cp-app-content__inner cp-page-enter !px-3 !py-3"}>
+              <div className={cn("mx-auto flex min-h-0 w-full max-w-[1180px] flex-1 flex-col", isCollabPage && "px-3 pb-3")}>
+                {children}
+              </div>
             </div>
           </div>
         </div>

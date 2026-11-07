@@ -26,7 +26,7 @@ export function ProjectRootHeader({ projectId, activeTab = "activities" }: Proje
   }
 
   return (
-    <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-cream)] px-4 py-4 sm:px-6 lg:px-8">
+    <div>
       <ProjectDashboardHeader
         project={project}
         activeTab={activeTab}

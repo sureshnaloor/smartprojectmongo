@@ -125,6 +125,7 @@ export function DatePicker({
           <Calendar
             mode="single"
             selected={dateValue ?? undefined}
+            defaultMonth={dateValue ?? new Date()}
             onSelect={handleCalendarSelect}
             disabled={disabledDates || disabled}
             initialFocus

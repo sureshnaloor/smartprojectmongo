@@ -70,11 +70,11 @@ export function MessageFeed({ thread, messages, currentUserId, loading }: Messag
   }
 
   return (
-    <div className="collab-feed-fade min-h-0 flex-1 overflow-y-auto bg-[var(--bg-cream)] px-6 py-6">
+    <div className="collab-feed-fade min-h-0 flex-1 overflow-y-auto bg-[var(--bg-cream)] px-8 py-8">
       {grouped.map((item, idx) => {
         if (item.type === "divider") {
           return (
-            <div key={`d-${idx}`} className="relative my-6 flex items-center">
+            <div key={`d-${idx}`} className="relative my-8 flex items-center first:mt-2">
               <div className="flex-1 border-t border-[var(--border-subtle)]" />
               <span
                 className="mx-3 kanban-caption text-[var(--text-muted)] px-3"
@@ -97,7 +97,7 @@ export function MessageFeed({ thread, messages, currentUserId, loading }: Messag
           <div
             key={message.id}
             className={cn(
-              "group collab-msg-enter flex gap-3 py-2",
+              "group collab-msg-enter flex gap-3 py-3",
               !showAvatar && "pl-[48px]"
             )}
             style={{ animationDelay: `${Math.min(idx * 30, 200)}ms` }}

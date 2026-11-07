@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,6 +43,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Portfolio } from "@/lib/portfolios";
+import { EmployeeOption, employeeOptionLabel } from "@/lib/employees";
 
 // Form schema for the frontend
 const formSchema = z.object({
@@ -50,13 +52,15 @@ const formSchema = z.object({
   description: z.string().optional(),
   budget: z.coerce.number().positive("Budget must be a positive number"),
   currency: z.enum(COMMON_CURRENCY_CODES),
-  projectType: z.enum(["Highway", "Infrastructure", "Power", "Commercial", "Petrochem", "Oil&Gas"]).optional(),
+  portfolioId: z.string().optional(),
   status: z.enum(["concept", "planning", "active", "in progress", "aborted", "on-hold", "completed"]).optional(),
   startDate: z.date(),
   endDate: z.date(),
   projectVersion: z.enum(["estimation", "planning", "execution"]).default("execution"),
   mappedEstimationProjectId: z.number().optional().nullable(),
   mappedPlanningProjectId: z.number().optional().nullable(),
+  projectManagerId: z.string().optional(),
+  projectPlannerId: z.string().optional(),
 });
 
 type ProjectFormData = z.infer<typeof formSchema>;
@@ -76,6 +80,7 @@ async function fetchGlobalDefaults(): Promise<{ defaultCurrencyCode: string }> {
 export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [review, setReview] = useState<ProjectFormData | null>(null);
   const prevOpenRef = useRef(false);
   const globalDefaultCurrencyRef = useRef<CurrencyCode>("USD");
 
@@ -93,6 +98,16 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
     enabled: isOpen,
   });
 
+  const { data: portfolios = [] } = useQuery<Portfolio[]>({
+    queryKey: ["/api/portfolios"],
+    enabled: isOpen,
+  });
+
+  const { data: employees = [] } = useQuery<EmployeeOption[]>({
+    queryKey: ["/api/employee-masters"],
+    enabled: isOpen,
+  });
+
   const buildDefaultValues = (currency: CurrencyCode): ProjectFormData => ({
     name: "",
     description: "",
@@ -100,11 +115,13 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
     startDate: new Date(),
     endDate: new Date(new Date().setMonth(new Date().getMonth() + 6)),
     currency,
-    projectType: undefined,
+    portfolioId: "",
     status: "concept",
     projectVersion: "execution",
     mappedEstimationProjectId: null,
     mappedPlanningProjectId: null,
+    projectManagerId: "",
+    projectPlannerId: "",
   });
 
   // Form definition with frontend schema
@@ -117,6 +134,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
     const justOpened = isOpen && !prevOpenRef.current;
     prevOpenRef.current = isOpen;
     if (!justOpened) return;
+    setReview(null);
     form.reset(buildDefaultValues(globalDefaultCurrencyRef.current));
   }, [isOpen, form]);
 
@@ -150,18 +168,22 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
   const createProject = useMutation({
     mutationFn: async (data: ProjectFormData) => {
       // Transform form data to match backend schema
+      const portfolio = portfolios.find((item) => String(item.id) === data.portfolioId);
       const apiData = {
         name: data.name,
         description: data.description || null,
         budget: data.budget,
         currency: data.currency,
-        projectType: data.projectType || null,
+        portfolioId: portfolio?.id ?? null,
+        projectType: portfolio?.name ?? null,
         status: data.status || null,
         startDate: data.startDate.toISOString().split('T')[0],
         endDate: data.endDate.toISOString().split('T')[0],
         projectVersion: data.projectVersion || "execution",
-        mappedEstimationProjectId: data.mappedEstimationProjectId || null,
-        mappedPlanningProjectId: data.mappedPlanningProjectId || null,
+        mappedEstimationProjectId: data.projectVersion === "estimation" ? null : (data.mappedEstimationProjectId || null),
+        mappedPlanningProjectId: data.projectVersion === "execution" ? (data.mappedPlanningProjectId || null) : null,
+        projectManagerId: data.projectManagerId ? Number(data.projectManagerId) : null,
+        projectPlannerId: data.projectPlannerId ? Number(data.projectPlannerId) : null,
       };
       const response = await apiRequest("POST", "/api/projects", apiData);
       return response.json();
@@ -188,19 +210,66 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
 
   // Form submission handler
   const onSubmit = (data: ProjectFormData) => {
-    createProject.mutate(data);
+    setReview(data);
+  };
+
+  const personLabel = (id?: string) => {
+    if (!id) return "None";
+    const match = employees.find((employee) => String(employee.id) === id);
+    return match ? employeeOptionLabel(match) : "None";
+  };
+  const projectLabel = (id?: number | null) => {
+    if (!id) return "None";
+    return allProjects.find((project) => project.id === id)?.name || `Project #${id}`;
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add New Project</DialogTitle>
+          <DialogTitle>{review ? "Confirm new project" : "Add New Project"}</DialogTitle>
           <DialogDescription>
-            Create a new construction project to track and manage.
+            {review
+              ? "Check these details. Edit anything that needs a change, then save."
+              : "Create a new construction project to track and manage."}
           </DialogDescription>
         </DialogHeader>
 
+        {review ? (
+          <div className="space-y-4">
+            <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+              {(
+                [
+                  ["Name", review.name],
+                  ["Portfolio", portfolios.find((item) => String(item.id) === review.portfolioId)?.name || "None"],
+                  ["Stage", review.status || "concept"],
+                  ["Version", review.projectVersion || "execution"],
+                  ["Budget", `${review.currency} ${Number(review.budget).toLocaleString()}`],
+                  ["Start", review.startDate.toLocaleDateString()],
+                  ["End", review.endDate.toLocaleDateString()],
+                  ["Manager", personLabel(review.projectManagerId)],
+                  ["Planner", personLabel(review.projectPlannerId)],
+                  ["Estimation link", projectLabel(review.mappedEstimationProjectId)],
+                  ["Planning link", projectLabel(review.mappedPlanningProjectId)],
+                  ["Description", review.description?.trim() || "None"],
+                ] as const
+              ).map(([label, value]) => (
+                <div key={label} className="contents">
+                  <dt className="text-slate-500">{label}</dt>
+                  <dd className="font-medium text-slate-900">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setReview(null)}>
+                Edit
+              </Button>
+              <Button type="button" disabled={createProject.isPending} onClick={() => createProject.mutate(review)}>
+                {createProject.isPending ? "Saving…" : "Save project"}
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
@@ -284,28 +353,34 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="projectType"
+                name="portfolioId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Project Type</FormLabel>
+                    <FormLabel>Portfolio</FormLabel>
                     <Select
                       onValueChange={field.onChange}
-                      value={field.value}
+                      value={field.value || undefined}
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select project type" />
+                          <SelectValue placeholder="Select portfolio" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="Highway">Highway</SelectItem>
-                        <SelectItem value="Infrastructure">Infrastructure</SelectItem>
-                        <SelectItem value="Power">Power</SelectItem>
-                        <SelectItem value="Commercial">Commercial</SelectItem>
-                        <SelectItem value="Petrochem">Petrochem</SelectItem>
-                        <SelectItem value="Oil&Gas">Oil & Gas</SelectItem>
+                        {portfolios.length === 0 ? (
+                          <SelectItem value="__none" disabled>No portfolios yet</SelectItem>
+                        ) : (
+                          portfolios.map((portfolio) => (
+                            <SelectItem key={portfolio.id} value={String(portfolio.id)}>
+                              {portfolio.name}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
+                    <FormDescription>
+                      Sector this project belongs to. Manage the list from Portfolios.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -316,7 +391,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                 name="status"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Status</FormLabel>
+                    <FormLabel>Stage</FormLabel>
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
@@ -336,6 +411,9 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                         <SelectItem value="completed">Completed</SelectItem>
                       </SelectContent>
                     </Select>
+                    <FormDescription>
+                      Stage can be changed later. It will follow project progress automatically in a later update.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -351,8 +429,10 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      if (val !== "execution") {
+                      if (val === "estimation") {
                         form.setValue("mappedEstimationProjectId", null);
+                        form.setValue("mappedPlanningProjectId", null);
+                      } else if (val === "planning") {
                         form.setValue("mappedPlanningProjectId", null);
                       }
                     }}
@@ -377,7 +457,66 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
               )}
             />
 
-            {selectedVersion === "execution" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="projectManagerId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Project Manager</FormLabel>
+                    <Select
+                      onValueChange={(value) => field.onChange(value === "none" ? "" : value)}
+                      value={field.value || "none"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select project manager" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {employees.map((employee) => (
+                          <SelectItem key={employee.id} value={String(employee.id)}>
+                            {employeeOptionLabel(employee)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="projectPlannerId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Project Planner</FormLabel>
+                    <Select
+                      onValueChange={(value) => field.onChange(value === "none" ? "" : value)}
+                      value={field.value || "none"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select project planner" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {employees.map((employee) => (
+                          <SelectItem key={employee.id} value={String(employee.id)}>
+                            {employeeOptionLabel(employee)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {(selectedVersion === "planning" || selectedVersion === "execution") && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-md border border-slate-200 bg-slate-50/50 p-3">
                 <FormField
                   control={form.control}
@@ -413,6 +552,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                   }}
                 />
 
+                {selectedVersion === "execution" && (
                 <FormField
                   control={form.control}
                   name="mappedPlanningProjectId"
@@ -446,6 +586,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                     );
                   }}
                 />
+                )}
               </div>
             )}
 
@@ -538,11 +679,12 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                 )}
-                Create Project
+                Review project
               </Button>
             </DialogFooter>
           </form>
         </Form>
+        )}
       </DialogContent>
     </Dialog>
   );

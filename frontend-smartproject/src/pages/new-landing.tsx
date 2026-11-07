@@ -24,6 +24,9 @@ import { cn } from "@/lib/utils";
 import { AddProjectModal } from "@/components/project/add-project-modal";
 import { EditProjectModal } from "@/components/project/edit-project-modal";
 import { DeleteProjectDialog } from "@/components/project/delete-project-dialog";
+import { Portfolio } from "@/lib/portfolios";
+import { EmployeeOption, employeeOptionLabel } from "@/lib/employees";
+import { groupLinkedProjects } from "@/lib/project-groups";
 
 // Project type from API
 interface Project {
@@ -37,6 +40,11 @@ interface Project {
   projectType: string | null;
   status: string | null;
   createdAt: string;
+  projectVersion?: string | null;
+  mappedEstimationProjectId?: number | null;
+  mappedPlanningProjectId?: number | null;
+  projectManagerId?: number | null;
+  projectPlannerId?: number | null;
 }
 
 // Map project types to images
@@ -47,6 +55,7 @@ const projectTypeImages: Record<string, string> = {
   "Commercial": "/resources/project-2.jpg",
   "Petrochem": "/resources/project-1.jpg",
   "Oil&Gas": "/resources/project-3.jpg",
+  "Oil & Gas": "/resources/project-3.jpg",
 };
 
 export default function NewLanding() {
@@ -64,6 +73,14 @@ export default function NewLanding() {
   // Fetch projects from API
   const { data: projects = [], isLoading, isError } = useQuery<Project[]>({
     queryKey: ['/api/projects'],
+  });
+
+  const { data: portfolios = [] } = useQuery<Portfolio[]>({
+    queryKey: ["/api/portfolios"],
+  });
+
+  const { data: employees = [] } = useQuery<EmployeeOption[]>({
+    queryKey: ["/api/employee-masters"],
   });
 
   useEffect(() => {
@@ -106,6 +123,17 @@ export default function NewLanding() {
     const matchesStatusFilter = statusFilter === "all" || p.status === statusFilter;
     return matchesSearch && matchesTypeFilter && matchesStatusFilter;
   });
+
+  const filteredIds = new Set(filteredProjects.map((project) => project.id));
+  const visibleGroups = groupLinkedProjects(projects).filter((group) =>
+    group.some((project) => filteredIds.has(project.id))
+  );
+
+  const personName = (id?: number | null) => {
+    if (!id) return null;
+    const match = employees.find((employee) => employee.id === id);
+    return match ? employeeOptionLabel(match) : null;
+  };
 
   // Calculate stats from real data
   const totalBudget = projects.reduce((sum, p) => sum + Number(p.budget), 0);
@@ -310,7 +338,11 @@ export default function NewLanding() {
                 <Plus className="w-5 h-5" />
                 Create New Project
               </button>
-              <button className="bg-white/10 backdrop-blur-md border border-white/20 text-white hover:bg-white/20 px-8 py-3 rounded-lg font-semibold transition-all">
+              <button
+                type="button"
+                onClick={() => setLocation("/portfolios")}
+                className="bg-white/10 backdrop-blur-md border border-white/20 text-white hover:bg-white/20 px-8 py-3 rounded-lg font-semibold transition-all"
+              >
                 View Portfolios
               </button>
             </div>
@@ -356,13 +388,13 @@ export default function NewLanding() {
                     value={typeFilter}
                     onChange={(e) => setTypeFilter(e.target.value)}
                   >
-                    <option value="all">All Types</option>
-                    <option value="Highway">Highway</option>
-                    <option value="Infrastructure">Infrastructure</option>
-                    <option value="Power">Power</option>
-                    <option value="Commercial">Commercial</option>
-                    <option value="Petrochem">Petrochem</option>
-                    <option value="Oil&Gas">Oil & Gas</option>
+                    <option value="all">All Portfolios</option>
+                    {Array.from(new Set([
+                      ...portfolios.map((portfolio) => portfolio.name),
+                      ...projects.map((project) => project.projectType).filter((name): name is string => !!name),
+                    ])).map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
                   </select>
                   <select
                     className="flex-1 sm:w-36 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600"
@@ -424,9 +456,87 @@ export default function NewLanding() {
               {!isLoading && !isError && filteredProjects.length > 0 && (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6" ref={cardsRef}>
-                    {filteredProjects.slice(0, 12).map((project) => {
+                    {visibleGroups.slice(0, 12).map((group) => {
+                      if (group.length > 1) {
+                        return (
+                          <div
+                            key={group.map((item) => item.id).join("-")}
+                            className="card-animate bg-white rounded-2xl border border-slate-200 overflow-hidden"
+                          >
+                            <div className="px-5 py-4 border-b border-slate-100">
+                              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Linked projects</p>
+                            </div>
+                            <div className="divide-y divide-slate-100">
+                              {group.map((project) => {
+                                const manager = personName(project.projectManagerId);
+                                const planner = personName(project.projectPlannerId);
+                                return (
+                                  <div key={project.id} className="p-4">
+                                    <div className="mb-2 flex items-center gap-2">
+                                      <span className={cn(
+                                        "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                        project.projectVersion === "estimation" ? "border-purple-300 bg-purple-50 text-purple-700" :
+                                          project.projectVersion === "planning" ? "border-blue-300 bg-blue-50 text-blue-700" :
+                                            "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                      )}>
+                                        {project.projectVersion || "execution"}
+                                      </span>
+                                      {project.projectType && (
+                                        <span className="text-xs font-medium text-slate-500">{project.projectType}</span>
+                                      )}
+                                    </div>
+                                    <h3 className="truncate text-lg font-bold text-slate-900">{project.name}</h3>
+                                    <p className="mt-1 line-clamp-2 text-sm text-slate-500">
+                                      {project.description || "No description provided"}
+                                    </p>
+                                    {(manager || planner) && (
+                                      <p className="mt-2 text-xs text-slate-500">
+                                        {manager ? `Manager: ${manager}` : ""}
+                                        {manager && planner ? " · " : ""}
+                                        {planner ? `Planner: ${planner}` : ""}
+                                      </p>
+                                    )}
+                                    <div className="mt-3 flex items-center justify-between">
+                                      <span className="text-sm font-semibold text-slate-600">
+                                        {formatBudget(project.budget, project.currency)}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          onClick={() => setEditProjectId(project.id)}
+                                          className="rounded p-1 text-blue-400 transition-colors hover:text-blue-600"
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </button>
+                                        <DeleteProjectDialog
+                                          projectId={project.id}
+                                          projectName={project.name}
+                                          trigger={
+                                            <button className="rounded p-1 text-red-400 transition-colors hover:text-red-600">
+                                              <Trash2 className="h-4 w-4" />
+                                            </button>
+                                          }
+                                        />
+                                        <button
+                                          onClick={() => handleProjectClick(project.id)}
+                                          className="flex items-center gap-1 text-xs font-bold text-amber-600 hover:text-amber-700"
+                                        >
+                                          DETAILS <ArrowUpRight className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      const project = group[0];
                       const progress = getProjectProgress(project);
                       const displayStatus = project.status || "active";
+                      const manager = personName(project.projectManagerId);
+                      const planner = personName(project.projectPlannerId);
 
                       return (
                         <div
@@ -475,6 +585,13 @@ export default function NewLanding() {
                             <p className="text-sm text-slate-500 mb-4 line-clamp-2">
                               {project.description || "No description provided"}
                             </p>
+                            {(manager || planner) && (
+                              <p className="mb-4 text-xs text-slate-500">
+                                {manager ? `Manager: ${manager}` : ""}
+                                {manager && planner ? " · " : ""}
+                                {planner ? `Planner: ${planner}` : ""}
+                              </p>
+                            )}
 
                             <div className="space-y-4">
                               <div>
@@ -531,7 +648,7 @@ export default function NewLanding() {
                   </div>
 
                   {/* Show All Projects Button */}
-                  {filteredProjects.length > 12 && (
+                  {visibleGroups.length > 12 && (
                     <div className="mt-6 text-center">
                       <button
                         onClick={() => setLocation('/projects')}
@@ -552,7 +669,7 @@ export default function NewLanding() {
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-amber-500" />
-                  Budget by Type
+                  Budget by Portfolio
                 </h3>
                 <div className="h-[300px]">
                   <ReactECharts option={chartOption} style={{ height: '100%' }} />

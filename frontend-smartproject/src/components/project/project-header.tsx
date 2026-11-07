@@ -138,14 +138,25 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
   };
 
   const tabLinkClass = (active: boolean) =>
-    cn("cp-tab-underline inline-flex shrink-0 items-center gap-2", active && "cp-tab-underline--active");
+    cn(
+      "inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-semibold",
+      active
+        ? "border-amber-600 bg-white text-slate-900"
+        : "border-transparent text-slate-500 hover:bg-white/70 hover:text-slate-800"
+    );
+
+  const sectionBand = (title: string, tone: string) => (
+    <div className={cn("border-t-2 px-4 py-2", tone)}>
+      <span className="text-xs font-bold uppercase tracking-wide">{title}</span>
+    </div>
+  );
 
   return (
-    <div className="cp-inline-page-header">
-      <div className="cp-inline-page-header__body">
-        <div className="flex items-center justify-between">
-          <div className="min-w-0 space-y-2">
-            <div className="flex items-center gap-3">
+    <div className="overflow-hidden rounded-lg border-2 border-slate-300 bg-white shadow-sm">
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2">
               {onClose && (
                 <Button
                   variant="ghost"
@@ -157,7 +168,7 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
                   <span className="sr-only md:not-sr-only md:inline-block">Back to Projects</span>
                 </Button>
               )}
-              <h1 className="cp-display-md truncate">{project.name}</h1>
+              <h1 className="truncate text-xl font-bold tracking-tight text-slate-900">{project.name}</h1>
               <Button
                 variant="outline"
                 size="icon"
@@ -168,7 +179,7 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
                 <span className="sr-only">Edit</span>
               </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-2 kanban-body-sm text-[var(--text-secondary)]">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
               <span className="font-mono">
                 Budget: {formatCurrency(Number(project.budget), project.currency || "USD")}
               </span>
@@ -230,8 +241,27 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
         </div>
       </div>
 
-      <div className="cp-inline-page-header__tabs">
-        <nav className="cp-tabs-underline flex gap-1 overflow-x-auto">
+      {routeContext === "collab" ? (
+        sectionBand("Collaboration Hub", "border-teal-800 bg-teal-50 text-teal-950")
+      ) : routeContext === "kanban" ? (
+        sectionBand("Kanban", "border-rose-800 bg-rose-50 text-rose-950")
+      ) : location.includes("/charts") ? (
+        sectionBand("PERT & Gantt Charts", "border-violet-800 bg-violet-50 text-violet-950")
+      ) : location.includes("/resource-deployment") ? (
+        sectionBand("Resource Deployment", "border-emerald-800 bg-emerald-50 text-emerald-950")
+      ) : location.includes("/consolidated-report") || location.includes("/reports") ? (
+        sectionBand("Overall Project Report", "border-amber-800 bg-amber-50 text-amber-950")
+      ) : location.includes("/tasks") ? (
+        sectionBand("Tasks", "border-indigo-800 bg-indigo-50 text-indigo-950")
+      ) : location.includes("/costs") ? (
+        sectionBand("Cost", "border-emerald-800 bg-emerald-50 text-emerald-950")
+      ) : location.includes("/schedule") ? (
+        sectionBand("Schedule", "border-sky-800 bg-sky-50 text-sky-950")
+      ) : location.includes("/project-daily-progress") ? (
+        sectionBand("Progress", "border-violet-800 bg-violet-50 text-violet-950")
+      ) : (
+      <div>
+        <nav className="flex gap-1 overflow-x-auto border-t-2 border-slate-200 bg-slate-100 px-2">
           {isProjectRoot ? (
             <>
               {(
@@ -289,10 +319,6 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
                 </a>
               </Link>
             </>
-          ) : routeContext === "collab" ? (
-            <span className={cn(tabLinkClass(true), "cursor-default")}>Collaboration Hub</span>
-          ) : routeContext === "kanban" ? (
-            <span className={cn(tabLinkClass(true), "cursor-default")}>Kanban</span>
           ) : routeContext === "cashflow" ? (
             <>
               <Link href={`/projects/${projectId}/cashflow`}>
@@ -314,37 +340,31 @@ export function ProjectHeader({ projectId, onToggleSidebar, onClose }: ProjectHe
                 </a>
               </Link>
             </>
-          ) : routeContext === "materials-services" ? (
-            <span className={cn(tabLinkClass(true), "cursor-default")}>Materials &amp; Resources</span>
-          ) : (
+          ) : routeContext === "activities" ? (
             <>
-              <Link href={`/projects/${projectId}/${routeContext}/${routeContext === "activities" ? "activity-plan" : "page1"}`}>
-                <a
-                  className={tabLinkClass(
-                    location === `/projects/${projectId}/${routeContext}/${routeContext === "activities" ? "activity-plan" : "page1"}`
-                  )}
-                >
-                  {routeContext === "activities" ? "Activity Plan" : "Tab1"}
-                </a>
-              </Link>
-              <Link href={`/projects/${projectId}/${routeContext}/page2`}>
-                <a className={tabLinkClass(location === `/projects/${projectId}/${routeContext}/page2`)}>
-                  Activities Overview
-                </a>
-              </Link>
-              <Link href={`/projects/${projectId}/${routeContext}/page3`}>
-                <a className={tabLinkClass(location === `/projects/${projectId}/${routeContext}/page3`)}>Plan Versions</a>
-              </Link>
-              <Link href={`/projects/${projectId}/${routeContext}/page4`}>
-                <a className={tabLinkClass(location === `/projects/${projectId}/${routeContext}/page4`)}>Dependencies</a>
-              </Link>
-              <Link href={`/projects/${projectId}/${routeContext}/page5`}>
-                <a className={tabLinkClass(location === `/projects/${projectId}/${routeContext}/page5`)}>Activities</a>
-              </Link>
+              {(
+                [
+                  { label: "Activity Plan", href: `/projects/${projectId}/activities/activity-plan`, active: location.includes("/activities/activity-plan") },
+                  { label: "Overview", href: `/projects/${projectId}/activities/page2`, active: location.includes("/activities/page2") },
+                  { label: "Plan Versions", href: `/projects/${projectId}/activities/page3`, active: location.includes("/activities/page3") },
+                  { label: "Dependencies", href: `/projects/${projectId}/activities/page4`, active: location.includes("/activities/page4") },
+                  {
+                    label: "Activities",
+                    href: `/projects/${projectId}/activities`,
+                    active:
+                      /\/activities\/?$/.test(location) || location.includes("/activities/page5"),
+                  },
+                ] as const
+              ).map((tab) => (
+                <Link key={tab.label} href={tab.href}>
+                  <a className={tabLinkClass(tab.active)}>{tab.label}</a>
+                </Link>
+              ))}
             </>
-          )}
+          ) : null}
         </nav>
       </div>
+      )}
 
       {/* Import WBS Modal */}
       <ImportWbsModal

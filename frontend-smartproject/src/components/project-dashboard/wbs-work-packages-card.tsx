@@ -30,13 +30,13 @@ export function WbsWorkPackagesCard({
   tree,
 }: WbsWorkPackagesCardProps) {
   return (
-    <section className="pd-wbs-card overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-white)] shadow-[var(--shadow-sm)] transition-shadow hover:shadow-[var(--shadow-md)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4 pb-4">
-        <h2 className="flex items-center gap-2.5 kanban-heading-lg text-[var(--text-primary)]">
-          <FolderTree className="h-5 w-5 text-[var(--copper-500)]" />
+    <section className="pd-wbs-card overflow-hidden rounded-lg border-2 border-slate-800 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-slate-800 bg-slate-900 px-4 py-2">
+        <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-white">
+          <FolderTree className="h-4 w-4 text-amber-400" />
           WBS &amp; Work Packages
           {wbsFinalized && (
-            <span className="rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 kanban-caption font-semibold text-[var(--status-success)]">
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold normal-case tracking-normal text-emerald-800">
               Finalized
             </span>
           )}
@@ -61,14 +61,14 @@ export function WbsWorkPackagesCard({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[55fr_45fr]">
-        <div className="border-b border-[var(--border-subtle)] p-4 lg:border-b-0 lg:border-r">
-          <div className="rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-cream)] p-4">
-            <p className="mb-3 kanban-body-sm italic text-[var(--text-secondary)]">
+        <div className="border-b border-slate-200 p-3 lg:border-b-0 lg:border-r">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5">
+            <p className="mb-2 text-xs italic text-slate-500">
               Build the tree gradually (up to 9 levels). Lowest-level WBS must end with work packages. Full WBS
               editor — Project Setup
             </p>
             <div className="max-h-[420px] overflow-y-auto">{tree}</div>
-            <div className="mt-3 flex h-12 items-center justify-center rounded-[6px] border-2 border-dashed border-[rgba(148,163,184,0.3)]">
+            <div className="mt-2 flex h-8 items-center justify-center rounded-md border-2 border-dashed border-slate-300">
               <span className="kanban-body-sm text-[var(--text-muted)]">Drag to reorder</span>
             </div>
           </div>
