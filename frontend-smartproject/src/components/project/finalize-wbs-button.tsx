@@ -2,6 +2,16 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, Layers, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,6 +45,7 @@ export function FinalizeWbsButton({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isValidating, setIsValidating] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const finalizeMutation = useMutation({
     mutationFn: async () => {
@@ -55,9 +66,10 @@ export function FinalizeWbsButton({
       toast({
         title: "WBS finalized",
         description:
-          "Structure is locked. To revise WBS later, create a project amendment (admin or creator only).",
+          "Structure is locked. It can be changed only by a revision of the project WBS.",
       });
       onInvalidIds?.([]);
+      setConfirmOpen(false);
     },
     onError: (error: Error & { invalidWbsIds?: number[] }) => {
       if (error.invalidWbsIds?.length) {
@@ -88,7 +100,7 @@ export function FinalizeWbsButton({
       return;
     }
 
-    finalizeMutation.mutate();
+    setConfirmOpen(true);
   };
 
   if (wbsFinalized) {
@@ -108,20 +120,61 @@ export function FinalizeWbsButton({
   const busy = isValidating || finalizeMutation.isPending;
 
   return (
-    <Button
-      type="button"
-      variant="default"
-      size={size}
-      className={cn("bg-teal-600 hover:bg-teal-700", className)}
-      onClick={handleClick}
-      disabled={busy || wbsItems.length === 0}
-    >
-      {busy ? (
-        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-      ) : (
-        <Layers className="h-3.5 w-3.5 mr-1" />
-      )}
-      Finalize WBS
-    </Button>
+    <>
+      <Button
+        type="button"
+        variant="default"
+        size={size}
+        className={cn("bg-teal-600 hover:bg-teal-700", className)}
+        onClick={handleClick}
+        disabled={busy || wbsItems.length === 0}
+      >
+        {busy ? (
+          <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+        ) : (
+          <Layers className="h-3.5 w-3.5 mr-1" />
+        )}
+        Finalize WBS
+      </Button>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Finalize this WBS?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  This cannot be undone. Confirm the structure is final before you continue.
+                </p>
+                <ul className="list-disc space-y-1.5 pl-5 text-left">
+                  <li>No further WBS items or work packages can be added to this project.</li>
+                  <li>The structure can be changed only by a revision of the project WBS.</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={finalizeMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                finalizeMutation.mutate();
+              }}
+              disabled={finalizeMutation.isPending}
+              className="bg-teal-600 hover:bg-teal-700"
+            >
+              {finalizeMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Finalizing…
+                </>
+              ) : (
+                "Yes, finalize WBS"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

@@ -9,6 +9,7 @@ import {
   COMMON_CURRENCY_CODES,
   CurrencyCode,
   getCurrencyLabel,
+  linkedProjectCurrency,
   resolveCurrencyCode,
 } from "@/lib/currencies";
 
@@ -152,6 +153,15 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
   // Get form values
   const { startDate, endDate } = form.watch();
   const selectedVersion = form.watch("projectVersion") || "execution";
+  const mappedEstimationProjectId = form.watch("mappedEstimationProjectId");
+  const mappedPlanningProjectId = form.watch("mappedPlanningProjectId");
+  const linkedCurrency = linkedProjectCurrency(allProjects, mappedEstimationProjectId, mappedPlanningProjectId);
+
+  useEffect(() => {
+    if (!isOpen || !linkedCurrency.currency) return;
+    if (form.getValues("currency") === linkedCurrency.currency) return;
+    form.setValue("currency", linkedCurrency.currency);
+  }, [isOpen, linkedCurrency.currency, form]);
 
   // Update dates and duration when one changes
   const updateEndDate = (newStartDate: Date) => {
@@ -210,7 +220,18 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
 
   // Form submission handler
   const onSubmit = (data: ProjectFormData) => {
-    setReview(data);
+    const link = linkedProjectCurrency(allProjects, data.mappedEstimationProjectId, data.mappedPlanningProjectId);
+    if (link.conflict) {
+      toast({
+        title: "Mapped projects must share one currency",
+        description: "The estimation and planning projects use different currencies. Choose links that match.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const currency = link.currency ?? data.currency;
+    if (currency !== data.currency) form.setValue("currency", currency);
+    setReview({ ...data, currency });
   };
 
   const personLabel = (id?: string) => {
@@ -317,6 +338,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                     <FormLabel>Currency</FormLabel>
                     <Select
                       value={field.value}
+                      disabled={Boolean(linkedCurrency.currency)}
                       onValueChange={(value) => {
                         field.onChange(value);
                         const globalDefault = globalDefaultCurrencyRef.current;
@@ -342,7 +364,11 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      Pre-filled from global default ({globalDefaultCurrency}).
+                      {linkedCurrency.conflict
+                        ? "The linked estimation and planning projects use different currencies. They must match before this project can be saved."
+                        : linkedCurrency.currency
+                          ? `Set to ${linkedCurrency.currency} so it matches the linked project.`
+                          : `Pre-filled from global default (${globalDefaultCurrency}).`}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -541,7 +567,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                             <SelectItem value="none">None</SelectItem>
                             {estimationProjects.map((p) => (
                               <SelectItem key={p.id} value={String(p.id)}>
-                                {p.name}
+                                {p.name} · {p.currency || "USD"}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -576,7 +602,7 @@ export function AddProjectModal({ isOpen, onClose, onSuccess }: AddProjectModalP
                             <SelectItem value="none">None</SelectItem>
                             {planningProjects.map((p) => (
                               <SelectItem key={p.id} value={String(p.id)}>
-                                {p.name}
+                                {p.name} · {p.currency || "USD"}
                               </SelectItem>
                             ))}
                           </SelectContent>

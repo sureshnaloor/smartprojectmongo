@@ -554,8 +554,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.validateProjectAssignments({
         id,
         projectVersion: projectData.projectVersion ?? project.projectVersion,
-        mappedEstimationProjectId: projectData.mappedEstimationProjectId,
-        mappedPlanningProjectId: projectData.mappedPlanningProjectId,
+        currency: projectData.currency ?? project.currency,
+        mappedEstimationProjectId:
+          "mappedEstimationProjectId" in projectData
+            ? projectData.mappedEstimationProjectId
+            : (project as { mappedEstimationProjectId?: number | null }).mappedEstimationProjectId,
+        mappedPlanningProjectId:
+          "mappedPlanningProjectId" in projectData
+            ? projectData.mappedPlanningProjectId
+            : (project as { mappedPlanningProjectId?: number | null }).mappedPlanningProjectId,
         projectManagerId: projectData.projectManagerId,
         projectPlannerId: projectData.projectPlannerId,
       });
@@ -3348,10 +3355,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "WBS item not found" });
       }
 
-      if (!(await assertProjectWbsEditable(wbsItem.projectId, res))) return;
+      const project = await storage.getProject(wbsItem.projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
 
       const partialWbsSchema = baseWbsSchema.partial();
       const wbsItemData = partialWbsSchema.parse(req.body);
+      const changedKeys = Object.keys(wbsItemData);
+      const budgetOnly = changedKeys.length > 0 && changedKeys.every((key) => key === "budgetedCost");
+      const structureLocked = Boolean((project as { wbsFinalized?: boolean }).wbsFinalized);
+      const budgetLocked = Boolean((project as { budgetFinalized?: boolean }).budgetFinalized);
+
+      // Structure stays locked after WBS finalization. Budget amounts stay editable until the budget itself is finalized.
+      if (structureLocked && !budgetOnly) {
+        return res.status(400).json({ message: WBS_FINALIZED_MESSAGE });
+      }
+      if (budgetLocked && wbsItemData.budgetedCost !== undefined) {
+        return res.status(400).json({
+          message: "Budget is finalized. Create a project amendment to revise budget values.",
+        });
+      }
+      if (wbsItemData.budgetedCost !== undefined && Number(wbsItemData.budgetedCost) < 0) {
+        return res.status(400).json({ message: "WBS budget cannot be negative." });
+      }
 
       // BUDGET VALIDATION
       // Check if the budget is being changed

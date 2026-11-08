@@ -1,23 +1,15 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useParams, useLocation } from "wouter";
+import { useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Project, WbsItem, WorkPackage, ProjectActivity } from "@shared/schema";
+import type { Project, WbsItem, WorkPackage } from "@shared/schema";
 import { AddWbsModal } from "@/components/project/add-wbs-modal";
 import { EditWbsModal } from "@/components/project/edit-wbs-modal";
 import { AddWorkPackageModal } from "@/components/project/add-work-package-modal";
 import { EditWorkPackageModal } from "@/components/project/edit-work-package-modal";
-import { EditAllocationModal } from "@/components/project/edit-allocation-modal";
 import { EditWorkPackageBudgetModal } from "@/components/project/edit-work-package-budget-modal";
 import { useToast } from "@/hooks/use-toast";
-import { WbsActivitiesSplitView } from "@/components/wbs-activities/wbs-activities-split-view";
 import { WbsTreePanel, type WbsTreeNode } from "@/components/wbs-activities/wbs-tree-panel";
-import { RightPaneTabs } from "@/components/wbs-activities/right-pane-tabs";
-import { ActivityNetworkTab } from "@/components/wbs-activities/activity-network-tab";
-import { BudgetOverviewTab } from "@/components/wbs-activities/budget-overview-tab";
-import { ResourcesAssignedTab } from "@/components/wbs-activities/resources-assigned-tab";
-import { ScheduleTab } from "@/components/wbs-activities/schedule-tab";
-import type { WbsActivitiesRightTab } from "@/components/wbs-activities/constants";
 import { Loader2 } from "lucide-react";
 import { AmendProjectButton } from "@/components/project/amend-project-button";
 import { ImportWbsModal } from "@/components/project/import-wbs-modal";
@@ -25,13 +17,11 @@ import { WbsVersionsPanel } from "@/components/wbs-activities/wbs-versions-panel
 
 export default function ProjectWbsWorkPackages() {
   const { projectId } = useParams();
-  const [, setLocation] = useLocation();
   const pid = projectId ? parseInt(projectId, 10) : 0;
   const { toast } = useToast();
 
-  const [rightTab, setRightTab] = useState<WbsActivitiesRightTab>("diagram");
   const [selectedWbsId, setSelectedWbsId] = useState<number | null>(null);
-  const [selectedWpId, setSelectedWpId] = useState<number | null>(null);
+  const [, setSelectedWpId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [flashingWbsIds, setFlashingWbsIds] = useState<Set<number>>(new Set());
   const initializedRef = useRef(false);
@@ -44,7 +34,6 @@ export default function ProjectWbsWorkPackages() {
   const [isEditWpOpen, setIsEditWpOpen] = useState(false);
   const [selectedWpEditId, setSelectedWpEditId] = useState<number | null>(null);
   const [selectedWbsForWp, setSelectedWbsForWp] = useState<{ id: number; name: string } | null>(null);
-  const [isEditAllocationOpen, setIsEditAllocationOpen] = useState(false);
   const [isImportWbsOpen, setIsImportWbsOpen] = useState(false);
   const [isEditWpBudgetOpen, setIsEditWpBudgetOpen] = useState(false);
   const [selectedWpForBudgetEdit, setSelectedWpForBudgetEdit] = useState<WorkPackage | null>(null);
@@ -67,35 +56,9 @@ export default function ProjectWbsWorkPackages() {
   });
   const workPackages = Array.isArray(rawWps) ? rawWps : [];
 
-  const { data: rawActs = [], isLoading: loadingActivities } = useQuery<ProjectActivity[]>({
-    queryKey: [`/api/projects/${pid}/activities`],
-    enabled: !!pid,
-  });
-  const activities = Array.isArray(rawActs) ? rawActs : [];
-
-  const { data: rawRes = [] } = useQuery<unknown[]>({
-    queryKey: [`/api/projects/${pid}/resources`],
-    enabled: !!pid,
-  });
-  const projectResources = Array.isArray(rawRes) ? rawRes : [];
-
   const isWbsFinalized = Boolean((project as Project & { wbsFinalized?: boolean })?.wbsFinalized);
   const isBudgetFinalized = Boolean((project as Project & { budgetFinalized?: boolean })?.budgetFinalized);
   const projectCreatedById = (project as Project & { createdById?: number | null })?.createdById ?? null;
-  const projectBudgetNum = Number(project?.budget) || 0;
-  const topLevelWbs = useMemo(() => wbsItems.filter((w) => !w.parentId), [wbsItems]);
-  const allocatedToWbs = useMemo(
-    () => topLevelWbs.reduce((sum, w) => sum + Number(w.budgetedCost || 0), 0),
-    [topLevelWbs]
-  );
-  const allocationComplete = project != null && project.allocationVersion != null;
-  const usedBudget = allocationComplete
-    ? allocatedToWbs
-    : wbsItems.reduce((acc, i) => acc + Number(i.actualCost || 0), 0);
-  const remainingBudget = allocationComplete
-    ? projectBudgetNum - allocatedToWbs
-    : projectBudgetNum - usedBudget;
-  const usagePercent = projectBudgetNum ? Math.round((usedBudget / projectBudgetNum) * 100) : 0;
 
   const wbsWpCount = useMemo(() => {
     const map = new Map<number, number>();
@@ -222,16 +185,15 @@ export default function ProjectWbsWorkPackages() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-0">
-      <WbsActivitiesSplitView
-        left={
+    <div className="flex min-h-0 w-full flex-1 flex-col gap-0">
+      <div className="flex min-h-[560px] w-full flex-1 flex-col">
           <WbsTreePanel
             projectId={pid}
             wbsItems={wbsItems}
             workPackages={workPackages}
             wbsFinalized={isWbsFinalized}
             budgetFinalized={isBudgetFinalized}
-            projectCurrency={project?.currency || "INR"}
+            projectCurrency={project?.currency || "USD"}
             tree={wbsTree}
             isLoading={loadingWbs}
             selectedWbsId={selectedWbsId}
@@ -328,53 +290,7 @@ export default function ProjectWbsWorkPackages() {
             }
             onImportWbs={() => setIsImportWbsOpen(true)}
           />
-        }
-        right={
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <RightPaneTabs
-              activeTab={rightTab}
-              onTabChange={setRightTab}
-              resourceCount={projectResources.length}
-            />
-            <div className="min-h-0 flex-1 overflow-auto">
-              {rightTab === "diagram" && (
-                <ActivityNetworkTab
-                  projectId={pid}
-                  selectedWpId={selectedWpId}
-                  projectStartDate={project?.startDate}
-                  projectEndDate={project?.endDate}
-                  hasActivities={activities.length > 0}
-                  isLoading={loadingActivities}
-                  onCreateActivity={() => setLocation(`/projects/${pid}/activities/activity-plan`)}
-                />
-              )}
-              {rightTab === "budget" && project && (
-                <BudgetOverviewTab
-                  projectId={pid}
-                  currency={project.currency ?? "INR"}
-                  projectBudget={projectBudgetNum}
-                  usedBudget={usedBudget}
-                  remainingBudget={remainingBudget}
-                  usagePercent={usagePercent}
-                  allocationComplete={allocationComplete}
-                  wbsItems={wbsItems}
-                  onEditAllocation={() => setIsEditAllocationOpen(true)}
-                />
-              )}
-              {rightTab === "resources" && (
-                <ResourcesAssignedTab
-                  projectId={pid}
-                  selectedWpId={selectedWpId}
-                  projectStartDate={project?.startDate}
-                  projectEndDate={project?.endDate}
-                  resourceCount={projectResources.length}
-                />
-              )}
-              {rightTab === "schedule" && <ScheduleTab projectId={pid} />}
-            </div>
-          </div>
-        }
-      />
+      </div>
 
       {/* WBS Version History — shown below the split view */}
       <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-cream)] px-4 py-5">
@@ -421,17 +337,6 @@ export default function ProjectWbsWorkPackages() {
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: [`/api/projects/${pid}/work-packages`] });
         }}
-      />
-
-      <EditAllocationModal
-        projectId={String(pid)}
-        isOpen={isEditAllocationOpen}
-        onOpenChange={setIsEditAllocationOpen}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: [`/api/projects/${pid}/wbs`] });
-          queryClient.invalidateQueries({ queryKey: [`/api/projects/${pid}/work-packages`] });
-        }}
-        readOnly={allocationComplete}
       />
 
       <EditWorkPackageBudgetModal

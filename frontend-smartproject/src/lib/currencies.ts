@@ -43,3 +43,19 @@ export function resolveCurrencyCode(code: string | null | undefined): CurrencyCo
 export function getCurrencyLabel(code: CurrencyCode): string {
   return CURRENCY_LABELS[code] ?? code;
 }
+
+/** Currency shared by projects linked as estimation, planning, and execution. */
+export function linkedProjectCurrency(
+  projects: { id: number; currency?: string | null }[],
+  estimationId?: number | null,
+  planningId?: number | null,
+): { currency: CurrencyCode | null; conflict: boolean } {
+  const codes = [estimationId, planningId]
+    .filter((id): id is number => id != null)
+    .map((id) => projects.find((project) => project.id === id)?.currency)
+    .filter((code): code is string => Boolean(code))
+    .map((code) => resolveCurrencyCode(code));
+  const unique = Array.from(new Set(codes));
+  if (unique.length > 1) return { currency: null, conflict: true };
+  return { currency: unique[0] ?? null, conflict: false };
+}

@@ -7,17 +7,23 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function currencyFormatLocale(currency: string): string {
+  return currency.toUpperCase() === "INR" ? "en-IN" : "en-US";
+}
+
 export function formatCurrency(amount: number, currency: string = "INR"): string {
-  return new Intl.NumberFormat("en-IN", {
+  const code = currency || "INR";
+  return new Intl.NumberFormat(currencyFormatLocale(code), {
     style: "currency",
-    currency: currency || "INR",
+    currency: code,
   }).format(amount);
 }
 
 export function getCurrencySymbol(currency: string = "INR"): string {
-  return new Intl.NumberFormat("en-IN", {
+  const code = currency || "INR";
+  return new Intl.NumberFormat(currencyFormatLocale(code), {
     style: "currency",
-    currency: currency || "INR",
+    currency: code,
     currencyDisplay: "symbol",
   })
     .format(0)

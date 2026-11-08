@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Project, WbsItem, WorkPackage } from "@shared/schema";
@@ -22,7 +22,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface EditAllocationModalProps {
   projectId: string;
@@ -57,6 +67,9 @@ export function EditAllocationModal({
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [budget, setBudget] = useState<BudgetState>({ wbs: {}, wp: {} });
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const expandedReady = useRef(false);
 
   const { data: project } = useQuery<Project>({
     queryKey: [`/api/projects/${projectId}`],
@@ -89,6 +102,18 @@ export function EditAllocationModal({
     });
     setBudget({ wbs, wp });
   }, [isOpen, flatWbsItems, projectWorkPackages]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      expandedReady.current = false;
+      setExpandedIds(new Set());
+      setConfirmOpen(false);
+      return;
+    }
+    if (!flatWbsItems.length || expandedReady.current) return;
+    expandedReady.current = true;
+    setExpandedIds(new Set(flatWbsItems.filter((item) => !item.parentId).map((item) => item.id)));
+  }, [isOpen, flatWbsItems]);
 
   // Tree helpers: children WBS and WPs per WBS
   const childWbs = useMemo(() => {
@@ -142,7 +167,22 @@ export function EditAllocationModal({
     setBudget((prev) => ({ ...prev, wp: { ...prev.wp, [id]: value } }));
   };
 
-  // Validation: collect errors per node
+  const toggleExpanded = (id: number) => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const wpFilled = (wpId: number) => {
+    const v = budget.wp[wpId];
+    if (v === undefined || String(v).trim() === "") return false;
+    return parseNum(v) > 0;
+  };
+
+  // Allocate stays disabled until every work package has a budget above zero and no WBS buffer is negative.
   const validationErrors = useMemo(() => {
     const errors: string[] = [];
     if (projectError) {
@@ -150,65 +190,90 @@ export function EditAllocationModal({
     }
     flatWbsItems.forEach((w) => {
       const wbsVal = getWbsBudget(w.id);
+      const hasChildren = (childWbs.get(w.id)?.length ?? 0) > 0 || (wpsByWbsId.get(w.id)?.length ?? 0) > 0;
       const allocated = sumChildren(w.id);
-      if (allocated > wbsVal && (childWbs.get(w.id)?.length || wpsByWbsId.get(w.id)?.length)) {
+      if (wbsVal < 0) {
+        errors.push(`"${w.name}" (${w.code}): budget cannot be negative.`);
+      } else if (hasChildren && allocated > wbsVal) {
         errors.push(`"${w.name}" (${w.code}): allocated ${formatMoney(allocated, currency)} exceeds budget ${formatMoney(wbsVal, currency)}.`);
       }
     });
+    const unfilled = projectWorkPackages.filter((wp) => !wpFilled(wp.id));
+    if (projectWorkPackages.length === 0) {
+      errors.push("Add a budget greater than zero on every work package before allocating.");
+    } else if (unfilled.length > 0) {
+      errors.push(
+        unfilled.length === 1
+          ? `"${unfilled[0].name}" needs a budget greater than zero.`
+          : `${unfilled.length} work packages still need a budget greater than zero.`
+      );
+    }
     return errors;
-  }, [flatWbsItems, budget, projectError, sumTopLevel, projectBudget, currency, childWbs, wpsByWbsId]);
+  }, [flatWbsItems, projectWorkPackages, budget, projectError, sumTopLevel, projectBudget, currency, childWbs, wpsByWbsId]);
 
   const hasErrors = validationErrors.length > 0;
-
-  // Allocate only when all work packages have a value filled in and there are no validation errors
-  const allWpFilled = useMemo(() => {
-    return projectWorkPackages.every((wp) => {
-      const v = budget.wp[wp.id];
-      if (v === undefined || String(v).trim() === "") return false;
-      return Number.isFinite(parseNum(v));
-    });
-  }, [projectWorkPackages, budget.wp]);
-  const canAllocate = !hasErrors && allWpFilled && !readOnly;
+  const canAllocate = !hasErrors && !readOnly;
 
   const allocateMutation = useMutation({
     mutationFn: async () => {
-      // Update WBS from root to leaves so when we PATCH a child, its parent already has the new budget in the DB.
-      // Then update work packages so their parent WBS budgets are already in the DB.
-      const wbsByLevelAsc = [...flatWbsItems].sort((a, b) => a.level - b.level);
-      for (const w of wbsByLevelAsc) {
-        const val = budget.wbs[w.id];
-        if (val === undefined) continue;
-        await apiRequest("PATCH", `/api/wbs/${w.id}`, {
-          budgetedCost: String(parseNum(val)),
+      const unchanged = (next: number, previous: string | number | null | undefined) =>
+        Math.abs(next - Number(previous || 0)) < 0.0001;
+
+      // Raise parent budgets before children, then lower children before parents, so the saved tree never has a negative buffer.
+      const increasingWbs = [...flatWbsItems]
+        .filter((w) => budget.wbs[w.id] !== undefined && !unchanged(parseNum(budget.wbs[w.id]), w.budgetedCost))
+        .filter((w) => parseNum(budget.wbs[w.id]) >= Number(w.budgetedCost || 0))
+        .sort((a, b) => a.level - b.level);
+      const decreasingWbs = [...flatWbsItems]
+        .filter((w) => budget.wbs[w.id] !== undefined && parseNum(budget.wbs[w.id]) < Number(w.budgetedCost || 0))
+        .sort((a, b) => b.level - a.level);
+
+      const patchWbs = (w: WbsItem) =>
+        apiRequest("PATCH", `/api/wbs/${w.id}`, { budgetedCost: String(parseNum(budget.wbs[w.id])) });
+      for (const w of increasingWbs) await patchWbs(w);
+
+      const wpChanges = projectWorkPackages
+        .filter((wp) => budget.wp[wp.id] !== undefined && !unchanged(parseNum(budget.wp[wp.id]), wp.budgetedCost))
+        .sort((a, b) => parseNum(budget.wp[a.id]) - Number(a.budgetedCost || 0) - (parseNum(budget.wp[b.id]) - Number(b.budgetedCost || 0)));
+      for (const wp of wpChanges) {
+        await apiRequest("PATCH", `/api/work-packages/${wp.id}`, {
+          budgetedCost: String(parseNum(budget.wp[wp.id])),
         });
       }
-      await Promise.all(
-        projectWorkPackages.map((wp) => {
-          const val = budget.wp[wp.id];
-          if (val === undefined) return Promise.resolve();
-          return apiRequest("PATCH", `/api/work-packages/${wp.id}`, {
-            budgetedCost: String(parseNum(val)),
-          });
-        })
-      );
-      // Mark version 0 allocation as complete so the UI shows "View Allocation" and read-only modal
-      await apiRequest("PATCH", `/api/projects/${projectId}`, { allocationVersion: 0 });
+
+      for (const w of decreasingWbs) await patchWbs(w);
+
+      await apiRequest("PATCH", `/api/projects/${projectId}`, {
+        allocationVersion: 0,
+        budgetFinalized: true,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/wbs`] });
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/work-packages`] });
       toast({
-        title: "Allocation saved",
-        description: "Budget allocation completed (Version 0).",
+        title: "Budget finalized",
+        description: "The amounts are saved and locked. They can be changed only by a revision of the project budget.",
       });
+      setConfirmOpen(false);
       onOpenChange(false);
       onSuccess?.();
     },
     onError: (err: Error) => {
+      let description = err.message;
+      const jsonStart = description.indexOf("{");
+      if (jsonStart >= 0) {
+        try {
+          const parsed = JSON.parse(description.slice(jsonStart));
+          if (parsed?.message) description = parsed.message;
+        } catch {
+          // Keep the original message when the body is not JSON.
+        }
+      }
       toast({
-        title: "Allocation failed",
-        description: err.message,
+        title: "Budget was not finalized",
+        description,
         variant: "destructive",
       });
     },
@@ -221,14 +286,29 @@ export function EditAllocationModal({
     const wbsVal = getWbsBudget(wbs.id);
     const buffer = wbsVal - allocated;
     const hasChildren = children.length > 0 || wps.length > 0;
+    const expanded = expandedIds.has(wbs.id);
     const rowError = hasChildren && allocated > wbsVal;
 
     return (
       <>
         <TableRow key={`wbs-${wbs.id}`} className={rowError ? "bg-red-50 dark:bg-red-950/30" : ""}>
-          <TableCell style={{ paddingLeft: 12 + level * 24 }} className="font-medium">
-            <span className="text-slate-700">{wbs.code}</span>
-            <span className="ml-2 text-slate-900">{wbs.name}</span>
+          <TableCell style={{ paddingLeft: 8 + level * 20 }} className="font-medium">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 ${hasChildren ? "hover:bg-slate-100" : "invisible"}`}
+                aria-label={expanded ? `Collapse ${wbs.name}` : `Expand ${wbs.name}`}
+                aria-expanded={hasChildren ? expanded : undefined}
+                disabled={!hasChildren}
+                onClick={() => hasChildren && toggleExpanded(wbs.id)}
+              >
+                {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              </button>
+              <span className="min-w-0">
+                <span className="text-slate-700">{wbs.code}</span>
+                <span className="ml-2 text-slate-900">{wbs.name}</span>
+              </span>
+            </div>
           </TableCell>
           <TableCell className="text-slate-500">WBS</TableCell>
           <TableCell className="w-40">
@@ -250,8 +330,8 @@ export function EditAllocationModal({
             {hasChildren ? formatMoney(buffer, currency) : "—"}
           </TableCell>
         </TableRow>
-        {children.map((c) => renderWbsRow(c, level + 1))}
-        {wps.map((wp) => (
+        {expanded && children.map((c) => renderWbsRow(c, level + 1))}
+        {expanded && wps.map((wp) => (
           <TableRow key={`wp-${wp.id}`}>
             <TableCell style={{ paddingLeft: 12 + (level + 1) * 24 }} className="font-normal">
               <span className="text-slate-500 text-xs">{wp.code}</span>
@@ -281,14 +361,21 @@ export function EditAllocationModal({
   if (!project) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open && (confirmOpen || allocateMutation.isPending)) return;
+        if (!open) setConfirmOpen(false);
+        onOpenChange(open);
+      }}
+    >
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-4 p-0">
         <DialogHeader className="px-6 pt-6 pb-2 border-b">
           <DialogTitle>{readOnly ? "View Budget Allocation" : "Edit Budget Allocation"}</DialogTitle>
           <DialogDescription>
             {readOnly
               ? "Current budget allocation (version 0). Amendments will be available in a future version."
-              : "Set budget for each WBS and Work Package. Top-level WBS must not exceed project budget. Child allocations must not exceed their parent. Buffer is shown at each level. Fill all work package budgets to enable Allocate."}
+              : "Set a budget greater than zero on every work package. Use the arrows to open or close each level. Allocate stays off while any work package is empty or any WBS buffer is negative."}
           </DialogDescription>
         </DialogHeader>
 
@@ -338,7 +425,7 @@ export function EditAllocationModal({
             </Button>
             {!readOnly && (
               <Button
-                onClick={() => allocateMutation.mutate()}
+                onClick={() => setConfirmOpen(true)}
                 disabled={!canAllocate || allocateMutation.isPending}
               >
                 {allocateMutation.isPending ? (
@@ -354,6 +441,42 @@ export function EditAllocationModal({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      <AlertDialog open={confirmOpen} onOpenChange={(open) => !allocateMutation.isPending && setConfirmOpen(open)}>
+        <AlertDialogContent className="z-[60]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Finalize this budget?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>This cannot be undone. Check every amount carefully before you continue.</p>
+                <ul className="list-disc space-y-1.5 pl-5 text-left">
+                  <li>The WBS and work package budgets shown here will be saved.</li>
+                  <li>After this, those amounts can be changed only by a revision of the project budget.</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={allocateMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                allocateMutation.mutate();
+              }}
+              disabled={allocateMutation.isPending}
+            >
+              {allocateMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Finalizing…
+                </>
+              ) : (
+                "Yes, finalize budget"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

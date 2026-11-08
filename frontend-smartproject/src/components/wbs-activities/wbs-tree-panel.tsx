@@ -19,6 +19,7 @@ import { FinalizeWbsButton } from "@/components/project/finalize-wbs-button";
 import { FinalizeBudgetButton } from "@/components/project/finalize-budget-button";
 import { WbsItemWithWorkPackages } from "@/components/project/wbs-item-with-work-packages";
 import { cn, formatCurrency } from "@/lib/utils";
+import { wbsAllocation } from "@/lib/wbs-slack";
 import type { WbsItem, WorkPackage } from "@shared/schema";
 import { MAX_WBS_LEVEL } from "@shared/wbs-validation";
 export interface WbsTreeNode extends WbsItem {
@@ -111,31 +112,6 @@ export function WbsTreePanel({
   const [search, setSearch] = useState("");
   const allExpanded = expandedIds.size > 0;
 
-  const wbsBudgetMap = useMemo(() => {
-    const map = new Map<number, number>();
-    for (const item of wbsItems) {
-      const descendantIds = new Set<number>([item.id]);
-      let added = true;
-      while (added) {
-        added = false;
-        for (const w of wbsItems) {
-          if (w.parentId != null && descendantIds.has(w.parentId) && !descendantIds.has(w.id)) {
-            descendantIds.add(w.id);
-            added = true;
-          }
-        }
-      }
-      let sum = 0;
-      for (const wp of workPackages) {
-        if (wp.wbsItemId != null && descendantIds.has(wp.wbsItemId)) {
-          sum += Number(wp.budgetedCost || 0);
-        }
-      }
-      map.set(item.id, sum);
-    }
-    return map;
-  }, [wbsItems, workPackages]);
-
   const filteredTree = useMemo(() => {
     if (!search.trim()) return tree;
     const q = search.toLowerCase();
@@ -160,7 +136,7 @@ export function WbsTreePanel({
       const childCount = (wbsWpCount.get(item.id) ?? 0) + (childWbsCountByParent.get(item.id) ?? 0);
       const canExpand = item.children.length > 0 || (wbsWpCount.get(item.id) ?? 0) > 0;
       const hasWorkPackages = (wbsWpCount.get(item.id) ?? 0) > 0;
-      const rolledUpBudget = wbsBudgetMap.get(item.id) || 0;
+      const allocation = wbsAllocation(item, wbsItems, workPackages);
 
       return (
         <div key={item.id} className="select-none">
@@ -200,9 +176,22 @@ export function WbsTreePanel({
                 <span className="ml-1 kanban-caption text-[var(--text-muted)]">(WBS)</span>
               )}
             </button>
-            {rolledUpBudget > 0 && (
+            {allocation.hasChildren && (
+              <span
+                className={cn(
+                  "shrink-0 text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border",
+                  allocation.slack < 0
+                    ? "text-red-800 bg-red-100 border-red-300"
+                    : "text-amber-800 bg-amber-100 border-amber-300"
+                )}
+                title={`Budget ${formatCurrency(allocation.budget, projectCurrency)} minus allocated ${formatCurrency(allocation.allocated, projectCurrency)}`}
+              >
+                Slack: {formatCurrency(allocation.slack, projectCurrency)}
+              </span>
+            )}
+            {(allocation.budget > 0 || allocation.hasChildren) && (
               <span className="shrink-0 text-[10px] font-mono font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                {formatCurrency(rolledUpBudget, projectCurrency)}
+                {formatCurrency(allocation.budget, projectCurrency)}
               </span>
             )}
             {childCount > 0 && (

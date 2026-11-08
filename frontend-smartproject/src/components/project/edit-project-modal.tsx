@@ -40,13 +40,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Portfolio } from "@/lib/portfolios";
 import { EmployeeOption, employeeOptionLabel } from "@/lib/employees";
+import { COMMON_CURRENCY_CODES, getCurrencyLabel, linkedProjectCurrency, resolveCurrencyCode } from "@/lib/currencies";
 
 // Form schema for the frontend - uses Date objects
 const formSchema = z.object({
   name: z.string().min(3, "Project name must be at least 3 characters"),
   description: z.string().optional().nullable(),
   budget: z.coerce.number().positive("Budget must be a positive number"),
-  currency: z.enum(["USD", "EUR", "SAR"]).default("USD"),
+  currency: z.enum(COMMON_CURRENCY_CODES).default("USD"),
   portfolioId: z.string().optional(),
   status: z.enum(["concept", "planning", "active", "in progress", "aborted", "on-hold", "completed"]).optional().nullable(),
   startDate: z.date(),
@@ -141,7 +142,7 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
         budget: Number(project.budget),
         startDate: project.startDate ? new Date(project.startDate) : new Date(),
         endDate: project.endDate ? new Date(project.endDate) : new Date(),
-        currency: (project.currency || "USD") as "USD" | "EUR" | "SAR",
+        currency: resolveCurrencyCode(project.currency),
         portfolioId: match ? String(match.id) : "",
         status: project.status as any,
         projectVersion: (project as any).projectVersion || "execution",
@@ -156,6 +157,16 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
   // Get form values
   const { startDate } = form.watch();
   const selectedVersion = form.watch("projectVersion") || "execution";
+  const mappedEstimationProjectId = form.watch("mappedEstimationProjectId");
+  const mappedPlanningProjectId = form.watch("mappedPlanningProjectId");
+  const linkedCurrency = linkedProjectCurrency(allProjects, mappedEstimationProjectId, mappedPlanningProjectId);
+  const currencyFollowsLink = Boolean(linkedCurrency.currency) && canEditCurrency;
+
+  useEffect(() => {
+    if (!currencyFollowsLink || !linkedCurrency.currency) return;
+    if (form.getValues("currency") === linkedCurrency.currency) return;
+    form.setValue("currency", linkedCurrency.currency);
+  }, [currencyFollowsLink, linkedCurrency.currency, form]);
 
   // Update dates and duration when one changes
   const updateEndDate = (newStartDate: Date) => {
@@ -219,6 +230,28 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
 
   // Form submission handler
   const onSubmit = (data: ProjectFormData) => {
+    const link = linkedProjectCurrency(allProjects, data.mappedEstimationProjectId, data.mappedPlanningProjectId);
+    if (link.conflict) {
+      toast({
+        title: "Mapped projects must share one currency",
+        description: "The estimation and planning projects use different currencies. Choose links that match.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (link.currency && data.currency !== link.currency) {
+      if (!canEditCurrency) {
+        toast({
+          title: "Mapped projects must share one currency",
+          description: `The linked project uses ${link.currency}. This project is ${data.currency} and already has a WBS, so the currency cannot be changed here.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      form.setValue("currency", link.currency);
+      updateProject.mutate({ ...data, currency: link.currency });
+      return;
+    }
     updateProject.mutate(data);
   };
 
@@ -299,7 +332,7 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                      disabled={!canEditCurrency}
+                      disabled={!canEditCurrency || Boolean(linkedCurrency.currency)}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -307,13 +340,23 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="USD">USD ($)</SelectItem>
-                        <SelectItem value="EUR">EUR (€)</SelectItem>
-                        <SelectItem value="SAR">SAR (﷼)</SelectItem>
+                        {COMMON_CURRENCY_CODES.map((code) => (
+                          <SelectItem key={code} value={code}>
+                            {getCurrencyLabel(code)}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      {!canEditCurrency && "Currency cannot be changed after WBS items are added."}
+                      {linkedCurrency.conflict
+                        ? "The linked estimation and planning projects use different currencies."
+                        : linkedCurrency.currency && !canEditCurrency && field.value !== linkedCurrency.currency
+                          ? `The linked project uses ${linkedCurrency.currency}. Currency cannot be changed after WBS items are added.`
+                          : linkedCurrency.currency
+                            ? `Set to ${linkedCurrency.currency} so it matches the linked project.`
+                            : !canEditCurrency
+                              ? "Currency cannot be changed after WBS items are added."
+                              : "Mapped projects must use this same currency."}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -504,7 +547,7 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
                             <SelectItem value="none">None</SelectItem>
                             {estimationProjects.map((p) => (
                               <SelectItem key={p.id} value={String(p.id)}>
-                                {p.name}
+                                {p.name} · {p.currency || "USD"}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -539,7 +582,7 @@ export function EditProjectModal({ projectId, isOpen, onClose, onSuccess }: Edit
                             <SelectItem value="none">None</SelectItem>
                             {planningProjects.map((p) => (
                               <SelectItem key={p.id} value={String(p.id)}>
-                                {p.name}
+                                {p.name} · {p.currency || "USD"}
                               </SelectItem>
                             ))}
                           </SelectContent>

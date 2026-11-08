@@ -1302,6 +1302,7 @@ export class DatabaseStorage {
   async validateProjectAssignments(data: {
     id?: number;
     projectVersion?: string | null;
+    currency?: string | null;
     mappedEstimationProjectId?: number | null;
     mappedPlanningProjectId?: number | null;
     projectManagerId?: number | null;
@@ -1318,6 +1319,9 @@ export class DatabaseStorage {
       throw new Error("Only execution projects can link a planning project");
     }
 
+    const linkedCurrencies = new Set<string>();
+    if (data.currency) linkedCurrencies.add(String(data.currency).toUpperCase());
+
     if (data.mappedEstimationProjectId != null) {
       const estimation = await this.getProject(data.mappedEstimationProjectId);
       if (!estimation) throw new Error("Mapped estimation project not found");
@@ -1325,6 +1329,7 @@ export class DatabaseStorage {
         throw new Error("Select a project whose version is estimation");
       }
       if (data.id != null && estimation.id === data.id) throw new Error("A project cannot link to itself");
+      linkedCurrencies.add(String(estimation.currency || "USD").toUpperCase());
     }
 
     if (data.mappedPlanningProjectId != null) {
@@ -1334,6 +1339,26 @@ export class DatabaseStorage {
         throw new Error("Select a project whose version is planning");
       }
       if (data.id != null && planning.id === data.id) throw new Error("A project cannot link to itself");
+      linkedCurrencies.add(String(planning.currency || "USD").toUpperCase());
+    }
+
+    if (linkedCurrencies.size > 1) {
+      throw new Error("Mapped estimation, planning, and execution projects must use the same currency.");
+    }
+
+    if (data.id != null && data.currency) {
+      const others = await this.getProjects();
+      const dependent = others.find(
+        (project) =>
+          project.id !== data.id &&
+          (project.mappedEstimationProjectId === data.id || project.mappedPlanningProjectId === data.id) &&
+          String(project.currency || "USD").toUpperCase() !== String(data.currency).toUpperCase()
+      );
+      if (dependent) {
+        throw new Error(
+          `Mapped project "${dependent.name}" uses ${dependent.currency}. Linked projects must use the same currency.`
+        );
+      }
     }
   }
 

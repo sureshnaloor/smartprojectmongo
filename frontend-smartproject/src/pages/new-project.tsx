@@ -13,7 +13,8 @@ import {
     Package,
     AlertTriangle,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
+import { wbsAllocation } from "@/lib/wbs-slack";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Project, WbsItem, Dependency, WorkPackage } from "@shared/schema";
 import { AddWbsModal } from "@/components/project/add-wbs-modal";
@@ -146,6 +147,16 @@ export default function NewProject() {
     // Version 0 is complete only when user has successfully clicked Allocate (stored on project)
     const allocationComplete = project != null && project.allocationVersion != null;
     const isWbsFinalized = Boolean((project as Project & { wbsFinalized?: boolean })?.wbsFinalized);
+    const isBudgetFinalized = Boolean((project as Project & { budgetFinalized?: boolean })?.budgetFinalized);
+    const workPackagesMissingBudget = useMemo(
+        () =>
+            projectWorkPackages.filter((wp) => {
+                const value = Number(wp.budgetedCost);
+                return wp.budgetedCost == null || wp.budgetedCost === "" || Number.isNaN(value) || value <= 0;
+            }),
+        [projectWorkPackages]
+    );
+    const showBudgetAlert = isWbsFinalized && !isBudgetFinalized;
 
     useEffect(() => {
         if (flashingWbsIds.size === 0) return;
@@ -338,6 +349,7 @@ export default function NewProject() {
         if (!project) return;
         switch (action) {
             case "import-wbs":
+                if (isWbsFinalized || isBudgetFinalized) return;
                 setIsImportWbsOpen(true);
                 break;
             case "team":
@@ -350,6 +362,7 @@ export default function NewProject() {
                 setLocation(`/projects/${project.id}/schedule`);
                 break;
             case "add-wp": {
+                if (isWbsFinalized || isBudgetFinalized) return;
                 const wbsId = selectedWbsId ?? flatWbsItems.find((w) => w.type === "WBS" && !w.isTopLevel)?.id;
                 const wbs = flatWbsItems.find((w) => w.id === wbsId);
                 if (wbs) {
@@ -452,6 +465,8 @@ export default function NewProject() {
             const childWbsCount = childWbsCountByParent.get(item.id) ?? 0;
             const canExpand = (item.children?.length ?? 0) > 0 || wpCount > 0;
             const isSelected = selectedWbsId === item.id;
+            const allocation = wbsAllocation(item, flatWbsItems, projectWorkPackages);
+            const projectCurrency = project?.currency || "SAR";
 
             return (
             <div key={item.id}>
@@ -504,8 +519,28 @@ export default function NewProject() {
                             </div>
                         </div>
                     </div>
-                    <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
-                        <WbsItemActions item={item} level={level} />
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        {allocation.hasChildren && (
+                            <span
+                                className={cn(
+                                    "shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] font-semibold",
+                                    allocation.slack < 0
+                                        ? "border-red-300 bg-red-100 text-red-800"
+                                        : "border-amber-300 bg-amber-100 text-amber-800"
+                                )}
+                                title={`Budget ${formatCurrency(allocation.budget, projectCurrency)} minus allocated ${formatCurrency(allocation.allocated, projectCurrency)}`}
+                            >
+                                Slack: {formatCurrency(allocation.slack, projectCurrency)}
+                            </span>
+                        )}
+                        {(allocation.budget > 0 || allocation.hasChildren) && (
+                            <span className="shrink-0 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-700">
+                                {formatCurrency(allocation.budget, projectCurrency)}
+                            </span>
+                        )}
+                        <div className="flex items-center opacity-0 transition-opacity group-hover:opacity-100">
+                            <WbsItemActions item={item} level={level} />
+                        </div>
                     </div>
                 </div>
                 {item.expanded && (
@@ -517,6 +552,9 @@ export default function NewProject() {
                                 level={level}
                                 isExpanded={item.expanded}
                                 wbsFinalized={isWbsFinalized}
+                                budgetFinalized={isBudgetFinalized}
+                                projectWorkPackages={projectWorkPackages}
+                                projectCurrency={project?.currency || "SAR"}
                                 onEditWorkPackage={(id) => {
                                     if (isWbsFinalized) return;
                                     setSelectedWorkPackageId(id);
@@ -567,15 +605,44 @@ export default function NewProject() {
 
     return (
         <MasterLayout projectId={project.id}>
-            <div className="min-h-screen bg-[var(--bg-cream)]">
+            <div className="flex h-[calc(100dvh-var(--cp-topnav-height)-3rem)] flex-col overflow-hidden bg-[var(--bg-cream)]">
+                <div className="min-h-0 flex-1 overflow-y-auto">
                 <div className="mx-auto max-w-[1180px] space-y-3 px-3 py-3">
                     <ProjectDashboardHeader
                         project={project}
                         activeTab={activeTab}
-                        onImportWbs={() => setIsImportWbsOpen(true)}
+                        onImportWbs={() => {
+                            if (isWbsFinalized || isBudgetFinalized) return;
+                            setIsImportWbsOpen(true);
+                        }}
                         scheduleStatus={timelineMetrics.scheduleStatus}
-                        wbsFinalized={isWbsFinalized}
+                        wbsFinalized={isWbsFinalized || isBudgetFinalized}
                     />
+
+                    {!section && showBudgetAlert && (
+                        <div className="sticky top-0 z-20 bg-[var(--bg-cream)] pb-1 pt-1">
+                            <div className="flex items-start gap-3 rounded-lg border-2 border-amber-600 bg-amber-50 px-4 py-3 text-amber-950 shadow-sm">
+                                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold">Work package budgets are still open</p>
+                                    <p className="mt-1 text-sm leading-relaxed">
+                                        {projectWorkPackages.length === 0
+                                            ? "The WBS is finalized. Add a budget on every work package, then finalize the budget."
+                                            : workPackagesMissingBudget.length > 0
+                                                ? `The WBS is finalized. Add or edit a budget on every work package — ${workPackagesMissingBudget.length} of ${projectWorkPackages.length} still need a value — then finalize the budget.`
+                                                : "The WBS is finalized and every work package has a budget. Finalize the budget to lock these values."}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        className="mt-2 text-sm font-semibold text-amber-950 underline underline-offset-2"
+                                        onClick={() => setIsEditAllocationOpen(true)}
+                                    >
+                                        Open budget allocation
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {section ? (
                         activeTab === "activities" ? (
@@ -640,11 +707,15 @@ export default function NewProject() {
                     />
 
                     <div className="grid grid-cols-1 gap-3 xl:grid-cols-[2fr_3fr]">
-                        <QuickActions onAction={handleQuickAction} />
+                        <QuickActions
+                            onAction={handleQuickAction}
+                            disabledActions={isWbsFinalized || isBudgetFinalized ? ["import-wbs", "add-wp"] : []}
+                        />
                         <RecentActivity />
                     </div>
                     </>
                     )}
+                </div>
                 </div>
             </div>
 
@@ -691,7 +762,7 @@ export default function NewProject() {
                     queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/wbs`] });
                     queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/work-packages`] });
                 }}
-                readOnly={allocationComplete}
+                readOnly={isBudgetFinalized}
             />
 
             {selectedWbsForWorkPackage && (
