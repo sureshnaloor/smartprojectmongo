@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { dictateToolForm } from "./tool-dictation";
 import { db } from "./db";
 import { insertFileUploadRecord } from "./file-upload-helpers";
 import { registerCorrespondenceRoutes } from "./correspondence-helpers";
@@ -10610,6 +10611,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== TOOL MASTER ENDPOINTS =====
+
+  app.post("/api/tool-masters/dictate", async (req: Request, res: Response) => {
+    try {
+      const uploaded = req.files?.audio;
+      const file = (Array.isArray(uploaded) ? uploaded[0] : uploaded) as fileUpload.UploadedFile | undefined;
+      if (!file) {
+        return res.status(400).json({ message: "Record a short clip first." });
+      }
+      const fs = await import("fs");
+      const audio = file.tempFilePath ? fs.readFileSync(file.tempFilePath) : file.data;
+      if (!audio?.length) {
+        return res.status(400).json({ message: "The recording was empty." });
+      }
+      const result = await dictateToolForm(audio, file.mimetype || file.name || "");
+      res.json(result);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
 
   app.get("/api/tool-masters", async (_req: Request, res: Response) => {
     try {

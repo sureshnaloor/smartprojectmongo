@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Upload, Download, Hammer } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Download, Hammer, Mic, Loader2, Square } from "lucide-react";
 import { ToolResourceMapper } from "@/components/project/tool-resource-mapper";
 import { RESOURCE_HOURLY_UOM } from "@/lib/resource-uom";
 interface Tool {
@@ -46,6 +46,44 @@ interface ToolModelItem {
   id: number;
   name: string;
   manufacturer: string;
+}
+
+type ToolFormField =
+  | "toolNumber"
+  | "name"
+  | "toolType"
+  | "brand"
+  | "model"
+  | "unitRate"
+  | "accessories"
+  | "description";
+
+const FIELD_LABELS: Record<ToolFormField, string> = {
+  toolNumber: "Tool Number",
+  name: "Name",
+  toolType: "Tool Type",
+  brand: "Manufacturer",
+  model: "Model",
+  unitRate: "Hourly Rate (H)",
+  accessories: "Accessories",
+  description: "Description",
+};
+
+const EMPTY_FORM = {
+  toolNumber: "",
+  name: "",
+  toolType: "",
+  description: "",
+  brand: "",
+  model: "",
+  accessories: "",
+  unitRate: "",
+};
+
+interface DictationResponse {
+  transcript: string;
+  fields: Record<ToolFormField, string | null>;
+  unmatched: { field: ToolFormField; spoken: string }[];
 }
 
 async function parseApiError(res: Response, fallback: string): Promise<string> {
@@ -112,16 +150,17 @@ export default function ToolMasterPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTool, setEditingTool] = useState<Tool | null>(null);
 
-  const [formData, setFormData] = useState({
-    toolNumber: "",
-    name: "",
-    toolType: "",
-    description: "",
-    brand: "",
-    model: "",
-    accessories: "",
-    unitRate: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
+  const [recording, setRecording] = useState(false);
+  const [dictating, setDictating] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [transcript, setTranscript] = useState("");
+  const [speechPairs, setSpeechPairs] = useState<{ field: ToolFormField; value: string }[]>([]);
+  const [unmatched, setUnmatched] = useState<{ field: ToolFormField; spoken: string }[]>([]);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordTimerRef = useRef<number | null>(null);
 
   const { data: tools = [], isLoading } = useQuery({
     queryKey: ["/api/tool-masters"],
@@ -207,19 +246,177 @@ export default function ToolMasterPage() {
     },
   });
 
-  const resetForm = () => {
-    setFormData({
-      toolNumber: "",
-      name: "",
-      toolType: "",
-      description: "",
-      brand: "",
-      model: "",
-      accessories: "",
-      unitRate: "",
-    });
-    setEditingTool(null);
+  const discardRecordingRef = useRef(false);
+  const armingRef = useRef(false);
+  const stoppingRef = useRef(false);
+
+  const clearSpeech = () => {
+    setTranscript("");
+    setSpeechPairs([]);
+    setUnmatched([]);
   };
+
+  const releaseMic = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    recorderRef.current = null;
+  };
+
+  const finishRecording = (discard: boolean) => {
+    if (recordTimerRef.current != null) {
+      window.clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+    setRecording(false);
+    if (discard) discardRecordingRef.current = true;
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      if (!stoppingRef.current) {
+        stoppingRef.current = true;
+        recorder.stop();
+      }
+      return;
+    }
+    releaseMic();
+  };
+
+  const applyDictation = (result: DictationResponse) => {
+    const filled = (Object.keys(FIELD_LABELS) as ToolFormField[])
+      .filter((field) => Boolean(result.fields[field]))
+      .map((field) => ({ field, value: result.fields[field] as string }));
+    setFormData((prev) => {
+      const next = { ...prev };
+      for (const { field, value } of filled) {
+        if (field === "brand" && value !== prev.brand && !result.fields.model) {
+          const modelStillValid = toolModels.some(
+            (model) =>
+              model.manufacturer.toLowerCase() === value.toLowerCase() && model.name === prev.model
+          );
+          if (!modelStillValid) next.model = "";
+        }
+        next[field] = value;
+      }
+      return next;
+    });
+    setSpeechPairs(filled);
+    setUnmatched(result.unmatched);
+    setTranscript(result.transcript);
+  };
+
+  const submitRecording = async (blob: Blob) => {
+    setDictating(true);
+    try {
+      if (blob.size < 800) {
+        toast({ title: "Recording was too short", variant: "destructive" });
+        return;
+      }
+      const body = new FormData();
+      const filename = blob.type.includes("mp4") ? "dictation.m4a" : "dictation.webm";
+      body.append("audio", blob, filename);
+      const response = await fetch("/api/tool-masters/dictate", { method: "POST", body });
+      if (!response.ok) {
+        throw new Error(await parseApiError(response, "Could not transcribe that recording"));
+      }
+      const result = (await response.json()) as DictationResponse;
+      applyDictation(result);
+      const filledCount = Object.values(result.fields).filter(Boolean).length;
+      toast({
+        title: filledCount > 0 ? "Form filled from speech" : "Nothing matched the form",
+        description:
+          filledCount > 0
+            ? "Review the values and change any of them before you create the tool."
+            : result.transcript || "Try naming the tool type, manufacturer, and model.",
+      });
+    } catch (error) {
+      toast({
+        title: "Dictation failed",
+        description: error instanceof Error ? error.message : "Could not transcribe that recording",
+        variant: "destructive",
+      });
+    } finally {
+      setDictating(false);
+    }
+  };
+
+  const startRecording = async () => {
+    if (recording || dictating || armingRef.current) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast({ title: "This browser cannot record audio", variant: "destructive" });
+      return;
+    }
+    armingRef.current = true;
+    try {
+      discardRecordingRef.current = false;
+      stoppingRef.current = false;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const preferred = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+      const mimeType = preferred.find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        chunksRef.current = [];
+        const discard = discardRecordingRef.current;
+        discardRecordingRef.current = false;
+        stoppingRef.current = false;
+        releaseMic();
+        if (!discard) void submitRecording(blob);
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setRecordSeconds(0);
+      setRecording(true);
+      clearSpeech();
+      const startedAt = Date.now();
+      recordTimerRef.current = window.setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        setRecordSeconds(elapsed);
+        if (elapsed >= 45 && recorder.state === "recording") {
+          finishRecording(false);
+        }
+      }, 250);
+    } catch {
+      finishRecording(true);
+      toast({
+        title: "Microphone unavailable",
+        description: "Allow microphone access, then try again.",
+        variant: "destructive",
+      });
+    } finally {
+      armingRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!isDialogOpen) finishRecording(true);
+    return () => {
+      if (recordTimerRef.current != null) window.clearInterval(recordTimerRef.current);
+    };
+  }, [isDialogOpen]);
+
+  const resetForm = () => {
+    setFormData(EMPTY_FORM);
+    setEditingTool(null);
+    clearSpeech();
+    finishRecording(true);
+  };
+
+  const updateField = (field: ToolFormField, value: string) => {
+    setFormData((prev) => {
+      if (field === "brand") return { ...prev, brand: value, model: "" };
+      return { ...prev, [field]: value };
+    });
+    setSpeechPairs((pairs) =>
+      pairs.filter((pair) => pair.field !== field && !(field === "brand" && pair.field === "model"))
+    );
+  };
+
+  const speechClass = (field: ToolFormField) =>
+    speechPairs.some((pair) => pair.field === field) ? "ring-2 ring-amber-400" : "";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -247,6 +444,7 @@ export default function ToolMasterPage() {
       accessories: tool.accessories || "",
       unitRate: tool.unitRate,
     });
+    clearSpeech();
     setIsDialogOpen(true);
   };
 
@@ -325,23 +523,71 @@ export default function ToolMasterPage() {
                   <DialogTitle>{editingTool ? "Edit Tool" : "Add Tool"}</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="rounded-md border bg-muted/40 p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">
+                        Speak the tool type, manufacturer, and model. You can also say the tool number, name, hourly rate, accessories, and description. The form fills in so you can keep or change any value.
+                      </p>
+                      <Button
+                        type="button"
+                        variant={recording ? "destructive" : "outline"}
+                        size="sm"
+                        disabled={dictating}
+                        onClick={() => (recording ? finishRecording(false) : void startRecording())}
+                      >
+                        {dictating ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : recording ? (
+                          <Square className="mr-2 h-4 w-4" />
+                        ) : (
+                          <Mic className="mr-2 h-4 w-4" />
+                        )}
+                        {dictating ? "Transcribing" : recording ? `Stop ${recordSeconds}s` : "Speak"}
+                      </Button>
+                    </div>
+                    {transcript && (
+                      <p className="text-xs">
+                        <span className="text-muted-foreground">Heard: </span>
+                        {transcript}
+                      </p>
+                    )}
+                    {speechPairs.length > 0 && (
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                        {speechPairs.map((pair) => (
+                          <div key={pair.field} className="contents">
+                            <dt className="text-muted-foreground">{FIELD_LABELS[pair.field]}</dt>
+                            <dd className="font-medium">{pair.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                    {unmatched.length > 0 && (
+                      <ul className="text-xs text-amber-700 space-y-1">
+                        {unmatched.map((item) => (
+                          <li key={`${item.field}-${item.spoken}`}>
+                            {FIELD_LABELS[item.field]} “{item.spoken}” is not in the list. Choose it from the dropdown.
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Tool Number *</Label>
-                      <Input required value={formData.toolNumber} onChange={(e) => setFormData({ ...formData, toolNumber: e.target.value })} />
+                      <Input required className={speechClass("toolNumber")} value={formData.toolNumber} onChange={(e) => updateField("toolNumber", e.target.value)} />
                     </div>
                     <div>
                       <Label>Name *</Label>
-                      <Input required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                      <Input required className={speechClass("name")} value={formData.name} onChange={(e) => updateField("name", e.target.value)} />
                     </div>
                   </div>
                   <div>
                     <Label>Tool Type *</Label>
                     <select
-                      className="w-full border rounded px-2 py-2 text-sm"
+                      className={`w-full border rounded px-2 py-2 text-sm ${speechClass("toolType")}`}
                       required
                       value={formData.toolType}
-                      onChange={(e) => setFormData({ ...formData, toolType: e.target.value })}
+                      onChange={(e) => updateField("toolType", e.target.value)}
                     >
                       <option value="">Select type</option>
                       {toolTypes.map((t) => (
@@ -355,11 +601,9 @@ export default function ToolMasterPage() {
                     <div>
                       <Label>Manufacturer</Label>
                       <select
-                        className="w-full border rounded px-2 py-2 text-sm"
+                        className={`w-full border rounded px-2 py-2 text-sm ${speechClass("brand")}`}
                         value={formData.brand}
-                        onChange={(e) =>
-                          setFormData({ ...formData, brand: e.target.value, model: "" })
-                        }
+                        onChange={(e) => updateField("brand", e.target.value)}
                       >
                         <option value="">—</option>
                         {manufacturers.map((m) => (
@@ -372,10 +616,10 @@ export default function ToolMasterPage() {
                     <div>
                       <Label>Model</Label>
                       <select
-                        className="w-full border rounded px-2 py-2 text-sm"
+                        className={`w-full border rounded px-2 py-2 text-sm ${speechClass("model")}`}
                         value={formData.model}
                         disabled={!formData.brand}
-                        onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                        onChange={(e) => updateField("model", e.target.value)}
                       >
                         <option value="">—</option>
                         {modelsForBrand.map((m) => (
@@ -388,15 +632,15 @@ export default function ToolMasterPage() {
                   </div>
                   <div>
                     <Label>Hourly Rate ({RESOURCE_HOURLY_UOM}) *</Label>
-                    <Input type="number" required step="0.01" value={formData.unitRate} onChange={(e) => setFormData({ ...formData, unitRate: e.target.value })} />
+                    <Input type="number" required step="0.01" className={speechClass("unitRate")} value={formData.unitRate} onChange={(e) => updateField("unitRate", e.target.value)} />
                   </div>
                   <div>
                     <Label>Accessories</Label>
-                    <Input value={formData.accessories} onChange={(e) => setFormData({ ...formData, accessories: e.target.value })} />
+                    <Input className={speechClass("accessories")} value={formData.accessories} onChange={(e) => updateField("accessories", e.target.value)} />
                   </div>
                   <div>
                     <Label>Description</Label>
-                    <Input value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
+                    <Input className={speechClass("description")} value={formData.description} onChange={(e) => updateField("description", e.target.value)} />
                   </div>
                   <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
                     {editingTool ? "Update" : "Create"}
