@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { dictateToolForm } from "./tool-dictation";
+import { dictateTaskForm } from "./task-dictation";
 import { db } from "./db";
 import { insertFileUploadRecord } from "./file-upload-helpers";
 import { registerCorrespondenceRoutes } from "./correspondence-helpers";
@@ -2679,6 +2680,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const tasks = await storage.getProjectTasksByActivity(activityId);
       res.json(tasks);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.post("/api/projects/:projectId/tasks/dictate", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+      const project = await storage.getProject(projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+
+      const uploaded = req.files?.audio;
+      const file = (Array.isArray(uploaded) ? uploaded[0] : uploaded) as fileUpload.UploadedFile | undefined;
+      if (!file) return res.status(400).json({ message: "Record a short clip first." });
+      const fs = await import("fs");
+      const audio = file.tempFilePath ? fs.readFileSync(file.tempFilePath) : file.data;
+      if (!audio?.length) return res.status(400).json({ message: "The recording was empty." });
+
+      const activities = await storage.getProjectActivities(projectId);
+      const result = await dictateTaskForm(
+        audio,
+        file.mimetype || file.name || "",
+        activities.map((activity) => ({ id: activity.id, name: activity.name }))
+      );
+      res.json(result);
     } catch (err) {
       handleError(err, res);
     }

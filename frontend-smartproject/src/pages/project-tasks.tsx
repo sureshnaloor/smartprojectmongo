@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { get, post, put, del } from "@/lib/api-client";
@@ -14,6 +14,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Mic, Loader2, Square } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -39,6 +40,60 @@ import {
   type TaskSortKey,
   type TaskStatus,
 } from "@/components/project-tasks/constants";
+
+type TaskSpeechField =
+  | "activityId"
+  | "name"
+  | "description"
+  | "plannedDate"
+  | "duration"
+  | "priority"
+  | "status"
+  | "assignee"
+  | "remarks";
+
+const TASK_SPEECH_LABELS: Record<TaskSpeechField, string> = {
+  activityId: "Activity",
+  name: "Name",
+  description: "Description",
+  plannedDate: "Due date",
+  duration: "Duration (min)",
+  priority: "Priority",
+  status: "Status",
+  assignee: "Assignee",
+  remarks: "Remarks",
+};
+
+const PRIORITY_LABELS: Record<TaskPriority, string> = {
+  critical: "Critical",
+  high: "High",
+  normal: "Normal",
+  low: "Low",
+};
+
+const STATUS_LABELS: Record<TaskStatus, string> = {
+  pending: "Pending",
+  in_progress: "In Progress",
+  completed: "Done",
+  blocked: "Blocked",
+};
+
+interface TaskDictationResponse {
+  transcript: string;
+  fields: {
+    activityId: number | null;
+    activityName: string | null;
+    name: string | null;
+    description: string | null;
+    plannedDate: string | null;
+    duration: string | null;
+    priority: TaskPriority | null;
+    status: TaskStatus | null;
+    assignee: string | null;
+    remarks: string | null;
+  };
+  rejected: { field: TaskSpeechField; spoken: string; reason: string }[];
+}
 
 export default function ProjectTasks() {
   const { projectId } = useParams();
@@ -97,6 +152,19 @@ export default function ProjectTasks() {
     duration: "60",
     remarks: "",
   });
+  const [taskRecording, setTaskRecording] = useState(false);
+  const [taskDictating, setTaskDictating] = useState(false);
+  const [taskRecordSeconds, setTaskRecordSeconds] = useState(0);
+  const [taskTranscript, setTaskTranscript] = useState("");
+  const [taskSpeechPairs, setTaskSpeechPairs] = useState<{ field: TaskSpeechField; value: string }[]>([]);
+  const [taskRejected, setTaskRejected] = useState<TaskDictationResponse["rejected"]>([]);
+  const taskRecorderRef = useRef<MediaRecorder | null>(null);
+  const taskStreamRef = useRef<MediaStream | null>(null);
+  const taskChunksRef = useRef<Blob[]>([]);
+  const taskTimerRef = useRef<number | null>(null);
+  const taskDiscardRef = useRef(false);
+  const taskStoppingRef = useRef(false);
+  const taskArmingRef = useRef(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 200);
@@ -255,6 +323,12 @@ export default function ProjectTasks() {
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const clearTaskSpeech = () => {
+    setTaskTranscript("");
+    setTaskSpeechPairs([]);
+    setTaskRejected([]);
+  };
+
   const resetNewTask = () => {
     setNewTask({
       activityId: selectedActivityId ? String(selectedActivityId) : "",
@@ -267,7 +341,190 @@ export default function ProjectTasks() {
       duration: "60",
       remarks: "",
     });
+    clearTaskSpeech();
   };
+
+  const releaseTaskMic = () => {
+    taskStreamRef.current?.getTracks().forEach((track) => track.stop());
+    taskStreamRef.current = null;
+    taskRecorderRef.current = null;
+  };
+
+  const finishTaskRecording = (discard: boolean) => {
+    if (taskTimerRef.current != null) {
+      window.clearInterval(taskTimerRef.current);
+      taskTimerRef.current = null;
+    }
+    setTaskRecording(false);
+    if (discard) taskDiscardRef.current = true;
+    const recorder = taskRecorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      if (!taskStoppingRef.current) {
+        taskStoppingRef.current = true;
+        recorder.stop();
+      }
+      return;
+    }
+    releaseTaskMic();
+  };
+
+  const applyTaskDictation = (result: TaskDictationResponse) => {
+    const filled: { field: TaskSpeechField; value: string }[] = [];
+    const patch: Partial<typeof newTask> = {};
+    if (result.fields.activityId != null) {
+      patch.activityId = String(result.fields.activityId);
+      filled.push({ field: "activityId", value: result.fields.activityName ?? "" });
+    }
+    if (result.fields.name) {
+      patch.name = result.fields.name;
+      filled.push({ field: "name", value: result.fields.name });
+    }
+    if (result.fields.description) {
+      patch.description = result.fields.description;
+      filled.push({ field: "description", value: result.fields.description });
+    }
+    if (result.fields.plannedDate) {
+      patch.plannedDate = result.fields.plannedDate;
+      filled.push({ field: "plannedDate", value: result.fields.plannedDate });
+    }
+    if (result.fields.duration) {
+      patch.duration = result.fields.duration;
+      filled.push({ field: "duration", value: result.fields.duration });
+    }
+    if (result.fields.priority) {
+      patch.priority = result.fields.priority;
+      filled.push({ field: "priority", value: PRIORITY_LABELS[result.fields.priority] });
+    }
+    if (result.fields.status && result.fields.status !== "completed") {
+      patch.status = result.fields.status;
+      filled.push({ field: "status", value: STATUS_LABELS[result.fields.status] });
+    }
+    if (result.fields.assignee) {
+      patch.assignee = result.fields.assignee;
+      filled.push({ field: "assignee", value: result.fields.assignee });
+    }
+    if (result.fields.remarks) {
+      patch.remarks = result.fields.remarks;
+      filled.push({ field: "remarks", value: result.fields.remarks });
+    }
+    setNewTask((prev) => ({ ...prev, ...patch }));
+    setTaskSpeechPairs(filled);
+    setTaskRejected(result.rejected);
+    setTaskTranscript(result.transcript);
+  };
+
+  const submitTaskRecording = async (blob: Blob) => {
+    setTaskDictating(true);
+    try {
+      if (blob.size < 800) {
+        toast({ title: "Recording was too short", variant: "destructive" });
+        return;
+      }
+      const body = new FormData();
+      body.append("audio", blob, blob.type.includes("mp4") ? "dictation.m4a" : "dictation.webm");
+      const response = await fetch(`/api/projects/${projectId}/tasks/dictate`, { method: "POST", body });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        const message = typeof payload?.message === "string" ? payload.message : "Could not transcribe that recording";
+        throw new Error(message);
+      }
+      const result = (await response.json()) as TaskDictationResponse;
+      applyTaskDictation(result);
+      const filledCount =
+        (result.fields.activityId != null ? 1 : 0) +
+        [
+          result.fields.name,
+          result.fields.description,
+          result.fields.plannedDate,
+          result.fields.duration,
+          result.fields.priority,
+          result.fields.status,
+          result.fields.assignee,
+          result.fields.remarks,
+        ].filter(Boolean).length;
+      toast({
+        title: filledCount > 0 ? "Form filled from speech" : "Nothing passed validation",
+        description:
+          filledCount > 0
+            ? "Review the values. Anything that did not validate was left for you to enter."
+            : result.transcript || "Name the activity and the task details.",
+      });
+    } catch (error) {
+      toast({
+        title: "Dictation failed",
+        description: error instanceof Error ? error.message : "Could not transcribe that recording",
+        variant: "destructive",
+      });
+    } finally {
+      setTaskDictating(false);
+    }
+  };
+
+  const startTaskRecording = async () => {
+    if (taskRecording || taskDictating || taskArmingRef.current) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast({ title: "This browser cannot record audio", variant: "destructive" });
+      return;
+    }
+    taskArmingRef.current = true;
+    try {
+      taskDiscardRef.current = false;
+      taskStoppingRef.current = false;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      taskStreamRef.current = stream;
+      const preferred = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+      const mimeType = preferred.find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      taskChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) taskChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(taskChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        taskChunksRef.current = [];
+        const discard = taskDiscardRef.current;
+        taskDiscardRef.current = false;
+        taskStoppingRef.current = false;
+        releaseTaskMic();
+        if (!discard) void submitTaskRecording(blob);
+      };
+      taskRecorderRef.current = recorder;
+      recorder.start();
+      setTaskRecordSeconds(0);
+      setTaskRecording(true);
+      clearTaskSpeech();
+      const startedAt = Date.now();
+      taskTimerRef.current = window.setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        setTaskRecordSeconds(elapsed);
+        if (elapsed >= 45 && recorder.state === "recording") finishTaskRecording(false);
+      }, 250);
+    } catch {
+      finishTaskRecording(true);
+      toast({
+        title: "Microphone unavailable",
+        description: "Allow microphone access, then try again.",
+        variant: "destructive",
+      });
+    } finally {
+      taskArmingRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!addDialogOpen) finishTaskRecording(true);
+    return () => {
+      if (taskTimerRef.current != null) window.clearInterval(taskTimerRef.current);
+    };
+  }, [addDialogOpen]);
+
+  const updateNewTask = <K extends keyof typeof newTask>(field: K, value: (typeof newTask)[K]) => {
+    setNewTask((prev) => ({ ...prev, [field]: value }));
+    setTaskSpeechPairs((pairs) => pairs.filter((pair) => pair.field !== field));
+  };
+
+  const taskSpeechClass = (field: TaskSpeechField) =>
+    taskSpeechPairs.some((pair) => pair.field === field) ? "ring-2 ring-amber-400" : "";
 
   const handleDragStart = (e: React.DragEvent, task: ProjectTaskItem) => {
     e.dataTransfer.setData("application/json", JSON.stringify({ task }));
@@ -408,16 +665,73 @@ export default function ProjectTasks() {
         </div>
       </div>
 
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="max-w-lg">
+      <Dialog
+        open={addDialogOpen}
+        onOpenChange={(open) => {
+          setAddDialogOpen(open);
+          if (!open) {
+            finishTaskRecording(true);
+            clearTaskSpeech();
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Task</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="rounded-md border bg-muted/40 p-3 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Speak the activity and the task details. Activity must match the list. A date, duration, priority, or status is filled only when it is valid. Anything else stays for you to enter.
+                </p>
+                <Button
+                  type="button"
+                  variant={taskRecording ? "destructive" : "outline"}
+                  size="sm"
+                  disabled={taskDictating}
+                  onClick={() => (taskRecording ? finishTaskRecording(false) : void startTaskRecording())}
+                >
+                  {taskDictating ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : taskRecording ? (
+                    <Square className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Mic className="mr-2 h-4 w-4" />
+                  )}
+                  {taskDictating ? "Transcribing" : taskRecording ? `Stop ${taskRecordSeconds}s` : "Speak"}
+                </Button>
+              </div>
+              {taskTranscript && (
+                <p className="text-xs">
+                  <span className="text-muted-foreground">Heard: </span>
+                  {taskTranscript}
+                </p>
+              )}
+              {taskSpeechPairs.length > 0 && (
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                  {taskSpeechPairs.map((pair) => (
+                    <div key={pair.field} className="contents">
+                      <dt className="text-muted-foreground">{TASK_SPEECH_LABELS[pair.field]}</dt>
+                      <dd className="font-medium">{pair.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              {taskRejected.length > 0 && (
+                <ul className="space-y-1 text-xs text-amber-700">
+                  {taskRejected.map((item) => (
+                    <li key={`${item.field}-${item.spoken}`}>
+                      {TASK_SPEECH_LABELS[item.field]} “{item.spoken}” {item.reason}.
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <div>
               <Label>Activity</Label>
-              <Select value={newTask.activityId} onValueChange={(v) => setNewTask((s) => ({ ...s, activityId: v }))}>
-                <SelectTrigger className="mt-1">
+              <Select value={newTask.activityId} onValueChange={(v) => updateNewTask("activityId", v)}>
+                <SelectTrigger className={`mt-1 ${taskSpeechClass("activityId")}`}>
                   <SelectValue placeholder="Select activity" />
                 </SelectTrigger>
                 <SelectContent>
@@ -432,17 +746,17 @@ export default function ProjectTasks() {
             <div>
               <Label>Name</Label>
               <Input
-                className="mt-1"
+                className={`mt-1 ${taskSpeechClass("name")}`}
                 value={newTask.name}
-                onChange={(e) => setNewTask((s) => ({ ...s, name: e.target.value }))}
+                onChange={(e) => updateNewTask("name", e.target.value)}
               />
             </div>
             <div>
               <Label>Description</Label>
               <Textarea
-                className="mt-1"
+                className={`mt-1 ${taskSpeechClass("description")}`}
                 value={newTask.description}
-                onChange={(e) => setNewTask((s) => ({ ...s, description: e.target.value }))}
+                onChange={(e) => updateNewTask("description", e.target.value)}
                 rows={2}
               />
             </div>
@@ -451,18 +765,20 @@ export default function ProjectTasks() {
                 <Label>Due date</Label>
                 <Input
                   type="date"
-                  className="mt-1"
+                  className={`mt-1 ${taskSpeechClass("plannedDate")}`}
                   value={newTask.plannedDate}
-                  onChange={(e) => setNewTask((s) => ({ ...s, plannedDate: e.target.value }))}
+                  onChange={(e) => updateNewTask("plannedDate", e.target.value)}
                 />
               </div>
               <div>
                 <Label>Duration (min)</Label>
                 <Input
                   type="number"
-                  className="mt-1"
+                  className={`mt-1 ${taskSpeechClass("duration")}`}
+                  min={1}
+                  max={10080}
                   value={newTask.duration}
-                  onChange={(e) => setNewTask((s) => ({ ...s, duration: e.target.value }))}
+                  onChange={(e) => updateNewTask("duration", e.target.value)}
                 />
               </div>
             </div>
@@ -471,9 +787,9 @@ export default function ProjectTasks() {
                 <Label>Priority</Label>
                 <Select
                   value={newTask.priority}
-                  onValueChange={(v) => setNewTask((s) => ({ ...s, priority: v as TaskPriority }))}
+                  onValueChange={(v) => updateNewTask("priority", v as TaskPriority)}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger className={`mt-1 ${taskSpeechClass("priority")}`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -488,9 +804,9 @@ export default function ProjectTasks() {
                 <Label>Status</Label>
                 <Select
                   value={newTask.status}
-                  onValueChange={(v) => setNewTask((s) => ({ ...s, status: v as TaskStatus }))}
+                  onValueChange={(v) => updateNewTask("status", v as TaskStatus)}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger className={`mt-1 ${taskSpeechClass("status")}`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -504,17 +820,17 @@ export default function ProjectTasks() {
             <div>
               <Label>Assignee</Label>
               <Input
-                className="mt-1"
+                className={`mt-1 ${taskSpeechClass("assignee")}`}
                 value={newTask.assignee}
-                onChange={(e) => setNewTask((s) => ({ ...s, assignee: e.target.value }))}
+                onChange={(e) => updateNewTask("assignee", e.target.value)}
               />
             </div>
             <div>
               <Label>Remarks</Label>
               <Textarea
-                className="mt-1"
+                className={`mt-1 ${taskSpeechClass("remarks")}`}
                 value={newTask.remarks}
-                onChange={(e) => setNewTask((s) => ({ ...s, remarks: e.target.value }))}
+                onChange={(e) => updateNewTask("remarks", e.target.value)}
                 rows={2}
               />
             </div>
