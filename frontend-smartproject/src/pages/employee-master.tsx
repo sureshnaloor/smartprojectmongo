@@ -36,6 +36,7 @@ interface Employee {
   empGrade: string;
   empCostPerHour: string;
   entryDate?: string;
+  exitDate?: string;
 }
 
 async function getEmployees(): Promise<Employee[]> {
@@ -44,13 +45,23 @@ async function getEmployees(): Promise<Employee[]> {
   return res.json();
 }
 
+async function readApiError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (body && typeof body.message === "string" && body.message.trim()) return body.message;
+  } catch {
+    /* response was not JSON */
+  }
+  return fallback;
+}
+
 async function createEmployee(data: Record<string, unknown>) {
   const res = await fetch("/api/employee-masters", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to create employee");
+  if (!res.ok) throw new Error(await readApiError(res, "Failed to create employee"));
   return res.json();
 }
 
@@ -60,7 +71,7 @@ async function updateEmployee(id: number, data: Record<string, unknown>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to update employee");
+  if (!res.ok) throw new Error(await readApiError(res, "Failed to update employee"));
   return res.json();
 }
 
@@ -75,21 +86,38 @@ function splitName(full: string): { first: string; last: string } {
   return { first: parts[0], last: parts.slice(1).join(" ") };
 }
 
+function genderCode(value: unknown): "M" | "F" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return raw === "f" || raw === "female" ? "F" : "M";
+}
+
+function isoDate(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  return raw.length >= 10 ? raw.slice(0, 10) : raw;
+}
+
 function employeeToForm(e: Employee): Record<string, unknown> {
   const meta = parseMeta(e.empMiddleName);
   return {
     type: "employees",
     employeeNumber: e.employeeNumber,
     fullName: `${e.empFirstName} ${e.empLastName}`.trim(),
+    empNationalId: e.empNationalId,
+    empGender: genderCode(e.empGender),
+    empDob: isoDate(e.empDob),
+    empNationality: e.empNationality,
     empPosition: e.empPosition,
-    department: meta.department ?? e.empTrade,
+    empTitle: e.empTitle,
+    empTrade: e.empTrade,
+    empGrade: e.empGrade,
+    empCostPerHour: e.empCostPerHour ?? "0",
     employmentType: meta.employmentType ?? "Own",
     phone: meta.phone ?? "",
     email: meta.email ?? "",
-    entryDate: e.entryDate ?? "",
+    entryDate: isoDate(e.entryDate),
     status: displayStatus(meta),
     inactiveReason: meta.inactiveReason ?? "exit",
-    exitDate: e.exitDate || meta.exitDate || "",
+    exitDate: isoDate(e.exitDate || meta.exitDate),
     leaveStartDate: meta.leaveStartDate ?? "",
     leaveEndDate: meta.leaveEndDate ?? "",
     mappedResourceId: meta.mappedResourceId ?? "",
@@ -99,8 +127,9 @@ function employeeToForm(e: Employee): Record<string, unknown> {
 
 function formToPayload(values: Record<string, unknown>) {
   const { first, last } = splitName(String(values.fullName ?? ""));
+  const trade = String(values.empTrade ?? "");
   const middleName = encodeMeta(String(values.remarks ?? ""), {
-    department: String(values.department ?? ""),
+    department: trade,
     employmentType: String(values.employmentType ?? "Own"),
     phone: String(values.phone ?? ""),
     email: String(values.email ?? ""),
@@ -111,22 +140,23 @@ function formToPayload(values: Record<string, unknown>) {
     leaveEndDate: String(values.leaveEndDate ?? ""),
     mappedResourceId: String(values.mappedResourceId ?? ""),
   });
+  const cost = String(values.empCostPerHour ?? "").trim();
   return {
-    employeeNumber: String(values.employeeNumber),
+    employeeNumber: String(values.employeeNumber).trim(),
     empFirstName: first,
     empMiddleName: middleName || undefined,
     empLastName: last,
-    empNationalId: String(values.employeeNumber),
-    empNationality: "India",
-    empDob: "1990-01-01",
-    empGender: "Male",
-    empPosition: String(values.empPosition),
-    empTitle: String(values.empPosition),
-    empTrade: String(values.department ?? "General"),
-    empGrade: "A",
-    empCostPerHour: "0",
-    entryDate: String(values.entryDate || "") || undefined,
-    exitDate: values.status === "inactive" && values.inactiveReason === "exit" && values.exitDate ? String(values.exitDate) : undefined,
+    empNationalId: String(values.empNationalId).trim(),
+    empNationality: String(values.empNationality).trim(),
+    empDob: isoDate(values.empDob),
+    empGender: genderCode(values.empGender),
+    empPosition: String(values.empPosition).trim(),
+    empTitle: String(values.empTitle).trim(),
+    empTrade: trade.trim(),
+    empGrade: String(values.empGrade).trim(),
+    empCostPerHour: cost || "0",
+    entryDate: isoDate(values.entryDate) || undefined,
+    exitDate: values.status === "inactive" && values.inactiveReason === "exit" && values.exitDate ? isoDate(values.exitDate) : undefined,
   };
 }
 
@@ -154,7 +184,7 @@ export default function EmployeeMaster() {
       `${e.empFirstName} ${e.empLastName}`.toLowerCase().includes(q) ||
       e.employeeNumber.toLowerCase().includes(q),
     type: (e, t) => parseMeta(e.empMiddleName).employmentType === t,
-    category: (e, c) => (parseMeta(e.empMiddleName).department ?? e.empTrade) === c,
+    category: (e, c) => (e.empTrade || parseMeta(e.empMiddleName).department) === c,
     status: (e, s) => displayStatus(parseMeta(e.empMiddleName)) === s,
   });
 
@@ -167,7 +197,7 @@ export default function EmployeeMaster() {
       setModalOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err: Error) => toast.error(err.message || "Failed to save"),
   });
 
   const updateMutation = useMutation({
@@ -179,7 +209,7 @@ export default function EmployeeMaster() {
       setModalOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err: Error) => toast.error(err.message || "Failed to save"),
   });
 
   const deleteMutation = useMutation({
@@ -224,9 +254,9 @@ export default function EmployeeMaster() {
     },
     {
       key: "category",
-      header: "Department",
-      width: "120px",
-      render: (e) => parseMeta(e.empMiddleName).department ?? e.empTrade,
+      header: "Trade",
+      width: "140px",
+      render: (e) => e.empTrade || parseMeta(e.empMiddleName).department,
     },
     {
       key: "resourceMapping",

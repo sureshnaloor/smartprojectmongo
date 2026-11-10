@@ -715,6 +715,7 @@ export const insertMaterialMasterSchema = z.object({
   materialGroup: z.string().min(1),
   materialClass: z.enum(['mrp', 'common', 'project']).default('common'),
   baseRate: z.union([z.string(), z.number()]).optional().transform((v) => (v !== undefined && v !== '' && !Number.isNaN(Number(v)) ? String(Number(v)) : '0')),
+  remarks: z.string().optional().nullable(),
 });
 export type InsertMaterialMaster = z.infer<typeof insertMaterialMasterSchema>;
 export type MaterialMaster = InsertMaterialMaster & { id: number; createdAt: Date; updatedAt: Date };
@@ -758,6 +759,7 @@ export const insertServiceMasterSchema = z.object({
   serviceType: z.string(),
   serviceGroup: z.string(),
   baseRate: z.union([z.string(), z.number()]).optional().transform((v) => (v !== undefined && v !== '' && !Number.isNaN(Number(v)) ? String(Number(v)) : '0')),
+  remarks: z.string().optional().nullable(),
 });
 export type InsertServiceMaster = z.infer<typeof insertServiceMasterSchema>;
 export type ServiceMaster = InsertServiceMaster & { id: number; createdAt: Date; updatedAt: Date };
@@ -883,6 +885,7 @@ export const insertVendorMasterSchema = z.object({
   vendorEmail: z.string(),
   vendorTelephone: z.string(),
   vendorFax: z.string().optional().nullable(),
+  remarks: z.string().optional().nullable(),
 });
 export type InsertVendorMaster = z.infer<typeof insertVendorMasterSchema>;
 export type VendorMaster = InsertVendorMaster & { id: number; createdAt: Date; updatedAt: Date };

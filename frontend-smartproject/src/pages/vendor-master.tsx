@@ -31,6 +31,17 @@ interface Vendor {
   vendorEmail: string;
   vendorTelephone: string;
   vendorTaxNumber?: string | null;
+  remarks?: string | null;
+}
+
+async function readApiError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (body && typeof body.message === "string" && body.message.trim()) return body.message;
+  } catch {
+    /* response was not JSON */
+  }
+  return fallback;
 }
 
 async function getVendors(): Promise<Vendor[]> {
@@ -45,7 +56,7 @@ async function createVendor(data: Omit<Vendor, "id">) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to create vendor");
+  if (!res.ok) throw new Error(await readApiError(res, "Failed to create vendor"));
   return res.json();
 }
 
@@ -55,7 +66,7 @@ async function updateVendor(id: number, data: Partial<Vendor>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to update vendor");
+  if (!res.ok) throw new Error(await readApiError(res, "Failed to update vendor"));
   return res.json();
 }
 
@@ -64,8 +75,15 @@ async function deleteVendor(id: number) {
   if (!res.ok) throw new Error("Failed to delete vendor");
 }
 
+function vendorMeta(v: Vendor): Record<string, string> {
+  if (v.remarks) return parseMeta(v.remarks);
+  if (v.vendorDistrict?.startsWith("@gm:")) return parseMeta(v.vendorDistrict);
+  return {};
+}
+
 function vendorToForm(v: Vendor): Record<string, unknown> {
-  const meta = parseMeta(v.vendorDistrict);
+  const meta = vendorMeta(v);
+  const districtIsMeta = v.vendorDistrict?.startsWith("@gm:");
   return {
     type: "vendors",
     vendorCode: v.vendorCode,
@@ -79,31 +97,29 @@ function vendorToForm(v: Vendor): Record<string, unknown> {
     vendorCountry: v.vendorCountry,
     vendorTaxNumber: v.vendorTaxNumber ?? "",
     status: displayStatus(meta),
-    remarks: stripMeta(v.vendorDistrict),
+    remarks: stripMeta(v.remarks ?? (districtIsMeta ? v.vendorDistrict : "")),
   };
 }
 
-function formToPayload(values: Record<string, unknown>) {
-  const district = encodeMeta(String(values.remarks ?? ""), {
+function formToPayload(values: Record<string, unknown>, existing?: Vendor | null) {
+  const remarks = encodeMeta(String(values.remarks ?? ""), {
     vendorType: String(values.vendorType ?? "Supplier"),
     contactPerson: String(values.contactPerson ?? ""),
     status: String(values.status ?? "active"),
   });
-  const cityState = String(values.vendorCity ?? "");
-  const [city, countryFallback] = cityState.includes(",")
-    ? cityState.split(",").map((s) => s.trim())
-    : [cityState, String(values.vendorCountry ?? "India")];
+  const districtIsMeta = existing?.vendorDistrict?.startsWith("@gm:");
   return {
-    vendorCode: String(values.vendorCode),
-    vendorName: String(values.vendorName),
+    vendorCode: String(values.vendorCode).trim(),
+    vendorName: String(values.vendorName).trim(),
     vendorAddress: String(values.vendorAddress || "—"),
-    vendorDistrict: district || undefined,
-    vendorCity: city || "—",
-    vendorCountry: String(values.vendorCountry || countryFallback || "India"),
-    vendorZipCode: "000000",
-    vendorEmail: String(values.vendorEmail),
-    vendorTelephone: String(values.vendorTelephone),
+    vendorDistrict: districtIsMeta ? undefined : existing?.vendorDistrict,
+    vendorCity: String(values.vendorCity ?? "").trim(),
+    vendorCountry: String(values.vendorCountry ?? "").trim(),
+    vendorZipCode: existing?.vendorZipCode || "000000",
+    vendorEmail: String(values.vendorEmail).trim(),
+    vendorTelephone: String(values.vendorTelephone).trim(),
     vendorTaxNumber: String(values.vendorTaxNumber || "") || undefined,
+    remarks: remarks || undefined,
   };
 }
 
@@ -129,9 +145,9 @@ export default function VendorMaster() {
   const filtered = useFilteredRows(vendors, filters, {
     search: (v, q) =>
       v.vendorName.toLowerCase().includes(q) || v.vendorCode.toLowerCase().includes(q),
-    type: (v, t) => parseMeta(v.vendorDistrict).vendorType === t,
+    type: (v, t) => vendorMeta(v).vendorType === t,
     category: (v, c) => v.vendorCountry.toLowerCase().includes(c.toLowerCase()),
-    status: (v, s) => displayStatus(parseMeta(v.vendorDistrict)) === s,
+    status: (v, s) => displayStatus(vendorMeta(v)) === s,
   });
 
   const createMutation = useMutation({
@@ -143,7 +159,7 @@ export default function VendorMaster() {
       setModalOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err: Error) => toast.error(err.message || "Failed to save"),
   });
 
   const updateMutation = useMutation({
@@ -155,7 +171,7 @@ export default function VendorMaster() {
       setModalOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err: Error) => toast.error(err.message || "Failed to save"),
   });
 
   const deleteMutation = useMutation({
@@ -173,7 +189,7 @@ export default function VendorMaster() {
       header: "Type",
       width: "90px",
       render: (v) => (
-        <TypeBadge label={parseMeta(v.vendorDistrict).vendorType || "Supplier"} />
+        <TypeBadge label={vendorMeta(v).vendorType || "Supplier"} />
       ),
     },
     {
@@ -194,13 +210,13 @@ export default function VendorMaster() {
       key: "category",
       header: "Vendor Type",
       width: "120px",
-      render: (v) => parseMeta(v.vendorDistrict).vendorType || "Supplier",
+      render: (v) => vendorMeta(v).vendorType || "Supplier",
     },
     {
       key: "status",
       header: "Status",
       width: "90px",
-      render: (v) => <StatusBadge status={displayStatus(parseMeta(v.vendorDistrict))} />,
+      render: (v) => <StatusBadge status={displayStatus(vendorMeta(v))} />,
     },
   ];
 
@@ -231,7 +247,7 @@ export default function VendorMaster() {
         rows={filtered.map((v) => ({
           id: v.id,
           data: v,
-          inactive: displayStatus(parseMeta(v.vendorDistrict)) !== "active",
+          inactive: displayStatus(vendorMeta(v)) !== "active",
           flash: flashId === v.id,
         }))}
         isLoading={isLoading}
@@ -276,7 +292,7 @@ export default function VendorMaster() {
         initialValues={editing ? vendorToForm(editing) : undefined}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
         onSubmit={(values) => {
-          const payload = formToPayload(values);
+          const payload = formToPayload(values, editing);
           if (editing && modalMode === "edit") {
             updateMutation.mutate({ id: editing.id, data: payload });
           } else {

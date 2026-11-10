@@ -27,6 +27,17 @@ interface Service {
   serviceType: string;
   serviceGroup: string;
   baseRate: number | string;
+  remarks?: string | null;
+}
+
+async function readApiError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (body && typeof body.message === "string" && body.message.trim()) return body.message;
+  } catch {
+    /* response was not JSON */
+  }
+  return fallback;
 }
 
 async function getServices(): Promise<Service[]> {
@@ -41,7 +52,7 @@ async function createService(data: Omit<Service, "id">) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to create service");
+  if (!res.ok) throw new Error(await readApiError(res, "Failed to create service"));
   return res.json();
 }
 
@@ -51,7 +62,7 @@ async function updateService(id: number, data: Partial<Service>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to update service");
+  if (!res.ok) throw new Error(await readApiError(res, "Failed to update service"));
   return res.json();
 }
 
@@ -60,24 +71,32 @@ async function deleteService(id: number) {
   if (!res.ok) throw new Error("Failed to delete service");
 }
 
+function serviceMeta(s: Service): Record<string, string> {
+  if (s.remarks) return parseMeta(s.remarks);
+  if (s.serviceGroup?.startsWith("@gm:")) return parseMeta(s.serviceGroup);
+  return {};
+}
+
 function serviceToForm(s: Service): Record<string, unknown> {
-  const meta = parseMeta(s.serviceGroup);
+  const meta = serviceMeta(s);
+  const groupIsMeta = s.serviceGroup?.startsWith("@gm:");
   return {
     type: "services",
     name: s.serviceDescription,
     description: meta.description ?? "",
     serviceType: s.serviceType,
+    serviceGroup: groupIsMeta ? "" : s.serviceGroup,
     unitRate: String(s.baseRate),
     rateUnit: s.uom,
     validFrom: meta.validFrom ?? "",
     validTo: meta.validTo ?? "",
     status: displayStatus(meta),
-    remarks: stripMeta(s.serviceGroup),
+    remarks: stripMeta(s.remarks ?? (groupIsMeta ? s.serviceGroup : "")),
   };
 }
 
 function formToPayload(values: Record<string, unknown>) {
-  const serviceGroup = encodeMeta(String(values.remarks ?? ""), {
+  const remarks = encodeMeta(String(values.remarks ?? ""), {
     validFrom: String(values.validFrom ?? ""),
     validTo: String(values.validTo ?? ""),
     status: String(values.status ?? "active"),
@@ -85,11 +104,12 @@ function formToPayload(values: Record<string, unknown>) {
   });
   return {
     serviceCode: `SRV-${Date.now().toString(36).toUpperCase()}`,
-    serviceDescription: String(values.name),
-    serviceType: String(values.serviceType),
-    serviceGroup: serviceGroup || String(values.serviceType),
-    uom: String(values.rateUnit ?? "Hour"),
+    serviceDescription: String(values.name).trim(),
+    serviceType: String(values.serviceType).trim(),
+    serviceGroup: String(values.serviceGroup).trim(),
+    uom: String(values.rateUnit).trim(),
     baseRate: String(values.unitRate),
+    remarks: remarks || undefined,
   };
 }
 
@@ -118,8 +138,8 @@ export default function ServiceMaster() {
       s.serviceDescription.toLowerCase().includes(q) ||
       s.serviceCode.toLowerCase().includes(q),
     type: (s, t) => s.serviceType === t,
-    category: (s, c) => s.serviceGroup.includes(c),
-    status: (s, st) => displayStatus(parseMeta(s.serviceGroup)) === st,
+    category: (s, c) => s.serviceGroup === c,
+    status: (s, st) => displayStatus(serviceMeta(s)) === st,
   });
 
   const createMutation = useMutation({
@@ -131,7 +151,7 @@ export default function ServiceMaster() {
       setModalOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err: Error) => toast.error(err.message || "Failed to save"),
   });
 
   const updateMutation = useMutation({
@@ -143,7 +163,7 @@ export default function ServiceMaster() {
       setModalOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err: Error) => toast.error(err.message || "Failed to save"),
   });
 
   const deleteMutation = useMutation({
@@ -172,7 +192,7 @@ export default function ServiceMaster() {
       header: "Description",
       render: (s) => (
         <span className="text-sm text-[var(--text-secondary)] line-clamp-2">
-          {parseMeta(s.serviceGroup).description || s.serviceCode}
+          {serviceMeta(s).description || s.serviceCode}
         </span>
       ),
     },
@@ -193,7 +213,7 @@ export default function ServiceMaster() {
       key: "status",
       header: "Status",
       width: "90px",
-      render: (s) => <StatusBadge status={displayStatus(parseMeta(s.serviceGroup))} />,
+      render: (s) => <StatusBadge status={displayStatus(serviceMeta(s))} />,
     },
   ];
 
@@ -225,7 +245,7 @@ export default function ServiceMaster() {
         rows={filtered.map((s) => ({
           id: s.id,
           data: s,
-          inactive: displayStatus(parseMeta(s.serviceGroup)) !== "active",
+          inactive: displayStatus(serviceMeta(s)) !== "active",
           flash: flashId === s.id,
         }))}
         isLoading={isLoading}

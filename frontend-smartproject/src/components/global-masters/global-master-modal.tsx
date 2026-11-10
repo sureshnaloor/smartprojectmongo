@@ -76,11 +76,13 @@ function FieldInput({
   onChange: (v: unknown) => void;
 }) {
   if (readOnly) {
+    const raw = String(value ?? "");
+    const selectLabel = field.options?.find((opt) => opt.value === raw)?.label;
     return (
       <p className="text-sm text-[var(--text-primary)] py-2">
         {field.type === "toggle"
           ? value ? "Active" : "Inactive"
-          : String(value ?? "—")}
+          : selectLabel || raw || "—"}
       </p>
     );
   }
@@ -300,6 +302,92 @@ export function GlobalMasterModal({
     enabled: open && masterKey === "equipment",
   });
 
+  const employeeLookupsEnabled = open && masterKey === "employees";
+  const namedLookup = (path: string) => ({
+    queryKey: [path],
+    queryFn: async () => {
+      const res = await fetch(path);
+      if (!res.ok) return [] as { id: number; name: string }[];
+      return res.json() as Promise<{ id: number; name: string }[]>;
+    },
+    enabled: employeeLookupsEnabled,
+  });
+  const { data: employeeNationalities = [] } = useQuery(namedLookup("/api/nationalities"));
+  const { data: employeePositions = [] } = useQuery(namedLookup("/api/employee-positions"));
+  const { data: employeeTitles = [] } = useQuery(namedLookup("/api/employee-titles"));
+  const { data: employeeTrades = [] } = useQuery(namedLookup("/api/employee-trades"));
+  const { data: employeeGrades = [] } = useQuery(namedLookup("/api/employee-grades"));
+
+  const materialLookupsEnabled = open && masterKey === "materials";
+  const { data: materialTypes = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/material-types"],
+    queryFn: async () => {
+      const res = await fetch("/api/material-types");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: materialLookupsEnabled,
+  });
+  const { data: materialGroups = [] } = useQuery<{ id: number; name: string; materialTypeId: number }[]>({
+    queryKey: ["/api/material-groups"],
+    queryFn: async () => {
+      const res = await fetch("/api/material-groups");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: materialLookupsEnabled,
+  });
+  const uomLookupsEnabled = open && (masterKey === "materials" || masterKey === "services");
+  const { data: materialUoms = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/uoms"],
+    queryFn: async () => {
+      const res = await fetch("/api/uoms");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: uomLookupsEnabled,
+  });
+
+  const serviceLookupsEnabled = open && masterKey === "services";
+  const { data: serviceTypes = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/service-types"],
+    queryFn: async () => {
+      const res = await fetch("/api/service-types");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: serviceLookupsEnabled,
+  });
+  const { data: serviceGroups = [] } = useQuery<{ id: number; name: string; serviceTypeId: number }[]>({
+    queryKey: ["/api/service-groups"],
+    queryFn: async () => {
+      const res = await fetch("/api/service-groups");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: serviceLookupsEnabled,
+  });
+
+  const vendorLookupsEnabled = open && masterKey === "vendors";
+  const { data: vendorCountries = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/countries"],
+    queryFn: async () => {
+      const res = await fetch("/api/countries");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: vendorLookupsEnabled,
+  });
+  const { data: vendorCities = [] } = useQuery<{ id: number; name: string; countryId: number }[]>({
+    queryKey: ["/api/cities"],
+    queryFn: async () => {
+      const res = await fetch("/api/cities");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: vendorLookupsEnabled,
+  });
+
   const visibleFields = useMemo(() => {
     return config.fields.filter((field) => {
       const isInactive = values.status === "inactive";
@@ -329,6 +417,65 @@ export function GlobalMasterModal({
         }
       }
 
+      if (masterKey === "employees") {
+        const lookupByField: Record<string, { name: string }[]> = {
+          empNationality: employeeNationalities,
+          empPosition: employeePositions,
+          empTitle: employeeTitles,
+          empTrade: employeeTrades,
+          empGrade: employeeGrades,
+        };
+        const lookup = lookupByField[field.key];
+        if (lookup && lookup.length > 0) {
+          return { ...field, options: lookup.map((item) => ({ value: item.name, label: item.name })) };
+        }
+      }
+
+      if (masterKey === "materials") {
+        if (field.key === "category" && materialTypes.length > 0) {
+          return { ...field, options: materialTypes.map((item) => ({ value: item.name, label: item.name })) };
+        }
+        if (field.key === "subcategory" && materialGroups.length > 0) {
+          const type = materialTypes.find((item) => item.name === String(values.category ?? ""));
+          const groups = type
+            ? materialGroups.filter((group) => group.materialTypeId === type.id)
+            : [];
+          return { ...field, options: groups.map((group) => ({ value: group.name, label: group.name })) };
+        }
+        if (field.key === "unitOfMeasure" && materialUoms.length > 0) {
+          return { ...field, options: materialUoms.map((item) => ({ value: item.name, label: item.name })) };
+        }
+      }
+
+      if (masterKey === "services") {
+        if (field.key === "serviceType" && serviceTypes.length > 0) {
+          return { ...field, options: serviceTypes.map((item) => ({ value: item.name, label: item.name })) };
+        }
+        if (field.key === "serviceGroup" && serviceGroups.length > 0) {
+          const type = serviceTypes.find((item) => item.name === String(values.serviceType ?? ""));
+          const groups = type
+            ? serviceGroups.filter((group) => group.serviceTypeId === type.id)
+            : [];
+          return { ...field, options: groups.map((group) => ({ value: group.name, label: group.name })) };
+        }
+        if (field.key === "rateUnit" && materialUoms.length > 0) {
+          return { ...field, options: materialUoms.map((item) => ({ value: item.name, label: item.name })) };
+        }
+      }
+
+      if (masterKey === "vendors") {
+        if (field.key === "vendorCountry" && vendorCountries.length > 0) {
+          return { ...field, options: vendorCountries.map((item) => ({ value: item.name, label: item.name })) };
+        }
+        if (field.key === "vendorCity" && vendorCities.length > 0) {
+          const country = vendorCountries.find((item) => item.name === String(values.vendorCountry ?? ""));
+          const cities = country
+            ? vendorCities.filter((city) => city.countryId === country.id)
+            : [];
+          return { ...field, options: cities.map((city) => ({ value: city.name, label: city.name })) };
+        }
+      }
+
       if (field.key === "mappedResourceId") {
         const typeFilter = masterKey === "equipment" ? "equipment" : "manpower";
 
@@ -340,7 +487,7 @@ export function GlobalMasterModal({
       }
       return field;
     });
-  }, [config.fields, values.status, values.inactiveReason, masterKey, globalResources, equipmentTypes, equipmentManufacturers]);
+  }, [config.fields, values.status, values.inactiveReason, values.category, values.serviceType, values.vendorCountry, masterKey, globalResources, equipmentTypes, equipmentManufacturers, employeeNationalities, employeePositions, employeeTitles, employeeTrades, employeeGrades, materialTypes, materialGroups, materialUoms, serviceTypes, serviceGroups, vendorCountries, vendorCities]);
 
   const gridClass = config.size === "wide" ? "gm-modal__grid" : "flex flex-col gap-4";
 
@@ -392,7 +539,43 @@ export function GlobalMasterModal({
                       readOnly={readOnly}
                       error={errors[field.key]}
                       onChange={(v) => {
-                        setValues((prev) => ({ ...prev, [field.key]: v }));
+                        setValues((prev) => {
+                          const next = { ...prev, [field.key]: v };
+                          if (masterKey === "materials" && field.key === "category") {
+                            const type = materialTypes.find((item) => item.name === String(v));
+                            const allowed = new Set(
+                              materialGroups
+                                .filter((group) => type && group.materialTypeId === type.id)
+                                .map((group) => group.name)
+                            );
+                            if (!allowed.has(String(prev.subcategory ?? ""))) {
+                              next.subcategory = "";
+                            }
+                          }
+                          if (masterKey === "services" && field.key === "serviceType") {
+                            const type = serviceTypes.find((item) => item.name === String(v));
+                            const allowed = new Set(
+                              serviceGroups
+                                .filter((group) => type && group.serviceTypeId === type.id)
+                                .map((group) => group.name)
+                            );
+                            if (!allowed.has(String(prev.serviceGroup ?? ""))) {
+                              next.serviceGroup = "";
+                            }
+                          }
+                          if (masterKey === "vendors" && field.key === "vendorCountry") {
+                            const country = vendorCountries.find((item) => item.name === String(v));
+                            const allowed = new Set(
+                              vendorCities
+                                .filter((city) => country && city.countryId === country.id)
+                                .map((city) => city.name)
+                            );
+                            if (!allowed.has(String(prev.vendorCity ?? ""))) {
+                              next.vendorCity = "";
+                            }
+                          }
+                          return next;
+                        });
                         if (touched[field.key]) {
                           const err = validateField(field, v);
                           setErrors((prev) => {

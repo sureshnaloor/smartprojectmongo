@@ -28,6 +28,19 @@ interface Material {
   materialGroup: string;
   materialClass: string;
   baseRate: number | string;
+  remarks?: string | null;
+}
+
+const MATERIAL_CLASSES = new Set(["mrp", "common", "project"]);
+
+async function readApiError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (body && typeof body.message === "string" && body.message.trim()) return body.message;
+  } catch {
+    /* response was not JSON */
+  }
+  return fallback;
 }
 
 async function getMaterials(): Promise<Material[]> {
@@ -42,7 +55,7 @@ async function createMaterial(data: Omit<Material, "id">) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to create material");
+  if (!res.ok) throw new Error(await readApiError(res, "Failed to create material"));
   return res.json();
 }
 
@@ -52,7 +65,7 @@ async function updateMaterial(id: number, data: Partial<Material>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to update material");
+  if (!res.ok) throw new Error(await readApiError(res, "Failed to update material"));
   return res.json();
 }
 
@@ -61,8 +74,15 @@ async function deleteMaterial(id: number) {
   if (!res.ok) throw new Error("Failed to delete material");
 }
 
+function materialMeta(m: Material): Record<string, string> {
+  if (m.remarks) return parseMeta(m.remarks);
+  if (m.materialClass?.startsWith("@gm:")) return parseMeta(m.materialClass);
+  return {};
+}
+
 function materialToForm(m: Material): Record<string, unknown> {
-  const meta = parseMeta(m.materialClass === "common" ? "" : m.materialClass);
+  const meta = materialMeta(m);
+  const materialClass = MATERIAL_CLASSES.has(m.materialClass) ? m.materialClass : "common";
   return {
     type: "materials",
     code: m.materialCode,
@@ -71,27 +91,30 @@ function materialToForm(m: Material): Record<string, unknown> {
     category: m.materialType,
     subcategory: m.materialGroup,
     unitOfMeasure: m.uom,
+    materialClass,
     unitRate: String(m.baseRate),
     leadTime: meta.leadTime ?? "",
     status: displayStatus(meta),
-    remarks: stripMeta(m.materialClass),
+    remarks: stripMeta(m.remarks),
   };
 }
 
 function formToPayload(values: Record<string, unknown>) {
-  const materialClass = encodeMeta(String(values.remarks ?? ""), {
+  const requestedClass = String(values.materialClass ?? "common");
+  const remarks = encodeMeta(String(values.remarks ?? ""), {
     leadTime: String(values.leadTime ?? ""),
     status: String(values.status ?? "active"),
     description: String(values.description ?? ""),
   });
   return {
-    materialCode: String(values.code),
-    materialDescription: String(values.name),
-    uom: String(values.unitOfMeasure),
-    materialType: String(values.category),
-    materialGroup: String(values.subcategory),
-    materialClass: materialClass || "common",
+    materialCode: String(values.code).trim(),
+    materialDescription: String(values.name).trim(),
+    uom: String(values.unitOfMeasure).trim(),
+    materialType: String(values.category).trim(),
+    materialGroup: String(values.subcategory).trim(),
+    materialClass: MATERIAL_CLASSES.has(requestedClass) ? requestedClass : "common",
     baseRate: String(values.unitRate),
+    remarks: remarks || undefined,
   };
 }
 
@@ -121,7 +144,7 @@ export default function MaterialMaster() {
       m.materialCode.toLowerCase().includes(q),
     type: (m, t) => m.materialType === t,
     category: (m, c) => m.materialGroup === c,
-    status: (m, s) => displayStatus(parseMeta(m.materialClass)) === s,
+    status: (m, s) => displayStatus(materialMeta(m)) === s,
   });
 
   const createMutation = useMutation({
@@ -133,7 +156,7 @@ export default function MaterialMaster() {
       setModalOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err: Error) => toast.error(err.message || "Failed to save"),
   });
 
   const updateMutation = useMutation({
@@ -145,7 +168,7 @@ export default function MaterialMaster() {
       setModalOpen(false);
       setEditing(null);
     },
-    onError: () => toast.error("Failed to save"),
+    onError: (err: Error) => toast.error(err.message || "Failed to save"),
   });
 
   const deleteMutation = useMutation({
@@ -174,7 +197,7 @@ export default function MaterialMaster() {
       header: "Description",
       render: (m) => (
         <span className="text-sm text-[var(--text-secondary)] line-clamp-2">
-          {parseMeta(m.materialClass).description || m.materialCode}
+          {materialMeta(m).description || m.materialCode}
         </span>
       ),
     },
@@ -195,7 +218,7 @@ export default function MaterialMaster() {
       key: "status",
       header: "Status",
       width: "90px",
-      render: (m) => <StatusBadge status={displayStatus(parseMeta(m.materialClass))} />,
+      render: (m) => <StatusBadge status={displayStatus(materialMeta(m))} />,
     },
   ];
 
@@ -233,7 +256,7 @@ export default function MaterialMaster() {
         rows={filtered.map((m) => ({
           id: m.id,
           data: m,
-          inactive: displayStatus(parseMeta(m.materialClass)) !== "active",
+          inactive: displayStatus(materialMeta(m)) !== "active",
           flash: flashId === m.id,
         }))}
         isLoading={isLoading}
