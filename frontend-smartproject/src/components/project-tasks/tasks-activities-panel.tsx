@@ -41,6 +41,7 @@ interface TasksActivitiesPanelProps {
   onClose: (taskId: number) => void;
   onDelete: (taskId: number) => void;
   projectId: string;
+  sectionTitleOverride?: string;
 }
 
 export function TasksActivitiesPanel({
@@ -57,6 +58,7 @@ export function TasksActivitiesPanel({
   onClose,
   onDelete,
   projectId,
+  sectionTitleOverride,
 }: TasksActivitiesPanelProps) {
   const [showActivityList, setShowActivityList] = useState(true);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -64,9 +66,10 @@ export function TasksActivitiesPanel({
   const selectedActivity = activities.find((a) => a.id === selectedActivityId);
   const dateLabel = format(selectedDate, "EEEE, MMMM d, yyyy");
   const sectionTitle =
-    selectedActivityId != null && selectedActivity
+    sectionTitleOverride ??
+    (selectedActivityId != null && selectedActivity
       ? `Tasks for ${selectedActivity.name} — ${format(selectedDate, "MMM d")} (${tasks.length})`
-      : `All tasks for ${format(selectedDate, "MMM d, yyyy")} (${tasks.length})`;
+      : `All tasks for ${format(selectedDate, "MMM d, yyyy")} (${tasks.length})`);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();

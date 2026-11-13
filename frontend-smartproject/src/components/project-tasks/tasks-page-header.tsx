@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Search, Upload, RefreshCw, Sparkles } from "lucide-react";
+import { Loader2, Mic, RefreshCw, Search, Sparkles, Square, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,14 @@ interface TasksPageHeaderProps {
   onGenerateTasks?: () => void;
   onRefresh: () => void;
   refreshing?: boolean;
+  voice?: {
+    recording: boolean;
+    busy: boolean;
+    seconds: number;
+    limit: number;
+    note: string;
+    onToggle: () => void;
+  };
 }
 
 export function TasksPageHeader({
@@ -37,6 +45,7 @@ export function TasksPageHeader({
   onGenerateTasks,
   onRefresh,
   refreshing,
+  voice,
 }: TasksPageHeaderProps) {
   const [, setLocation] = useLocation();
 
@@ -103,6 +112,29 @@ export function TasksPageHeader({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {voice && (
+            <Button
+              type="button"
+              variant={voice.recording ? "destructive" : "outline"}
+              size="sm"
+              className="gap-1.5"
+              disabled={voice.busy}
+              onClick={voice.onToggle}
+            >
+              {voice.busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : voice.recording ? (
+                <Square className="h-4 w-4" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+              {voice.busy
+                ? "Transcribing"
+                : voice.recording
+                  ? `Stop ${voice.seconds}s`
+                  : "Speak"}
+            </Button>
+          )}
           {onGenerateTasks && (
             <Button variant="outline" size="sm" className="gap-1.5" onClick={onGenerateTasks}>
               <Sparkles className="h-4 w-4" />
@@ -128,6 +160,12 @@ export function TasksPageHeader({
           </div>
         </div>
       </div>
+      {voice && (
+        <p className="mt-3 kanban-caption text-[var(--text-secondary)]">
+          {voice.note ||
+            `Speak for up to ${voice.limit} seconds: create a task, show all tasks, show tasks today or on a date, edit the open task, or delete it. Kyla confirms when it is done.`}
+        </p>
+      )}
     </div>
   );
 }

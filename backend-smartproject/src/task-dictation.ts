@@ -52,7 +52,7 @@ export type TaskSpeechFields = {
   plannedDate: string | null;
   duration: string | null;
   priority: (typeof PRIORITIES)[number]["value"] | null;
-  status: (typeof STATUSES)[number]["value"] | null;
+  status: (typeof STATUSES)[number]["value"] | "completed" | null;
   assignee: string | null;
   remarks: string | null;
 };
@@ -171,7 +171,7 @@ export function parseTaskDate(raw: string, today = new Date()): string | null {
     return dayFirst ?? monthFirst;
   }
 
-  match = text.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)\s+(\d{4})$/);
+  match = text.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?([a-z]+)\s+(\d{4})$/);
   if (match && MONTHS[match[2]]) return calendarDate(Number(match[3]), MONTHS[match[2]], Number(match[1]));
 
   match = text.match(/^([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\d{4})$/);
@@ -185,11 +185,11 @@ export function dateSpokenInTranscript(transcript: string, today = new Date()): 
   const month =
     "January|February|March|April|May|June|July|August|September|October|November|December";
   const dayMonth = transcript.match(
-    new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${month})\\s+(\\d{4})\\b`, "i")
+    new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${month}),?\\s+(\\d{4})\\b`, "i")
   );
   if (dayMonth) return parseTaskDate(`${dayMonth[1]} ${dayMonth[2]} ${dayMonth[3]}`, today);
   const monthDay = transcript.match(
-    new RegExp(`\\b(${month})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(\\d{4})\\b`, "i")
+    new RegExp(`\\b(${month}),?\\s+(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})\\b`, "i")
   );
   if (monthDay) return parseTaskDate(`${monthDay[1]} ${monthDay[2]} ${monthDay[3]}`, today);
   const numeric = transcript.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/);
@@ -325,6 +325,161 @@ export function applyTaskSpeech(
   return { fields, rejected };
 }
 
+export type TaskCommandIntent = "create" | "show_all" | "show_day" | "edit" | "delete" | "unknown";
+
+export type TaskNameMatch = "none" | "one" | "many" | "unspecified";
+
+export type TaskCommand = {
+  transcript: string;
+  intent: TaskCommandIntent;
+  date: string | null;
+  taskName: string | null;
+  taskId: number | null;
+  taskMatch: TaskNameMatch;
+  fields: TaskSpeechFields;
+  rejected: RejectedTaskField[];
+};
+
+export type TaskCommandOption = { id: number; name: string };
+
+const COMMAND_INTENTS = new Set<TaskCommandIntent>(["create", "show_all", "show_day", "edit", "delete"]);
+
+function relativeDate(transcript: string, today: Date): string | null {
+  const text = transcript.toLowerCase();
+  if (/\btomorrow\b/.test(text)) return ymd(addDays(today, 1));
+  if (/\byesterday\b/.test(text)) return ymd(addDays(today, -1));
+  if (/\btoday\b/.test(text)) return ymd(today);
+  return null;
+}
+
+/** Prefer an obvious spoken command over the model when the wording is clear. */
+export function inferTaskIntent(transcript: string, today = new Date()): TaskCommandIntent | null {
+  const text = transcript.toLowerCase();
+  const showVerb = /\b(show|list|display|filter|find)\b/.test(text);
+  const hasDay = Boolean(relativeDate(transcript, today) || dateSpokenInTranscript(transcript, today));
+  if (/\b(delete|remove)\b/.test(text) && /\btask\b/.test(text)) return "delete";
+  if (showVerb && hasDay) return "show_day";
+  if (showVerb && /\ball\b/.test(text)) return "show_all";
+  if (showVerb && /\btasks?\b/.test(text)) return "show_all";
+  if (/\b(create|add|make|new)\b/.test(text) && /\btask\b/.test(text)) return "create";
+  if (/\b(edit|update|change|set|rename|mark)\b/.test(text)) return "edit";
+  if (/\badd\b/.test(text) && /\b(description|remark|note|assignee|priority|status|duration|date)\b/.test(text)) {
+    return "edit";
+  }
+  return null;
+}
+
+export function matchTaskByName(
+  spoken: string | null,
+  tasks: TaskCommandOption[]
+): { taskName: string | null; taskId: number | null; taskMatch: TaskNameMatch } {
+  const name = spoken?.trim();
+  if (!name) return { taskName: null, taskId: null, taskMatch: "unspecified" };
+  const matched = matchCatalogName(name, tasks.map((task) => task.name).filter(Boolean));
+  if (!matched) return { taskName: name, taskId: null, taskMatch: "none" };
+  const hits = tasks.filter((task) => task.name === matched);
+  if (hits.length === 1) return { taskName: hits[0].name, taskId: hits[0].id, taskMatch: "one" };
+  if (hits.length > 1) return { taskName: matched, taskId: null, taskMatch: "many" };
+  return { taskName: name, taskId: null, taskMatch: "none" };
+}
+
+export function interpretTaskCommand(
+  raw: Record<string, unknown> | null,
+  activities: TaskActivityOption[],
+  tasks: TaskCommandOption[],
+  transcript: string,
+  openTaskId: number | null = null,
+  today = new Date()
+): TaskCommand {
+  const spokenIntent = asText(raw?.intent)?.toLowerCase().replace(/[\s-]+/g, "_") ?? "";
+  const modelIntent = COMMAND_INTENTS.has(spokenIntent as TaskCommandIntent)
+    ? (spokenIntent as TaskCommandIntent)
+    : null;
+  const intent = inferTaskIntent(transcript, today) ?? modelIntent ?? "unknown";
+  const { fields, rejected } = applyTaskSpeech(raw, activities, today, transcript);
+
+  const spokenStatus = asText(raw?.status);
+  if (intent === "edit" && spokenStatus && /^(done|complete|completed|closed|close)$/i.test(spokenStatus)) {
+    fields.status = "completed";
+    for (let i = rejected.length - 1; i >= 0; i -= 1) {
+      if (rejected[i].field === "status") rejected.splice(i, 1);
+    }
+  }
+
+  const named = matchTaskByName(asText(raw?.taskName), tasks);
+  let taskId = named.taskId;
+  let taskMatch = named.taskMatch;
+  if ((intent === "edit" || intent === "delete") && taskMatch === "unspecified" && openTaskId != null) {
+    const open = tasks.find((task) => task.id === openTaskId);
+    if (open) {
+      taskId = open.id;
+      taskMatch = "one";
+    }
+  }
+
+  const taskTitle = asText(raw?.taskName);
+  if (intent === "create" && !fields.name && taskTitle) fields.name = validText(taskTitle, 200);
+
+  const renaming = /\b(rename|change the name|call it|name it)\b/i.test(transcript);
+  const current = tasks.find((task) => task.id === taskId);
+  if (
+    intent === "edit" &&
+    !renaming &&
+    fields.name &&
+    current &&
+    fields.name.toLowerCase() === current.name.toLowerCase()
+  ) {
+    fields.name = null;
+  }
+
+  let date: string | null = null;
+  if (intent === "show_day") {
+    date = dateSpokenInTranscript(transcript, today) ?? relativeDate(transcript, today);
+    if (!date) {
+      const spokenDate = asText(raw?.date);
+      if (spokenDate) date = parseTaskDate(spokenDate, today);
+    }
+  }
+
+  return {
+    transcript,
+    intent,
+    date,
+    taskName: named.taskName,
+    taskId,
+    taskMatch,
+    fields,
+    rejected,
+  };
+}
+
+function buildCommandPrompt(activities: TaskActivityOption[], tasks: TaskCommandOption[], today: Date): string {
+  const activityNames = [...new Set(activities.map((activity) => activity.name).filter(Boolean))];
+  const taskNames = [...new Set(tasks.map((task) => task.name).filter(Boolean))].slice(0, 80);
+  return [
+    "Classify one spoken command on a project task page and extract only the details that were spoken.",
+    `Today is ${ymd(today)}.`,
+    "intent must be one of: create, show_all, show_day, edit, delete.",
+    "create: the speaker wants a new task.",
+    "show_all: show every task, with no day filter.",
+    "show_day: show tasks on one day, such as today, tomorrow, or 14 December 2026.",
+    "edit: change one or more fields on an existing task, or fill a field that is currently empty.",
+    "delete: delete an existing task.",
+    "date is the day for show_day, as YYYY-MM-DD. Numeric dates are day/month/year: 14/12/2026 is 2026-12-14. Use an empty string otherwise.",
+    "taskName is the existing task to edit or delete, copied from the task list when they name one. Use an empty string when they mean the task that is already open.",
+    "name is the new task title when creating, or the replacement title when they rename a task.",
+    "Return JSON with keys: intent, date, taskName, activity, name, description, plannedDate, duration, priority, status, assignee, remarks.",
+    "Use an empty string for every field the speaker did not mention.",
+    "activity must be copied exactly from this activity list, or left empty:",
+    activityNames.join("\n") || "(none)",
+    "Existing tasks:",
+    taskNames.join("\n") || "(none)",
+    "plannedDate must be YYYY-MM-DD when spoken. duration is a whole number of minutes, digits only. Convert hours to minutes.",
+    "priority must be Critical, High, Normal, or Low. status must be Pending, In Progress, Blocked, or Done.",
+    "Do not invent values that were not spoken.",
+  ].join("\n");
+}
+
 function buildPrompt(activities: TaskActivityOption[], today: Date): string {
   const names = [...new Set(activities.map((activity) => activity.name).filter(Boolean))];
   return [
@@ -413,6 +568,24 @@ export async function dictateTaskForm(
     },
   };
 
+  const body = await requestDictation(audio, mimeOrName, config, apiKey);
+  const transcript = typeof body?.text === "string" ? body.text.trim() : "";
+  const llmResponse = typeof body?.llm_response === "string" ? body.llm_response : null;
+  const parsed = parseStructured(llmResponse);
+  if (!parsed && typeof body?.llm_error === "string" && body.llm_error) {
+    throw new Error(`Could not structure the dictation (${body.llm_error})`);
+  }
+
+  const { fields, rejected } = applyTaskSpeech(parsed, activities, today, transcript);
+  return { transcript, fields, rejected };
+}
+
+async function requestDictation(
+  audio: Buffer,
+  mimeOrName: string,
+  config: unknown,
+  apiKey: string
+): Promise<Record<string, unknown> | null> {
   const audioMeta = audioPart(mimeOrName);
   const form = new FormData();
   form.append("config", new Blob([JSON.stringify(config)], { type: "application/json" }));
@@ -422,7 +595,7 @@ export async function dictateTaskForm(
     method: "POST",
     headers: { Authorization: apiKey },
     body: form,
-    signal: AbortSignal.timeout(90_000),
+    signal: AbortSignal.timeout(180_000),
   });
 
   const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
@@ -433,14 +606,335 @@ export async function dictateTaskForm(
       `Dictation failed (${response.status})`;
     throw new Error(detail);
   }
+  return body;
+}
 
+export async function dictateTaskCommand(
+  audio: Buffer,
+  mimeOrName: string,
+  activities: TaskActivityOption[],
+  tasks: TaskCommandOption[],
+  openTaskId: number | null = null,
+  today = new Date()
+): Promise<TaskCommand> {
+  const apiKey = process.env.ASSEMBLYAI_API_KEY?.trim();
+  if (!apiKey) throw new Error("ASSEMBLYAI_API_KEY is not configured");
+  if (!audio.length) throw new Error("The recording was empty");
+
+  const names = [
+    ...activities.map((activity) => activity.name.trim()),
+    ...tasks.map((task) => task.name.trim()),
+  ].filter((name) => name && name.length <= 80);
+  const keyterms = [
+    "create new task",
+    "show all tasks",
+    "show tasks",
+    "today",
+    "tomorrow",
+    "delete task",
+    "edit task",
+    "Critical",
+    "High",
+    "Normal",
+    "Low",
+    "Pending",
+    "In Progress",
+    "Blocked",
+    "Done",
+    ...names,
+  ];
+  const uniqueTerms: string[] = [];
+  let termChars = 0;
+  for (const term of keyterms) {
+    if (uniqueTerms.length >= 100) break;
+    if (termChars + term.length > 7500) break;
+    if (uniqueTerms.some((existing) => existing.toLowerCase() === term.toLowerCase())) continue;
+    uniqueTerms.push(term);
+    termChars += term.length;
+  }
+
+  const config = {
+    language_codes: ["en"],
+    stt_prompt:
+      "A user commanding a task page: create a task, show all tasks, show tasks on a day, edit the open task, or delete a task.",
+    keyterms_prompt: uniqueTerms,
+    llm: {
+      model: "gemini-3.5-flash-lite",
+      temperature: 0,
+      max_tokens: 900,
+      messages: [
+        { role: "system", content: buildCommandPrompt(activities, tasks, today) },
+        { role: "user", content: "{{turn}}" },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "task_page_command",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              intent: { type: "string" },
+              date: { type: "string" },
+              taskName: { type: "string" },
+              activity: { type: "string" },
+              name: { type: "string" },
+              description: { type: "string" },
+              plannedDate: { type: "string" },
+              duration: { type: "string" },
+              priority: { type: "string" },
+              status: { type: "string" },
+              assignee: { type: "string" },
+              remarks: { type: "string" },
+            },
+            required: [
+              "intent",
+              "date",
+              "taskName",
+              "activity",
+              "name",
+              "description",
+              "plannedDate",
+              "duration",
+              "priority",
+              "status",
+              "assignee",
+              "remarks",
+            ],
+          },
+        },
+      },
+    },
+  };
+
+  const body = await requestDictation(audio, mimeOrName, config, apiKey);
   const transcript = typeof body?.text === "string" ? body.text.trim() : "";
   const llmResponse = typeof body?.llm_response === "string" ? body.llm_response : null;
   const parsed = parseStructured(llmResponse);
   if (!parsed && typeof body?.llm_error === "string" && body.llm_error) {
     throw new Error(`Could not structure the dictation (${body.llm_error})`);
   }
+  return interpretTaskCommand(parsed, activities, tasks, transcript, openTaskId, today);
+}
 
-  const { fields, rejected } = applyTaskSpeech(parsed, activities, today, transcript);
-  return { transcript, fields, rejected };
+export const TASK_PROMPT_FIELDS = [
+  "activityId",
+  "name",
+  "description",
+  "plannedDate",
+  "duration",
+  "priority",
+  "status",
+  "assignee",
+  "remarks",
+] as const;
+
+export type TaskPromptField = (typeof TASK_PROMPT_FIELDS)[number];
+
+export type TaskFieldAnswer = {
+  transcript: string;
+  action: "value" | "skip" | "unclear";
+  stored: string | null;
+  display: string | null;
+  reason: string | null;
+};
+
+const FIELD_RAW_KEY: Record<TaskPromptField, string> = {
+  activityId: "activity",
+  name: "name",
+  description: "description",
+  plannedDate: "plannedDate",
+  duration: "duration",
+  priority: "priority",
+  status: "status",
+  assignee: "assignee",
+  remarks: "remarks",
+};
+
+const SKIP_UTTERANCE =
+  /^(no|nope|nah|skip|skip it|leave it|leave it blank|leave blank|do not fill(?: it)?|don't fill(?: it)?|not needed|no thanks|no thank you)$/i;
+const YES_ONLY = /^(yes|yeah|yep|yup|sure|ok|okay|please|fill it|fill it in)$/i;
+
+function cleanUtterance(transcript: string): string {
+  return transcript.trim().replace(/[.?!]+$/g, "").trim();
+}
+
+function isPromptField(field: string): field is TaskPromptField {
+  return (TASK_PROMPT_FIELDS as readonly string[]).includes(field);
+}
+
+/** Turn one spoken answer into the form field Kyla just asked about. */
+export function interpretFieldAnswer(
+  field: string,
+  transcript: string,
+  rawValue: string,
+  skipFlag: boolean,
+  activities: TaskActivityOption[],
+  today = new Date()
+): TaskFieldAnswer {
+  const heard = transcript.trim();
+  const empty = { transcript: heard, stored: null, display: null, reason: null };
+  if (!isPromptField(field)) return { ...empty, action: "unclear", reason: "Unknown field" };
+  const cleaned = cleanUtterance(heard);
+  if (!cleaned) return { ...empty, action: "unclear" };
+  if (SKIP_UTTERANCE.test(cleaned) || (skipFlag && !rawValue.trim())) {
+    return { ...empty, action: "skip" };
+  }
+  if (YES_ONLY.test(cleaned)) return { ...empty, action: "unclear" };
+
+  let spoken = (rawValue.trim() || heard).trim().replace(/[.?!]+$/g, "").trim();
+  if (field === "duration") {
+    const hours = spoken.toLowerCase().match(/(\d+)\s*hours?/);
+    if (hours) spoken = String(Number(hours[1]) * 60);
+  }
+  if (field === "status" && /^(done|complete|completed|closed|close)$/i.test(spoken)) {
+    return { transcript: heard, action: "value", stored: "completed", display: "Done", reason: null };
+  }
+
+  const { fields, rejected } = applyTaskSpeech(
+    { [FIELD_RAW_KEY[field]]: spoken },
+    activities,
+    today,
+    field === "plannedDate" ? spoken : ""
+  );
+  const rejection = rejected.find((item) => item.field === field);
+  if (rejection) {
+    return { transcript: heard, action: "unclear", stored: null, display: null, reason: rejection.reason };
+  }
+
+  if (field === "activityId" && fields.activityId != null) {
+    return {
+      transcript: heard,
+      action: "value",
+      stored: String(fields.activityId),
+      display: fields.activityName,
+      reason: null,
+    };
+  }
+  if (field === "name" && fields.name) return { transcript: heard, action: "value", stored: fields.name, display: fields.name, reason: null };
+  if (field === "description" && fields.description) {
+    return { transcript: heard, action: "value", stored: fields.description, display: fields.description, reason: null };
+  }
+  if (field === "plannedDate" && fields.plannedDate) {
+    return { transcript: heard, action: "value", stored: fields.plannedDate, display: fields.plannedDate, reason: null };
+  }
+  if (field === "duration" && fields.duration) {
+    return { transcript: heard, action: "value", stored: fields.duration, display: `${fields.duration} minutes`, reason: null };
+  }
+  if (field === "priority" && fields.priority) {
+    const label = PRIORITIES.find((item) => item.value === fields.priority)?.label ?? fields.priority;
+    return { transcript: heard, action: "value", stored: fields.priority, display: label, reason: null };
+  }
+  if (field === "status" && fields.status) {
+    const label = STATUSES.find((item) => item.value === fields.status)?.label ?? fields.status;
+    return { transcript: heard, action: "value", stored: fields.status, display: label, reason: null };
+  }
+  if (field === "assignee" && fields.assignee) {
+    return { transcript: heard, action: "value", stored: fields.assignee, display: fields.assignee, reason: null };
+  }
+  if (field === "remarks" && fields.remarks) {
+    return { transcript: heard, action: "value", stored: fields.remarks, display: fields.remarks, reason: null };
+  }
+  return { transcript: heard, action: "unclear", stored: null, display: null, reason: null };
+}
+
+function fieldPrompt(field: TaskPromptField, activities: TaskActivityOption[], today: Date): string {
+  const labels: Record<TaskPromptField, string> = {
+    activityId: "activity",
+    name: "task name",
+    description: "description",
+    plannedDate: "due date",
+    duration: "duration in minutes",
+    priority: "priority",
+    status: "status",
+    assignee: "assignee",
+    remarks: "remarks",
+  };
+  return [
+    `The speaker is answering one Add Task field: ${labels[field]}.`,
+    `Today is ${ymd(today)}.`,
+    "Return JSON with keys skip and value.",
+    "skip is true only when they decline, for example no, skip, leave it, or don't fill it.",
+    "value is only the field value, with no extra words. Leave value empty when they decline or only say yes.",
+    field === "activityId" ? `activity names:\n${activities.map((activity) => activity.name).filter(Boolean).join("\n") || "(none)"}` : "",
+    field === "plannedDate" ? "For a date, keep today, tomorrow, or the calendar date they said." : "",
+    field === "duration" ? "Duration is a whole number of minutes. Convert hours to minutes." : "",
+    field === "priority" ? "Priority is Critical, High, Normal, or Low." : "",
+    field === "status" ? "Status is Pending, In Progress, Blocked, or Done." : "",
+    "Do not invent a value they did not say.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export async function dictateTaskField(
+  audio: Buffer,
+  mimeOrName: string,
+  field: string,
+  activities: TaskActivityOption[],
+  today = new Date()
+): Promise<TaskFieldAnswer> {
+  if (!isPromptField(field)) throw new Error("Unknown task field");
+  const apiKey = process.env.ASSEMBLYAI_API_KEY?.trim();
+  if (!apiKey) throw new Error("ASSEMBLYAI_API_KEY is not configured");
+  if (!audio.length) throw new Error("The recording was empty");
+
+  const names = activities.map((activity) => activity.name.trim()).filter((name) => name && name.length <= 80);
+  const keyterms = ["yes", "no", "skip", "today", "tomorrow", ...names];
+  const uniqueTerms: string[] = [];
+  let termChars = 0;
+  for (const term of keyterms) {
+    if (uniqueTerms.length >= 100 || termChars + term.length > 7500) break;
+    if (uniqueTerms.some((existing) => existing.toLowerCase() === term.toLowerCase())) continue;
+    uniqueTerms.push(term);
+    termChars += term.length;
+  }
+
+  const config = {
+    language_codes: ["en"],
+    stt_prompt: "A user answering one project-task form field, or saying no to leave it blank.",
+    keyterms_prompt: uniqueTerms,
+    llm: {
+      model: "gemini-3.5-flash-lite",
+      temperature: 0,
+      max_tokens: 200,
+      messages: [
+        { role: "system", content: fieldPrompt(field, activities, today) },
+        { role: "user", content: "{{turn}}" },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "task_field_answer",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              skip: { type: "boolean" },
+              value: { type: "string" },
+            },
+            required: ["skip", "value"],
+          },
+        },
+      },
+    },
+  };
+
+  const body = await requestDictation(audio, mimeOrName, config, apiKey);
+  const transcript = typeof body?.text === "string" ? body.text.trim() : "";
+  const llmResponse = typeof body?.llm_response === "string" ? body.llm_response : null;
+  const parsed = parseStructured(llmResponse);
+  if (!parsed && typeof body?.llm_error === "string" && body.llm_error) {
+    throw new Error(`Could not structure the dictation (${body.llm_error})`);
+  }
+  return interpretFieldAnswer(
+    field,
+    transcript,
+    typeof parsed?.value === "string" ? parsed.value : "",
+    parsed?.skip === true,
+    activities,
+    today
+  );
 }

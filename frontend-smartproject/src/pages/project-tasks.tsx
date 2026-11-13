@@ -11,6 +11,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -64,6 +74,56 @@ const TASK_SPEECH_LABELS: Record<TaskSpeechField, string> = {
   remarks: "Remarks",
 };
 
+const SPOKEN_FIELD_LABELS: Record<TaskSpeechField, string> = {
+  activityId: "Activity",
+  name: "Name",
+  description: "Description",
+  plannedDate: "Due date",
+  duration: "Duration",
+  priority: "Priority",
+  status: "Status",
+  assignee: "Assignee",
+  remarks: "Remarks",
+};
+
+const FIELD_PROMPT_ORDER: TaskSpeechField[] = [
+  "activityId",
+  "name",
+  "description",
+  "plannedDate",
+  "duration",
+  "priority",
+  "status",
+  "assignee",
+  "remarks",
+];
+
+type TaskFormState = {
+  activityId: string;
+  name: string;
+  description: string;
+  plannedDate: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignee: string;
+  duration: string;
+  remarks: string;
+};
+
+function blankTaskFields(task: TaskFormState): TaskSpeechField[] {
+  return FIELD_PROMPT_ORDER.filter((field) => {
+    if (field === "activityId") return !task.activityId;
+    if (field === "name") return !task.name.trim();
+    if (field === "description") return !task.description.trim();
+    if (field === "plannedDate") return !task.plannedDate;
+    if (field === "duration") return !task.duration.trim();
+    if (field === "priority") return !task.priority;
+    if (field === "status") return !task.status;
+    if (field === "assignee") return !task.assignee.trim();
+    return !task.remarks.trim();
+  });
+}
+
 const PRIORITY_LABELS: Record<TaskPriority, string> = {
   critical: "Critical",
   high: "High",
@@ -77,6 +137,17 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
   completed: "Done",
   blocked: "Blocked",
 };
+
+const TASK_RECORD_LIMIT_SECONDS = 120;
+
+type VoiceListFocus = "catalog" | "all" | "day";
+
+interface TaskCommandResponse extends TaskDictationResponse {
+  intent: "create" | "show_all" | "show_day" | "edit" | "delete" | "unknown";
+  date: string | null;
+  taskId: number | null;
+  taskMatch: "none" | "one" | "many" | "unspecified";
+}
 
 interface TaskDictationResponse {
   transcript: string;
@@ -110,36 +181,15 @@ export default function ProjectTasks() {
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const [voiceListFocus, setVoiceListFocus] = useState<VoiceListFocus>("catalog");
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<ProjectTaskItem | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<ProjectTaskItem | null>(null);
+  const deletePromptRef = useRef<ProjectTaskItem | null>(null);
+  if (taskToDelete) deletePromptRef.current = taskToDelete;
+  const deletePrompt = taskToDelete ?? deletePromptRef.current;
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: "",
-    description: "",
-    plannedDate: "",
-    duration: "",
-    status: "pending" as TaskStatus,
-    priority: "normal" as TaskPriority,
-    assignee: "",
-    remarks: "",
-  });
-
-  useEffect(() => {
-    if (!editingTask) return;
-    const meta = parseTaskMeta(editingTask.remarks);
-    setEditForm({
-      name: editingTask.name,
-      description: editingTask.description ?? "",
-      plannedDate: editingTask.plannedDate ?? "",
-      duration: editingTask.duration != null ? String(editingTask.duration) : "",
-      status: (editingTask.status as TaskStatus) || "pending",
-      priority: meta.priority,
-      assignee: meta.assignee,
-      remarks: meta.cleanRemarks,
-    });
-  }, [editingTask]);
 
   const [newTask, setNewTask] = useState({
     activityId: "",
@@ -165,6 +215,104 @@ export default function ProjectTasks() {
   const taskDiscardRef = useRef(false);
   const taskStoppingRef = useRef(false);
   const taskArmingRef = useRef(false);
+  const taskFormRef = useRef(newTask);
+  const addDialogOpenRef = useRef(false);
+  const promptTokenRef = useRef(0);
+  const listenTokenRef = useRef(0);
+  const answeringFieldRef = useRef<TaskSpeechField | null>(null);
+  const skippedFieldsRef = useRef<Set<TaskSpeechField>>(new Set());
+  const fieldRetryRef = useRef<TaskSpeechField | null>(null);
+  const taskRecordLimitRef = useRef(TASK_RECORD_LIMIT_SECONDS);
+  const taskLiveRef = useRef(false);
+  const taskDictatingRef = useRef(false);
+  const askNextEmptyFieldRef = useRef<(leadIn?: string) => Promise<void>>(async () => {});
+  const [fieldPrompt, setFieldPrompt] = useState("");
+  const [promptedField, setPromptedField] = useState<TaskSpeechField | null>(null);
+  taskFormRef.current = newTask;
+  addDialogOpenRef.current = addDialogOpen;
+  const [pageRecording, setPageRecording] = useState(false);
+  const [pageDictating, setPageDictating] = useState(false);
+  const [pageRecordSeconds, setPageRecordSeconds] = useState(0);
+  const [pageVoiceNote, setPageVoiceNote] = useState("");
+  const pageRecorderRef = useRef<MediaRecorder | null>(null);
+  const pageStreamRef = useRef<MediaStream | null>(null);
+  const pageChunksRef = useRef<Blob[]>([]);
+  const pageTimerRef = useRef<number | null>(null);
+  const pageDiscardRef = useRef(false);
+  const pageStoppingRef = useRef(false);
+  const pageArmingRef = useRef(false);
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const voiceDoneRef = useRef<(() => void) | null>(null);
+  const pendingAnnouncement = useRef<string | null>(null);
+  const keepAnnouncementRef = useRef(false);
+  const formSpokenRef = useRef(false);
+
+  const playSpoken = useCallback((text: string) => {
+    const spoken = text.trim();
+    if (!spoken) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      voiceDoneRef.current?.();
+      voiceDoneRef.current = resolve;
+      void (async () => {
+        try {
+          const response = await fetch("/api/voice-agent/speak", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ text: spoken }),
+          });
+          if (!response.ok || voiceDoneRef.current !== resolve) {
+            if (voiceDoneRef.current === resolve) voiceDoneRef.current = null;
+            resolve();
+            return;
+          }
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const previous = voiceAudioRef.current;
+          if (previous) {
+            previous.pause();
+            if (previous.src) URL.revokeObjectURL(previous.src);
+          }
+          const audio = new Audio(url);
+          voiceAudioRef.current = audio;
+          const finish = () => {
+            URL.revokeObjectURL(url);
+            if (voiceAudioRef.current === audio) voiceAudioRef.current = null;
+            if (voiceDoneRef.current === resolve) voiceDoneRef.current = null;
+            resolve();
+          };
+          audio.onended = finish;
+          audio.onerror = finish;
+          await audio.play();
+        } catch {
+          if (voiceDoneRef.current === resolve) voiceDoneRef.current = null;
+          resolve();
+        }
+      })();
+    });
+  }, []);
+
+  const speakAnnouncement = useCallback(
+    (text: string) => {
+      const spoken = text.trim();
+      if (!spoken) return;
+      setPageVoiceNote(spoken);
+      void playSpoken(spoken);
+    },
+    [playSpoken]
+  );
+
+  const releaseSpokenLine = () => {
+    const line = pendingAnnouncement.current;
+    pendingAnnouncement.current = null;
+    if (line) speakAnnouncement(line);
+  };
+
+  const failSpokenLine = (fallback: string) => {
+    if (!pendingAnnouncement.current) return;
+    pendingAnnouncement.current = null;
+    speakAnnouncement(fallback);
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 200);
@@ -240,7 +388,9 @@ export default function ProjectTasks() {
 
   const leftPanelTasks = useMemo(() => {
     let list = catalogSource;
-    if (catalogTab === "all") {
+    if (voiceListFocus === "day") {
+      list = list.filter((t) => isSameDay(t.plannedDate, selectedDate));
+    } else if (voiceListFocus !== "all" && catalogTab === "all") {
       const overdue = allProjectTasks.filter((t) => isTaskOverdue(t, selectedDate));
       const dueByDate = allProjectTasks.filter(
         (t) =>
@@ -262,15 +412,18 @@ export default function ProjectTasks() {
       list = list.filter((t) => t.activityId === selectedActivityId);
     }
     return sortTasks(list, sortKey);
-  }, [catalogSource, catalogTab, allProjectTasks, selectedDate, selectedActivityId, sortKey]);
+  }, [catalogSource, catalogTab, allProjectTasks, selectedDate, selectedActivityId, sortKey, voiceListFocus]);
 
   const rightPanelTasks = useMemo(() => {
-    let list = allProjectTasks.filter((t) => isSameDay(t.plannedDate, selectedDate));
+    let list =
+      voiceListFocus === "all"
+        ? [...allProjectTasks]
+        : allProjectTasks.filter((t) => isSameDay(t.plannedDate, selectedDate));
     if (selectedActivityId != null) {
       list = list.filter((t) => t.activityId === selectedActivityId);
     }
     return list;
-  }, [allProjectTasks, selectedDate, selectedActivityId]);
+  }, [allProjectTasks, selectedDate, selectedActivityId, voiceListFocus]);
 
   const invalidateTasks = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["project-tasks", projectId] });
@@ -283,21 +436,33 @@ export default function ProjectTasks() {
       invalidateTasks();
       toast({ title: "Task created" });
       setAddDialogOpen(false);
+      setEditingTask(null);
       resetNewTask();
+      releaseSpokenLine();
     },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+      failSpokenLine("I could not create that task.");
+    },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<ProjectTaskItem> }) =>
       put(`/projects/${projectId}/tasks/${id}`, data),
-    onSuccess: () => {
+    onSuccess: (_data, { id }) => {
       invalidateTasks();
       toast({ title: "Task updated" });
-      setEditingTask(null);
-      setEditDialogOpen(false);
+      if (editingTask?.id === id) {
+        setEditingTask(null);
+        setAddDialogOpen(false);
+        clearTaskSpeech();
+      }
+      releaseSpokenLine();
     },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+      failSpokenLine("I could not save that change.");
+    },
   });
 
   const closeMutation = useMutation({
@@ -319,8 +484,12 @@ export default function ProjectTasks() {
     onSuccess: () => {
       invalidateTasks();
       toast({ title: "Task deleted" });
+      releaseSpokenLine();
     },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+      failSpokenLine("I could not delete that task.");
+    },
   });
 
   const clearTaskSpeech = () => {
@@ -356,6 +525,7 @@ export default function ProjectTasks() {
       taskTimerRef.current = null;
     }
     setTaskRecording(false);
+    taskLiveRef.current = false;
     if (discard) taskDiscardRef.current = true;
     const recorder = taskRecorderRef.current;
     if (recorder && recorder.state === "recording") {
@@ -407,21 +577,85 @@ export default function ProjectTasks() {
       patch.remarks = result.fields.remarks;
       filled.push({ field: "remarks", value: result.fields.remarks });
     }
-    setNewTask((prev) => ({ ...prev, ...patch }));
+    setNewTask((prev) => {
+      const next = { ...prev, ...patch };
+      taskFormRef.current = next;
+      return next;
+    });
     setTaskSpeechPairs(filled);
     setTaskRejected(result.rejected);
     setTaskTranscript(result.transcript);
   };
 
   const submitTaskRecording = async (blob: Blob) => {
+    const answeringField = answeringFieldRef.current;
+    taskDictatingRef.current = true;
     setTaskDictating(true);
     try {
       if (blob.size < 800) {
         toast({ title: "Recording was too short", variant: "destructive" });
+        if (answeringField) {
+          const label = SPOKEN_FIELD_LABELS[answeringField];
+          if (fieldRetryRef.current === answeringField) {
+            skippedFieldsRef.current.add(answeringField);
+            fieldRetryRef.current = null;
+            void askNextEmptyFieldRef.current(`I didn't catch a value for ${label}. You can type it. `);
+          } else {
+            fieldRetryRef.current = answeringField;
+            void askNextEmptyFieldRef.current(`I didn't hear a value for ${label}. `);
+          }
+        }
         return;
       }
       const body = new FormData();
       body.append("audio", blob, blob.type.includes("mp4") ? "dictation.m4a" : "dictation.webm");
+      if (answeringField) {
+        body.append("field", answeringField);
+        const response = await fetch(`/api/projects/${projectId}/tasks/dictate-field`, { method: "POST", body });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          const message = typeof payload?.message === "string" ? payload.message : "Could not transcribe that recording";
+          throw new Error(message);
+        }
+        const result = (await response.json()) as {
+          transcript: string;
+          action: "value" | "skip" | "unclear";
+          stored: string | null;
+          display: string | null;
+          reason: string | null;
+        };
+        setTaskTranscript(result.transcript);
+        const label = SPOKEN_FIELD_LABELS[answeringField];
+        if (result.action === "value" && result.stored) {
+          const next = { ...taskFormRef.current, [answeringField]: result.stored };
+          taskFormRef.current = next;
+          setNewTask(next);
+          setTaskSpeechPairs((pairs) => [
+            ...pairs.filter((pair) => pair.field !== answeringField),
+            { field: answeringField, value: result.display || result.stored || "" },
+          ]);
+          fieldRetryRef.current = null;
+          skippedFieldsRef.current.delete(answeringField);
+          void askNextEmptyFieldRef.current(`${label} is set to ${result.display || result.stored}. `);
+          return;
+        }
+        if (result.action === "skip") {
+          skippedFieldsRef.current.add(answeringField);
+          fieldRetryRef.current = null;
+          void askNextEmptyFieldRef.current(`I'll leave ${label} empty. `);
+          return;
+        }
+        if (fieldRetryRef.current !== answeringField) {
+          fieldRetryRef.current = answeringField;
+          const why = result.reason ? `${label} ${result.reason}. ` : `I didn't hear a value for ${label}. `;
+          void askNextEmptyFieldRef.current(why);
+          return;
+        }
+        skippedFieldsRef.current.add(answeringField);
+        fieldRetryRef.current = null;
+        void askNextEmptyFieldRef.current(`I didn't catch a value for ${label}. You can type it. `);
+        return;
+      }
       const response = await fetch(`/api/projects/${projectId}/tasks/dictate`, { method: "POST", body });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
@@ -429,6 +663,7 @@ export default function ProjectTasks() {
         throw new Error(message);
       }
       const result = (await response.json()) as TaskDictationResponse;
+      formSpokenRef.current = true;
       applyTaskDictation(result);
       const filledCount =
         (result.fields.activityId != null ? 1 : 0) +
@@ -449,6 +684,7 @@ export default function ProjectTasks() {
             ? "Review the values. Anything that did not validate was left for you to enter."
             : result.transcript || "Name the activity and the task details.",
       });
+      void askNextEmptyFieldRef.current();
     } catch (error) {
       toast({
         title: "Dictation failed",
@@ -456,12 +692,17 @@ export default function ProjectTasks() {
         variant: "destructive",
       });
     } finally {
+      taskDictatingRef.current = false;
       setTaskDictating(false);
     }
   };
 
-  const startTaskRecording = async () => {
-    if (taskRecording || taskDictating || taskArmingRef.current) return;
+  const startTaskRecording = async (forField = false) => {
+    if (taskLiveRef.current || taskDictatingRef.current || taskArmingRef.current) return;
+    if (pageRecording || pageDictating) {
+      toast({ title: "Finish the page recording first" });
+      return;
+    }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       toast({ title: "This browser cannot record audio", variant: "destructive" });
       return;
@@ -490,14 +731,19 @@ export default function ProjectTasks() {
       };
       taskRecorderRef.current = recorder;
       recorder.start();
+      taskLiveRef.current = true;
       setTaskRecordSeconds(0);
       setTaskRecording(true);
-      clearTaskSpeech();
+      if (!forField) {
+        answeringFieldRef.current = null;
+        clearTaskSpeech();
+      }
+      taskRecordLimitRef.current = forField ? 25 : TASK_RECORD_LIMIT_SECONDS;
       const startedAt = Date.now();
       taskTimerRef.current = window.setInterval(() => {
         const elapsed = Math.floor((Date.now() - startedAt) / 1000);
         setTaskRecordSeconds(elapsed);
-        if (elapsed >= 45 && recorder.state === "recording") finishTaskRecording(false);
+        if (elapsed >= taskRecordLimitRef.current && recorder.state === "recording") finishTaskRecording(false);
       }, 250);
     } catch {
       finishTaskRecording(true);
@@ -511,20 +757,348 @@ export default function ProjectTasks() {
     }
   };
 
+  const askNextEmptyField = async (leadIn = "") => {
+    const token = ++promptTokenRef.current;
+    if (!addDialogOpenRef.current || taskLiveRef.current) return;
+    const field = blankTaskFields(taskFormRef.current).find((item) => !skippedFieldsRef.current.has(item));
+    if (!field) {
+      answeringFieldRef.current = null;
+      setPromptedField(null);
+      if (leadIn.trim()) {
+        setFieldPrompt(leadIn.trim());
+        await playSpoken(leadIn.trim());
+      } else {
+        setFieldPrompt("");
+      }
+      return;
+    }
+    if (fieldRetryRef.current && fieldRetryRef.current !== field) fieldRetryRef.current = null;
+    answeringFieldRef.current = field;
+    setPromptedField(field);
+    const label = SPOKEN_FIELD_LABELS[field];
+    const question = `You have not filled the field ${label}. Should it be filled? Please give the value.`;
+    setFieldPrompt(question);
+    const listen = listenTokenRef.current;
+    await playSpoken(`${leadIn}${question}`);
+    if (token !== promptTokenRef.current || listen !== listenTokenRef.current || !addDialogOpenRef.current) return;
+    if (answeringFieldRef.current !== field) return;
+    if (!blankTaskFields(taskFormRef.current).includes(field)) {
+      void askNextEmptyFieldRef.current();
+      return;
+    }
+    await startTaskRecording(true);
+  };
+  askNextEmptyFieldRef.current = askNextEmptyField;
+
+  const releasePageMic = () => {
+    pageStreamRef.current?.getTracks().forEach((track) => track.stop());
+    pageStreamRef.current = null;
+    pageRecorderRef.current = null;
+  };
+
+  const finishPageRecording = (discard: boolean) => {
+    if (pageTimerRef.current != null) {
+      window.clearInterval(pageTimerRef.current);
+      pageTimerRef.current = null;
+    }
+    setPageRecording(false);
+    if (discard) pageDiscardRef.current = true;
+    const recorder = pageRecorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      if (!pageStoppingRef.current) {
+        pageStoppingRef.current = true;
+        recorder.stop();
+      }
+      return;
+    }
+    releasePageMic();
+  };
+
+  const dateFromYmd = (value: string) => {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, (month || 1) - 1, day || 1);
+  };
+
+  const applyPageCommand = (result: TaskCommandResponse) => {
+    formSpokenRef.current = false;
+    setPageVoiceNote(result.transcript ? `Heard: ${result.transcript}` : "");
+    const rejectedNote = result.rejected[0]
+      ? `${TASK_SPEECH_LABELS[result.rejected[0].field]} “${result.rejected[0].spoken}” ${result.rejected[0].reason}.`
+      : "";
+
+    if (result.intent === "show_all") {
+      setCatalogTab("all");
+      setSearchTerm("");
+      setPriorityFilter("all");
+      setStatusFilters(new Set());
+      setSelectedActivityId(null);
+      setVoiceListFocus("all");
+      toast({ title: "Showing all tasks", description: `${allProjectTasks.length} tasks` });
+      speakAnnouncement(`Showing all ${allProjectTasks.length} tasks.`);
+      return;
+    }
+
+    if (result.intent === "show_day") {
+      if (!result.date) {
+        toast({
+          title: "Say which day",
+          description: rejectedNote || "Try today, tomorrow, or 14 December 2026.",
+          variant: "destructive",
+        });
+        speakAnnouncement("Say which day, such as today, tomorrow, or the fourteenth of December.");
+        return;
+      }
+      const day = dateFromYmd(result.date);
+      setCatalogTab("all");
+      setSearchTerm("");
+      setPriorityFilter("all");
+      setStatusFilters(new Set());
+      setSelectedActivityId(null);
+      setSelectedDate(day);
+      setVoiceListFocus("day");
+      toast({ title: `Tasks for ${format(day, "d MMMM yyyy")}` });
+      speakAnnouncement(`Showing tasks for ${format(day, "d MMMM yyyy")}.`);
+      return;
+    }
+
+    if (result.intent === "create") {
+      if (result.fields.activityId != null && result.fields.name) {
+        createMutation.mutate({
+          activityId: result.fields.activityId,
+          name: result.fields.name.trim(),
+          description: result.fields.description || null,
+          duration: parseInt(result.fields.duration ?? "", 10) || 60,
+          status: result.fields.status && result.fields.status !== "completed" ? result.fields.status : "pending",
+          plannedDate: result.fields.plannedDate || format(selectedDate, "yyyy-MM-dd"),
+          remarks: encodeTaskMeta(
+            result.fields.priority ?? "normal",
+            result.fields.assignee || user?.name || "",
+            result.fields.remarks ?? ""
+          ),
+          globalTaskId: null,
+        });
+        pendingAnnouncement.current = `A new task named ${result.fields.name.trim()} was created.`;
+        setPageVoiceNote(`Creating “${result.fields.name}”.`);
+        return;
+      }
+      resetNewTask();
+      applyTaskDictation(result);
+      setAddDialogOpen(true);
+      toast({
+        title: "New task needs a matching activity and a name",
+        description: rejectedNote || result.transcript || "The form is open with whatever could be filled.",
+      });
+      return;
+    }
+
+    const namedTask = result.taskId != null ? allProjectTasks.find((task) => task.id === result.taskId) : undefined;
+    if (result.intent === "edit" || result.intent === "delete") {
+      if (result.taskMatch === "many") {
+        toast({ title: "More than one task has that name", description: "Open the one you mean.", variant: "destructive" });
+        speakAnnouncement("More than one task has that name. Open the one you mean.");
+        return;
+      }
+      if (result.taskMatch === "none" || !namedTask) {
+        const line = result.taskMatch === "none" ? "No task matched that name." : "Open a task first, or say its name.";
+        toast({ title: line, variant: "destructive" });
+        speakAnnouncement(line);
+        return;
+      }
+      setSelectedTaskId(namedTask.id);
+
+      if (result.intent === "delete") {
+        pendingAnnouncement.current = `The task named ${namedTask.name} was deleted.`;
+        setTaskToDelete(namedTask);
+        setPageVoiceNote(`Confirm delete for ${namedTask.name}.`);
+        speakAnnouncement(`Delete ${namedTask.name}? Confirm on the screen and I will remove it.`);
+        return;
+      }
+
+      const meta = parseTaskMeta(namedTask.remarks);
+      const data: Partial<ProjectTaskItem> = {};
+      const changed: string[] = [];
+      if (result.fields.name) {
+        data.name = result.fields.name;
+        changed.push("name");
+      }
+      if (result.fields.description) {
+        data.description = result.fields.description;
+        changed.push("description");
+      }
+      if (result.fields.plannedDate) {
+        data.plannedDate = result.fields.plannedDate;
+        changed.push("due date");
+      }
+      if (result.fields.duration) {
+        data.duration = parseInt(result.fields.duration, 10);
+        changed.push("duration");
+      }
+      if (result.fields.status) {
+        data.status = result.fields.status;
+        changed.push("status");
+      }
+      if (result.fields.activityId != null) {
+        data.activityId = result.fields.activityId;
+        changed.push("activity");
+      }
+      if (result.fields.priority || result.fields.assignee || result.fields.remarks) {
+        data.remarks = encodeTaskMeta(
+          result.fields.priority ?? meta.priority,
+          result.fields.assignee ?? meta.assignee,
+          result.fields.remarks ?? meta.cleanRemarks
+        );
+        if (result.fields.priority) changed.push("priority");
+        if (result.fields.assignee) changed.push("assignee");
+        if (result.fields.remarks) changed.push("remarks");
+      }
+      if (changed.length === 0) {
+        toast({
+          title: "No field to change",
+          description: rejectedNote || "Say the field and the new value, such as “set priority to high”.",
+          variant: "destructive",
+        });
+        speakAnnouncement("I did not hear a field to change.");
+        return;
+      }
+      updateMutation.mutate({ id: namedTask.id, data });
+      pendingAnnouncement.current = `The task named ${result.fields.name || namedTask.name} was edited. I changed ${changed.join(", ")}.`;
+      setPageVoiceNote(`Updating ${namedTask.name}: ${changed.join(", ")}.`);
+      return;
+    }
+
+    toast({
+      title: "Command not recognized",
+      description: result.transcript || "Say create a task, show all tasks, show tasks on a day, edit this task, or delete this task.",
+    });
+    speakAnnouncement("I did not catch a task command. Try create, show, edit, or delete.");
+  };
+
+  const submitPageRecording = async (blob: Blob) => {
+    setPageDictating(true);
+    try {
+      if (blob.size < 800) {
+        toast({ title: "Recording was too short", variant: "destructive" });
+        return;
+      }
+      const body = new FormData();
+      body.append("audio", blob, blob.type.includes("mp4") ? "dictation.m4a" : "dictation.webm");
+      const openTaskId = editingTask?.id ?? selectedTaskId;
+      if (openTaskId != null) body.append("openTaskId", String(openTaskId));
+      const response = await fetch(`/api/projects/${projectId}/tasks/command`, { method: "POST", body });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        const message = typeof payload?.message === "string" ? payload.message : "Could not transcribe that recording";
+        throw new Error(message);
+      }
+      applyPageCommand((await response.json()) as TaskCommandResponse);
+    } catch (error) {
+      toast({
+        title: "Dictation failed",
+        description: error instanceof Error ? error.message : "Could not transcribe that recording",
+        variant: "destructive",
+      });
+    } finally {
+      setPageDictating(false);
+    }
+  };
+
+  const startPageRecording = async () => {
+    if (pageRecording || pageDictating || pageArmingRef.current) return;
+    if (taskRecording || taskDictating) {
+      toast({ title: "Finish the form recording first" });
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast({ title: "This browser cannot record audio", variant: "destructive" });
+      return;
+    }
+    pageArmingRef.current = true;
+    try {
+      pageDiscardRef.current = false;
+      pageStoppingRef.current = false;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      pageStreamRef.current = stream;
+      const preferred = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+      const mimeType = preferred.find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      pageChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) pageChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(pageChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        pageChunksRef.current = [];
+        const discard = pageDiscardRef.current;
+        pageDiscardRef.current = false;
+        pageStoppingRef.current = false;
+        releasePageMic();
+        if (!discard) void submitPageRecording(blob);
+      };
+      pageRecorderRef.current = recorder;
+      recorder.start();
+      setPageRecordSeconds(0);
+      setPageRecording(true);
+      setPageVoiceNote("");
+      const startedAt = Date.now();
+      pageTimerRef.current = window.setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        setPageRecordSeconds(elapsed);
+        if (elapsed >= TASK_RECORD_LIMIT_SECONDS && recorder.state === "recording") finishPageRecording(false);
+      }, 250);
+    } catch {
+      finishPageRecording(true);
+      toast({
+        title: "Microphone unavailable",
+        description: "Allow microphone access, then try again.",
+        variant: "destructive",
+      });
+    } finally {
+      pageArmingRef.current = false;
+    }
+  };
+
   useEffect(() => {
-    if (!addDialogOpen) finishTaskRecording(true);
+    if (!addDialogOpen) {
+      promptTokenRef.current += 1;
+      listenTokenRef.current += 1;
+      voiceAudioRef.current?.pause();
+      voiceDoneRef.current?.();
+      voiceDoneRef.current = null;
+      answeringFieldRef.current = null;
+      skippedFieldsRef.current = new Set();
+      fieldRetryRef.current = null;
+      setFieldPrompt("");
+      setPromptedField(null);
+      finishTaskRecording(true);
+      return;
+    }
+    skippedFieldsRef.current = new Set();
+    fieldRetryRef.current = null;
+    const timer = window.setTimeout(() => {
+      void askNextEmptyFieldRef.current();
+    }, 700);
     return () => {
+      window.clearTimeout(timer);
       if (taskTimerRef.current != null) window.clearInterval(taskTimerRef.current);
     };
   }, [addDialogOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (pageTimerRef.current != null) window.clearInterval(pageTimerRef.current);
+      pageStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   const updateNewTask = <K extends keyof typeof newTask>(field: K, value: (typeof newTask)[K]) => {
     setNewTask((prev) => ({ ...prev, [field]: value }));
     setTaskSpeechPairs((pairs) => pairs.filter((pair) => pair.field !== field));
   };
 
-  const taskSpeechClass = (field: TaskSpeechField) =>
-    taskSpeechPairs.some((pair) => pair.field === field) ? "ring-2 ring-amber-400" : "";
+  const taskSpeechClass = (field: TaskSpeechField) => {
+    if (promptedField === field) return "ring-2 ring-sky-400";
+    return taskSpeechPairs.some((pair) => pair.field === field) ? "ring-2 ring-amber-400" : "";
+  };
 
   const handleDragStart = (e: React.DragEvent, task: ProjectTaskItem) => {
     e.dataTransfer.setData("application/json", JSON.stringify({ task }));
@@ -562,6 +1136,35 @@ export default function ProjectTasks() {
     });
   };
 
+  const formFromTask = (task: ProjectTaskItem) => {
+    const meta = parseTaskMeta(task.remarks);
+    return {
+      activityId: String(task.activityId),
+      name: task.name,
+      description: task.description ?? "",
+      plannedDate: task.plannedDate ?? "",
+      status: ((task.status as TaskStatus) || "pending") as TaskStatus,
+      priority: meta.priority,
+      assignee: meta.assignee,
+      duration: task.duration != null ? String(task.duration) : "",
+      remarks: meta.cleanRemarks,
+    };
+  };
+
+  const openAddTask = () => {
+    setEditingTask(null);
+    resetNewTask();
+    setAddDialogOpen(true);
+  };
+
+  const openEditTask = (task: ProjectTaskItem) => {
+    setSelectedTaskId(task.id);
+    setEditingTask(task);
+    setNewTask(formFromTask(task));
+    clearTaskSpeech();
+    setAddDialogOpen(true);
+  };
+
   const handleCreateTask = () => {
     const activityId = parseInt(newTask.activityId, 10);
     if (!activityId || !newTask.name.trim()) {
@@ -569,16 +1172,26 @@ export default function ProjectTasks() {
       return;
     }
     const remarks = encodeTaskMeta(newTask.priority, newTask.assignee, newTask.remarks);
-    createMutation.mutate({
+    const payload = {
       activityId,
       name: newTask.name.trim(),
       description: newTask.description || null,
-      duration: parseInt(newTask.duration, 10) || 60,
+      duration: newTask.duration ? parseInt(newTask.duration, 10) : null,
       status: newTask.status,
-      plannedDate: newTask.plannedDate,
+      plannedDate: newTask.plannedDate || null,
       remarks,
-      globalTaskId: null,
-    });
+    };
+    if (formSpokenRef.current) {
+      formSpokenRef.current = false;
+      pendingAnnouncement.current = editingTask
+        ? `The task named ${newTask.name.trim()} was edited.`
+        : `A new task named ${newTask.name.trim()} was created.`;
+    }
+    if (editingTask) {
+      updateMutation.mutate({ id: editingTask.id, data: payload });
+      return;
+    }
+    createMutation.mutate({ ...payload, duration: payload.duration || 60, globalTaskId: null });
   };
 
   const handleRefresh = () => {
@@ -609,6 +1222,14 @@ export default function ProjectTasks() {
         }
         onRefresh={handleRefresh}
         refreshing={refreshing}
+        voice={{
+          recording: pageRecording,
+          busy: pageDictating,
+          seconds: pageRecordSeconds,
+          limit: TASK_RECORD_LIMIT_SECONDS,
+          note: pageVoiceNote,
+          onToggle: () => (pageRecording ? finishPageRecording(false) : void startPageRecording()),
+        }}
       />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto px-6 pb-6 lg:grid-cols-[3fr_2fr] lg:overflow-hidden lg:px-8">
@@ -629,9 +1250,11 @@ export default function ProjectTasks() {
             onSortChange={setSortKey}
             selectedId={selectedTaskId}
             onSelect={setSelectedTaskId}
-            onAdd={() => {
-              resetNewTask();
-              setAddDialogOpen(true);
+            onAdd={openAddTask}
+            onEdit={openEditTask}
+            onDelete={(task) => {
+              pendingAnnouncement.current = null;
+              setTaskToDelete(task);
             }}
             onDragStart={handleDragStart}
             loading={tasksLoading}
@@ -645,22 +1268,29 @@ export default function ProjectTasks() {
             selectedActivityId={selectedActivityId}
             onSelectActivity={setSelectedActivityId}
             selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
+            onSelectDate={(date) => {
+              setSelectedDate(date);
+              setVoiceListFocus((current) => (current === "all" ? "day" : current));
+            }}
             tasks={rightPanelTasks}
             activityNameById={activityNameById}
             loading={activitiesLoading || tasksLoading}
             onDropOnActivity={handleDropOnActivity}
-            onEdit={(task) => {
-              setEditingTask(task);
-              setEditDialogOpen(true);
-            }}
+            onEdit={openEditTask}
             onClose={(id) => {
               if (confirm("Close this task?")) closeMutation.mutate(id);
             }}
             onDelete={(id) => {
-              if (confirm("Delete this task?")) deleteMutation.mutate(id);
+              const task = allProjectTasks.find((item) => item.id === id);
+              if (task) {
+                pendingAnnouncement.current = null;
+                setTaskToDelete(task);
+              }
             }}
             projectId={projectId ?? ""}
+            sectionTitleOverride={
+              voiceListFocus === "all" ? `Every task (${rightPanelTasks.length})` : undefined
+            }
           />
         </div>
       </div>
@@ -672,25 +1302,42 @@ export default function ProjectTasks() {
           if (!open) {
             finishTaskRecording(true);
             clearTaskSpeech();
+            setEditingTask(null);
+            formSpokenRef.current = false;
           }
         }}
       >
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Task</DialogTitle>
+            <DialogTitle>{editingTask ? "Edit Task" : "Add Task"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="rounded-md border bg-muted/40 p-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-xs text-muted-foreground">
-                  Speak the activity and the task details. Activity must match the list. A date, duration, priority, or status is filled only when it is valid. Anything else stays for you to enter.
+                <p className={`text-xs ${fieldPrompt ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+                  {fieldPrompt ||
+                    "Speak for up to 2 minutes. Name the activity and the task details. A date, duration, priority, or status is filled only when it is valid."}
                 </p>
                 <Button
                   type="button"
                   variant={taskRecording ? "destructive" : "outline"}
                   size="sm"
                   disabled={taskDictating}
-                  onClick={() => (taskRecording ? finishTaskRecording(false) : void startTaskRecording())}
+                  onClick={() => {
+                    if (taskRecording) {
+                      finishTaskRecording(false);
+                      return;
+                    }
+                    if (answeringFieldRef.current) {
+                      listenTokenRef.current += 1;
+                      voiceAudioRef.current?.pause();
+                      voiceDoneRef.current?.();
+                      voiceDoneRef.current = null;
+                      void startTaskRecording(true);
+                      return;
+                    }
+                    void startTaskRecording(false);
+                  }}
                 >
                   {taskDictating ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -699,7 +1346,7 @@ export default function ProjectTasks() {
                   ) : (
                     <Mic className="mr-2 h-4 w-4" />
                   )}
-                  {taskDictating ? "Transcribing" : taskRecording ? `Stop ${taskRecordSeconds}s` : "Speak"}
+                  {taskDictating ? "Transcribing" : taskRecording ? `Stop ${taskRecordSeconds}s` : fieldPrompt ? "Answer" : "Speak"}
                 </Button>
               </div>
               {taskTranscript && (
@@ -812,6 +1459,7 @@ export default function ProjectTasks() {
                   <SelectContent>
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="completed">Done</SelectItem>
                     <SelectItem value="blocked">Blocked</SelectItem>
                   </SelectContent>
                 </Select>
@@ -838,139 +1486,50 @@ export default function ProjectTasks() {
               <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateTask} disabled={createMutation.isPending}>
-                Create Task
+              <Button onClick={handleCreateTask} disabled={createMutation.isPending || updateMutation.isPending}>
+                {editingTask ? "Save Changes" : "Create Task"}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Task</DialogTitle>
-          </DialogHeader>
-          {editingTask && (
-            <div className="space-y-4 py-2">
-              <div>
-                <Label>Name</Label>
-                <Input
-                  className="mt-1"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm((s) => ({ ...s, name: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label>Description</Label>
-                <Textarea
-                  className="mt-1"
-                  value={editForm.description}
-                  onChange={(e) => setEditForm((s) => ({ ...s, description: e.target.value }))}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Due date</Label>
-                  <Input
-                    type="date"
-                    className="mt-1"
-                    value={editForm.plannedDate}
-                    onChange={(e) => setEditForm((s) => ({ ...s, plannedDate: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label>Duration (min)</Label>
-                  <Input
-                    type="number"
-                    className="mt-1"
-                    value={editForm.duration}
-                    onChange={(e) => setEditForm((s) => ({ ...s, duration: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Priority</Label>
-                  <Select
-                    value={editForm.priority}
-                    onValueChange={(v) => setEditForm((s) => ({ ...s, priority: v as TaskPriority }))}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="critical">Critical</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="normal">Normal</SelectItem>
-                      <SelectItem value="low">Low</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Status</Label>
-                  <Select
-                    value={editForm.status}
-                    onValueChange={(v) => setEditForm((s) => ({ ...s, status: v as TaskStatus }))}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="in_progress">In Progress</SelectItem>
-                      <SelectItem value="completed">Done</SelectItem>
-                      <SelectItem value="blocked">Blocked</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Label>Assignee</Label>
-                <Input
-                  className="mt-1"
-                  value={editForm.assignee}
-                  onChange={(e) => setEditForm((s) => ({ ...s, assignee: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label>Remarks</Label>
-                <Textarea
-                  className="mt-1"
-                  value={editForm.remarks}
-                  onChange={(e) => setEditForm((s) => ({ ...s, remarks: e.target.value }))}
-                  rows={2}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  disabled={updateMutation.isPending}
-                  onClick={() => {
-                    const remarks = encodeTaskMeta(editForm.priority, editForm.assignee, editForm.remarks);
-                    updateMutation.mutate({
-                      id: editingTask.id,
-                      data: {
-                        name: editForm.name,
-                        description: editForm.description || null,
-                        duration: editForm.duration ? parseInt(editForm.duration, 10) : null,
-                        status: editForm.status,
-                        plannedDate: editForm.plannedDate || null,
-                        remarks,
-                      },
-                    });
-                  }}
-                >
-                  Save
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AlertDialog
+        open={taskToDelete != null}
+        onOpenChange={(open) => {
+          if (open) return;
+          if (!keepAnnouncementRef.current) pendingAnnouncement.current = null;
+          keepAnnouncementRef.current = false;
+          setTaskToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete task</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete {deletePrompt?.name}? This removes the task from the project.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!taskToDelete) return;
+                keepAnnouncementRef.current = true;
+                if (editingTask?.id === taskToDelete.id) {
+                  setAddDialogOpen(false);
+                  setEditingTask(null);
+                }
+                deleteMutation.mutate(taskToDelete.id);
+                setTaskToDelete(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent>

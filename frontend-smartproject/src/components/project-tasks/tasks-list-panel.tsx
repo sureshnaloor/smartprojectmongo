@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { GripVertical, Plus, Search, User } from "lucide-react";
+import { GripVertical, Pencil, Plus, Search, Trash2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -38,6 +38,8 @@ interface TasksListPanelProps {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onAdd: () => void;
+  onEdit: (task: ProjectTaskItem) => void;
+  onDelete: (task: ProjectTaskItem) => void;
   onDragStart: (e: React.DragEvent, task: ProjectTaskItem) => void;
   loading?: boolean;
   referenceDate?: Date;
@@ -57,6 +59,8 @@ export function TasksListPanel({
   selectedId,
   onSelect,
   onAdd,
+  onEdit,
+  onDelete,
   onDragStart,
   loading,
   referenceDate = new Date(),
@@ -215,14 +219,44 @@ export function TasksListPanel({
                 <div className="flex flex-col gap-2 pl-4">
                   <div className="flex items-start justify-between gap-3">
                     <span className="kanban-body-md font-medium text-[var(--text-primary)]">{task.name}</span>
-                    <span
-                      className={cn(
-                        "shrink-0 kanban-body-sm",
-                        overdue ? "font-semibold text-[var(--status-danger)]" : "text-[var(--text-secondary)]"
-                      )}
-                    >
-                      {formatDueDate(task.plannedDate, referenceDate)}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <span
+                        className={cn(
+                          "kanban-body-sm",
+                          overdue ? "font-semibold text-[var(--status-danger)]" : "text-[var(--text-secondary)]"
+                        )}
+                      >
+                        {formatDueDate(task.plannedDate, referenceDate)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Edit task"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEdit(task);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 hover:text-[var(--status-danger)]"
+                        title="Delete task"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDelete(task);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span

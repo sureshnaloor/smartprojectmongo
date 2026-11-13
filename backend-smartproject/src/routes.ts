@@ -2,7 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { dictateToolForm } from "./tool-dictation";
-import { dictateTaskForm } from "./task-dictation";
+import { dictateTaskCommand, dictateTaskField, dictateTaskForm } from "./task-dictation";
+import { speakWithKyla } from "./task-voice";
 import { db } from "./db";
 import { insertFileUploadRecord } from "./file-upload-helpers";
 import { registerCorrespondenceRoutes } from "./correspondence-helpers";
@@ -2685,6 +2686,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/voice-agent/speak", async (req: Request, res: Response) => {
+    try {
+      const text = typeof req.body?.text === "string" ? req.body.text : "";
+      const audio = await speakWithKyla(text);
+      res.setHeader("Content-Type", "audio/wav");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(audio);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
   app.post("/api/projects/:projectId/tasks/dictate", async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.projectId);
@@ -2704,6 +2717,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
         audio,
         file.mimetype || file.name || "",
         activities.map((activity) => ({ id: activity.id, name: activity.name }))
+      );
+      res.json(result);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.post("/api/projects/:projectId/tasks/dictate-field", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+      const project = await storage.getProject(projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      const field = typeof req.body?.field === "string" ? req.body.field : "";
+
+      const uploaded = req.files?.audio;
+      const file = (Array.isArray(uploaded) ? uploaded[0] : uploaded) as fileUpload.UploadedFile | undefined;
+      if (!file) return res.status(400).json({ message: "Record a short clip first." });
+      const fs = await import("fs");
+      const audio = file.tempFilePath ? fs.readFileSync(file.tempFilePath) : file.data;
+      if (!audio?.length) return res.status(400).json({ message: "The recording was empty." });
+
+      const activities = await storage.getProjectActivities(projectId);
+      const result = await dictateTaskField(
+        audio,
+        file.mimetype || file.name || "",
+        field,
+        activities.map((activity) => ({ id: activity.id, name: activity.name }))
+      );
+      res.json(result);
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
+  app.post("/api/projects/:projectId/tasks/command", async (req: Request, res: Response) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
+      const project = await storage.getProject(projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+
+      const uploaded = req.files?.audio;
+      const file = (Array.isArray(uploaded) ? uploaded[0] : uploaded) as fileUpload.UploadedFile | undefined;
+      if (!file) return res.status(400).json({ message: "Record a short clip first." });
+      const fs = await import("fs");
+      const audio = file.tempFilePath ? fs.readFileSync(file.tempFilePath) : file.data;
+      if (!audio?.length) return res.status(400).json({ message: "The recording was empty." });
+
+      const openRaw = Number(req.body?.openTaskId);
+      const openTaskId = Number.isInteger(openRaw) && openRaw > 0 ? openRaw : null;
+      const [activities, tasks] = await Promise.all([
+        storage.getProjectActivities(projectId),
+        storage.getProjectTasks(projectId),
+      ]);
+      const result = await dictateTaskCommand(
+        audio,
+        file.mimetype || file.name || "",
+        activities.map((activity) => ({ id: activity.id, name: activity.name })),
+        tasks.map((task) => ({ id: task.id, name: task.name })),
+        openTaskId
       );
       res.json(result);
     } catch (err) {
