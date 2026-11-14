@@ -2626,8 +2626,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Project Task routes
-  // Get all tasks for a project
-  app.get("/api/projects/:projectId/tasks", async (req: Request, res: Response) => {
+  // Get all tasks for a project (supports filtering by activity, remarks, status, dueDate, fromDate, toDate, search)
+  const handleGetProjectTasks = async (req: Request, res: Response) => {
     try {
       const projectId = parseInt(req.params.projectId);
       if (isNaN(projectId)) {
@@ -2639,12 +2639,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      const tasks = await storage.getProjectTasks(projectId);
+      let tasks = await storage.getProjectTasks(projectId);
+
+      const activityQuery = typeof req.query.activity === "string" ? req.query.activity.trim().toLowerCase() : "";
+      const remarksQuery = typeof req.query.remarks === "string" ? req.query.remarks.trim().toLowerCase() : "";
+      const statusQuery = typeof req.query.status === "string" ? req.query.status.trim().toLowerCase() : "";
+      const dueDateQuery = typeof req.query.dueDate === "string" ? req.query.dueDate.trim() : "";
+      const fromDateQuery = typeof req.query.fromDate === "string" ? req.query.fromDate.trim() : (typeof req.query.startDate === "string" ? req.query.startDate.trim() : "");
+      const toDateQuery = typeof req.query.toDate === "string" ? req.query.toDate.trim() : (typeof req.query.endDate === "string" ? req.query.endDate.trim() : "");
+      const generalSearch = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : (typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "");
+
+      let activities: any[] = [];
+      if (activityQuery || generalSearch) {
+        activities = await storage.getProjectActivities(projectId);
+      }
+      const actMap = new Map(activities.map((a) => [a.id, a.name.toLowerCase()]));
+
+      if (activityQuery) {
+        const isNumeric = /^\d+$/.test(activityQuery);
+        const actId = isNumeric ? parseInt(activityQuery, 10) : null;
+        tasks = tasks.filter((t) => {
+          if (actId != null && t.activityId === actId) return true;
+          const aName = actMap.get(t.activityId) || "";
+          return aName.includes(activityQuery);
+        });
+      }
+
+      if (remarksQuery) {
+        tasks = tasks.filter((t) => (t.remarks ?? "").toLowerCase().includes(remarksQuery));
+      }
+
+      if (statusQuery) {
+        const normalizedStatus = statusQuery === "done" ? "completed" : statusQuery;
+        tasks = tasks.filter((t) => {
+          const s = (t.status ?? "").toLowerCase();
+          return s === normalizedStatus || (normalizedStatus === "completed" && s === "done");
+        });
+      }
+
+      if (dueDateQuery) {
+        tasks = tasks.filter((t) => t.plannedDate === dueDateQuery);
+      }
+
+      if (fromDateQuery) {
+        tasks = tasks.filter((t) => t.plannedDate && t.plannedDate >= fromDateQuery);
+      }
+
+      if (toDateQuery) {
+        tasks = tasks.filter((t) => t.plannedDate && t.plannedDate <= toDateQuery);
+      }
+
+      if (generalSearch) {
+        tasks = tasks.filter((t) => {
+          const aName = actMap.get(t.activityId) || "";
+          return (
+            t.name.toLowerCase().includes(generalSearch) ||
+            (t.description ?? "").toLowerCase().includes(generalSearch) ||
+            (t.remarks ?? "").toLowerCase().includes(generalSearch) ||
+            aName.includes(generalSearch) ||
+            (t.status ?? "").toLowerCase().includes(generalSearch)
+          );
+        });
+      }
+
       res.json(tasks);
     } catch (err) {
       handleError(err, res);
     }
-  });
+  };
+
+  app.get("/api/projects/:projectId/tasks", handleGetProjectTasks);
+  app.get("/api/projects/:projectId/tasks/search", handleGetProjectTasks);
 
   // Get open tasks for a project (not closed)
   app.get("/api/projects/:projectId/tasks/open", async (req: Request, res: Response) => {

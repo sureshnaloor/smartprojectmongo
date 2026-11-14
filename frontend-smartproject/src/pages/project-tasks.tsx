@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { TasksPageHeader } from "@/components/project-tasks/tasks-page-header";
 import { TasksListPanel } from "@/components/project-tasks/tasks-list-panel";
 import { TasksActivitiesPanel } from "@/components/project-tasks/tasks-activities-panel";
@@ -143,10 +144,21 @@ const TASK_RECORD_LIMIT_SECONDS = 120;
 type VoiceListFocus = "catalog" | "all" | "day";
 
 interface TaskCommandResponse extends TaskDictationResponse {
-  intent: "create" | "show_all" | "show_day" | "edit" | "delete" | "unknown";
+  intent: "create" | "show_all" | "show_day" | "search" | "edit" | "delete" | "unknown";
   date: string | null;
   taskId: number | null;
   taskMatch: "none" | "one" | "many" | "unspecified";
+  matchingTaskNames?: string[];
+  searchParams?: {
+    nameLike?: string | null;
+    activity: string | null;
+    remarks: string | null;
+    status: string | null;
+    dueDate: string | null;
+    fromDate: string | null;
+    toDate: string | null;
+    query: string | null;
+  };
 }
 
 interface TaskDictationResponse {
@@ -182,6 +194,7 @@ export default function ProjectTasks() {
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
   const [voiceListFocus, setVoiceListFocus] = useState<VoiceListFocus>("catalog");
+  const [dateRangeFilter, setDateRangeFilter] = useState<{ from: string | null; to: string | null } | null>(null);
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<ProjectTaskItem | null>(null);
@@ -357,6 +370,44 @@ export default function ProjectTasks() {
     [projectActivities]
   );
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const act = params.get("activity");
+    const status = params.get("status");
+    const remarks = params.get("remarks");
+    const q = params.get("search") || params.get("q");
+    const due = params.get("dueDate");
+    const from = params.get("fromDate") || params.get("startDate");
+    const to = params.get("toDate") || params.get("endDate");
+
+    if (act && projectActivities.length > 0) {
+      const match = projectActivities.find(
+        (a) => String(a.id) === act || a.name.toLowerCase().includes(act.toLowerCase())
+      );
+      if (match) setSelectedActivityId(match.id);
+      else setSearchTerm(act);
+    }
+    if (status) {
+      const normalized = status === "done" ? "completed" : status;
+      if (["pending", "in_progress", "completed", "blocked"].includes(normalized)) {
+        setStatusFilters(new Set([normalized as TaskStatus]));
+      }
+    }
+    if (remarks) {
+      setSearchTerm(remarks);
+    } else if (q) {
+      setSearchTerm(q);
+    }
+    if (from || to) {
+      setDateRangeFilter({ from, to });
+      setVoiceListFocus("all");
+    } else if (due) {
+      setSelectedDate(dateFromYmd(due));
+      setVoiceListFocus("day");
+    }
+  }, [projectActivities]);
+
   const myTasks = useMemo(() => {
     if (!user?.name) return [];
     const name = user.name.toLowerCase();
@@ -388,7 +439,14 @@ export default function ProjectTasks() {
 
   const leftPanelTasks = useMemo(() => {
     let list = catalogSource;
-    if (voiceListFocus === "day") {
+    if (dateRangeFilter?.from || dateRangeFilter?.to) {
+      list = list.filter((t) => {
+        if (!t.plannedDate) return false;
+        if (dateRangeFilter.from && t.plannedDate < dateRangeFilter.from) return false;
+        if (dateRangeFilter.to && t.plannedDate > dateRangeFilter.to) return false;
+        return true;
+      });
+    } else if (voiceListFocus === "day") {
       list = list.filter((t) => isSameDay(t.plannedDate, selectedDate));
     } else if (voiceListFocus !== "all" && catalogTab === "all") {
       const overdue = allProjectTasks.filter((t) => isTaskOverdue(t, selectedDate));
@@ -412,18 +470,26 @@ export default function ProjectTasks() {
       list = list.filter((t) => t.activityId === selectedActivityId);
     }
     return sortTasks(list, sortKey);
-  }, [catalogSource, catalogTab, allProjectTasks, selectedDate, selectedActivityId, sortKey, voiceListFocus]);
+  }, [catalogSource, catalogTab, allProjectTasks, selectedDate, selectedActivityId, sortKey, voiceListFocus, dateRangeFilter]);
 
   const rightPanelTasks = useMemo(() => {
     let list =
-      voiceListFocus === "all"
+      voiceListFocus === "all" || dateRangeFilter != null
         ? [...allProjectTasks]
         : allProjectTasks.filter((t) => isSameDay(t.plannedDate, selectedDate));
+    if (dateRangeFilter?.from || dateRangeFilter?.to) {
+      list = list.filter((t) => {
+        if (!t.plannedDate) return false;
+        if (dateRangeFilter.from && t.plannedDate < dateRangeFilter.from) return false;
+        if (dateRangeFilter.to && t.plannedDate > dateRangeFilter.to) return false;
+        return true;
+      });
+    }
     if (selectedActivityId != null) {
       list = list.filter((t) => t.activityId === selectedActivityId);
     }
     return list;
-  }, [allProjectTasks, selectedDate, selectedActivityId, voiceListFocus]);
+  }, [allProjectTasks, selectedDate, selectedActivityId, voiceListFocus, dateRangeFilter]);
 
   const invalidateTasks = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["project-tasks", projectId] });
@@ -832,9 +898,140 @@ export default function ProjectTasks() {
       setPriorityFilter("all");
       setStatusFilters(new Set());
       setSelectedActivityId(null);
+      setDateRangeFilter(null);
       setVoiceListFocus("all");
       toast({ title: "Showing all tasks", description: `${allProjectTasks.length} tasks` });
       speakAnnouncement(`Showing all ${allProjectTasks.length} tasks.`);
+      return;
+    }
+
+    if (result.intent === "search") {
+      const sp = result.searchParams;
+      setCatalogTab("all");
+      setPriorityFilter("all");
+      setVoiceListFocus("all");
+
+      // Check if this is a name-like search: e.g. "display or show tasks which have name like 'task'"
+      const nameQuery = sp?.nameLike || sp?.query;
+      if (nameQuery) {
+        const q = nameQuery.trim().toLowerCase();
+        const nameMatches = allProjectTasks.filter((t) => t.name.toLowerCase().includes(q));
+        setSearchTerm(nameQuery);
+        setSelectedActivityId(null);
+        setDateRangeFilter(null);
+
+        if (nameMatches.length === 0) {
+          toast({
+            title: "No tasks found",
+            description: `No tasks have a name like “${nameQuery}”.`,
+            variant: "destructive",
+          });
+          speakAnnouncement(`No tasks found with a name like ${nameQuery}.`);
+          return;
+        }
+
+        if (nameMatches.length === 1) {
+          const soleTask = nameMatches[0];
+          setSelectedTaskId(soleTask.id);
+          openEditTask(soleTask);
+          toast({
+            title: `Opened “${soleTask.name}”`,
+            description: "Opening in edit modal.",
+          });
+          speakAnnouncement(`Found 1 task: ${soleTask.name}. Opening it for editing.`);
+          return;
+        }
+
+        const taskNamesList = nameMatches.map((t) => t.name);
+        const spokenNames = taskNamesList.slice(0, 5).join(", ");
+        toast({
+          title: `${nameMatches.length} tasks match “${nameQuery}”`,
+          description: `Tasks: ${taskNamesList.join(", ")}. Only one can be opened at a time.`,
+        });
+        speakAnnouncement(
+          `There are ${nameMatches.length} tasks: ${spokenNames}. Which one would you like to open? Only one can be opened at a time.`
+        );
+        return;
+      }
+
+      const announcedFilters: string[] = [];
+
+      // 1. Activity filter
+      if (sp?.activity) {
+        const queryAct = sp.activity.trim().toLowerCase();
+        const matchedAct = projectActivities.find((a) =>
+          a.name.toLowerCase().includes(queryAct)
+        );
+        if (matchedAct) {
+          setSelectedActivityId(matchedAct.id);
+          announcedFilters.push(`activity is ${matchedAct.name}`);
+        } else {
+          setSearchTerm(sp.activity);
+          announcedFilters.push(`activity matches ${sp.activity}`);
+        }
+      } else {
+        setSelectedActivityId(null);
+      }
+
+      // 2. Remarks filter
+      if (sp?.remarks) {
+        setSearchTerm(sp.remarks);
+        announcedFilters.push(`remarks contain “${sp.remarks}”`);
+      } else if (!sp?.activity) {
+        setSearchTerm("");
+      }
+
+      // 3. Status filter
+      if (sp?.status) {
+        const normalized = (sp.status === "done" ? "completed" : sp.status) as TaskStatus;
+        setStatusFilters(new Set([normalized]));
+        announcedFilters.push(`status is ${STATUS_LABELS[normalized] ?? normalized}`);
+      } else {
+        setStatusFilters(new Set());
+      }
+
+      // 4. Date range or single date
+      if (sp?.fromDate && sp?.toDate) {
+        setDateRangeFilter({ from: sp.fromDate, to: sp.toDate });
+        announcedFilters.push(`due dates between ${sp.fromDate} and ${sp.toDate}`);
+      } else if (sp?.dueDate) {
+        const day = dateFromYmd(sp.dueDate);
+        setSelectedDate(day);
+        setVoiceListFocus("day");
+        setDateRangeFilter(null);
+        announcedFilters.push(`due on ${format(day, "d MMMM yyyy")}`);
+      } else {
+        setDateRangeFilter(null);
+      }
+
+      const matchingTasks = allProjectTasks.filter((t) => {
+        if (sp?.activity) {
+          const actName = activityNameById(t.activityId).toLowerCase();
+          if (!actName.includes(sp.activity.toLowerCase())) return false;
+        }
+        if (sp?.remarks) {
+          const meta = parseTaskMeta(t.remarks);
+          if (!meta.cleanRemarks.toLowerCase().includes(sp.remarks.toLowerCase())) return false;
+        }
+        if (sp?.status) {
+          const norm = sp.status === "done" ? "completed" : sp.status;
+          if (t.status !== norm) return false;
+        }
+        if (sp?.fromDate && sp?.toDate) {
+          if (!t.plannedDate || t.plannedDate < sp.fromDate || t.plannedDate > sp.toDate) return false;
+        } else if (sp?.dueDate) {
+          if (t.plannedDate !== sp.dueDate) return false;
+        }
+        return true;
+      });
+
+      const count = matchingTasks.length;
+      const filterSummary = announcedFilters.length > 0 ? announcedFilters.join(", ") : "your criteria";
+      toast({
+        title: `Search: ${count} task${count === 1 ? "" : "s"} found`,
+        description: `Showing tasks where ${filterSummary}.`,
+      });
+      speakAnnouncement(`Found ${count} task${count === 1 ? "" : "s"} where ${filterSummary}.`);
       return;
     }
 
@@ -894,8 +1091,22 @@ export default function ProjectTasks() {
     const namedTask = result.taskId != null ? allProjectTasks.find((task) => task.id === result.taskId) : undefined;
     if (result.intent === "edit" || result.intent === "delete") {
       if (result.taskMatch === "many") {
-        toast({ title: "More than one task has that name", description: "Open the one you mean.", variant: "destructive" });
-        speakAnnouncement("More than one task has that name. Open the one you mean.");
+        const matchingNames =
+          result.matchingTaskNames && result.matchingTaskNames.length > 0
+            ? result.matchingTaskNames
+            : allProjectTasks
+                .filter((t) => result.taskName && t.name.toLowerCase().includes(result.taskName.toLowerCase()))
+                .map((t) => t.name);
+        if (result.taskName) setSearchTerm(result.taskName);
+        const spokenNames = matchingNames.slice(0, 5).join(", ");
+        toast({
+          title: `More than one task matches “${result.taskName || "that name"}”`,
+          description: `Tasks: ${matchingNames.join(", ")}. Only one can be opened at a time.`,
+          variant: "destructive",
+        });
+        speakAnnouncement(
+          `There are ${matchingNames.length} tasks: ${spokenNames}. Which one would you like to open? Only one can be opened at a time.`
+        );
         return;
       }
       if (result.taskMatch === "none" || !namedTask) {
@@ -952,12 +1163,12 @@ export default function ProjectTasks() {
         if (result.fields.remarks) changed.push("remarks");
       }
       if (changed.length === 0) {
+        openEditTask(namedTask);
         toast({
-          title: "No field to change",
-          description: rejectedNote || "Say the field and the new value, such as “set priority to high”.",
-          variant: "destructive",
+          title: `Editing “${namedTask.name}”`,
+          description: "Opened in edit modal.",
         });
-        speakAnnouncement("I did not hear a field to change.");
+        speakAnnouncement(`Opened task ${namedTask.name} for editing.`);
         return;
       }
       updateMutation.mutate({ id: namedTask.id, data });
@@ -1232,6 +1443,34 @@ export default function ProjectTasks() {
         }}
       />
 
+      {(dateRangeFilter || selectedActivityId != null) && (
+        <div className="flex items-center justify-between border-b border-orange-200 bg-orange-50/80 px-6 py-2 kanban-caption text-orange-900">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold">Active filter:</span>
+            {selectedActivityId != null && (
+              <span className="rounded bg-orange-100 px-2 py-0.5 font-medium">
+                Activity: {activityNameById(selectedActivityId)}
+              </span>
+            )}
+            {dateRangeFilter && (
+              <span className="rounded bg-orange-100 px-2 py-0.5 font-medium">
+                Due: {dateRangeFilter.from ?? "any"} to {dateRangeFilter.to ?? "any"}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="font-medium text-orange-700 underline hover:text-orange-900"
+            onClick={() => {
+              setSelectedActivityId(null);
+              setDateRangeFilter(null);
+            }}
+          >
+            Reset filter
+          </button>
+        </div>
+      )}
+
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto px-6 pb-6 lg:grid-cols-[3fr_2fr] lg:overflow-hidden lg:px-8">
         <div className="flex min-h-[360px] min-w-0 flex-col lg:min-h-0 lg:overflow-hidden">
           <TasksListPanel
@@ -1245,6 +1484,8 @@ export default function ProjectTasks() {
             onClearSearch={() => {
               setSearchTerm("");
               setStatusFilters(new Set());
+              setSelectedActivityId(null);
+              setDateRangeFilter(null);
             }}
             sortKey={sortKey}
             onSortChange={setSortKey}
@@ -1259,6 +1500,7 @@ export default function ProjectTasks() {
             onDragStart={handleDragStart}
             loading={tasksLoading}
             referenceDate={selectedDate}
+            activityNameById={activityNameById}
           />
         </div>
 
@@ -1323,6 +1565,12 @@ export default function ProjectTasks() {
                   variant={taskRecording ? "destructive" : "outline"}
                   size="sm"
                   disabled={taskDictating}
+                  className={cn(
+                    "font-bold transition-all shadow-sm",
+                    taskRecording
+                      ? "bg-red-600 hover:bg-red-700 text-white"
+                      : "border-orange-500 text-orange-600 hover:text-orange-700 hover:bg-orange-50 bg-white"
+                  )}
                   onClick={() => {
                     if (taskRecording) {
                       finishTaskRecording(false);
@@ -1344,9 +1592,15 @@ export default function ProjectTasks() {
                   ) : taskRecording ? (
                     <Square className="mr-2 h-4 w-4" />
                   ) : (
-                    <Mic className="mr-2 h-4 w-4" />
+                    <Mic className="mr-2 h-4 w-4 text-orange-600" />
                   )}
-                  {taskDictating ? "Transcribing" : taskRecording ? `Stop ${taskRecordSeconds}s` : fieldPrompt ? "Answer" : "Speak"}
+                  {taskDictating
+                    ? "Transcribing"
+                    : taskRecording
+                      ? `Stop ${taskRecordSeconds}s`
+                      : fieldPrompt
+                        ? "Answer Kyla"
+                        : "Speak to Kyla"}
                 </Button>
               </div>
               {taskTranscript && (

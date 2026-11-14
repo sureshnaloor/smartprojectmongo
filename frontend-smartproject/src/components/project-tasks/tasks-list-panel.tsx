@@ -8,6 +8,7 @@ import {
   TASK_SORT_OPTIONS,
   formatDueDate,
   isTaskOverdue,
+  parseTaskMeta,
   priorityStyle,
   statusStyle,
   taskAssignee,
@@ -43,6 +44,7 @@ interface TasksListPanelProps {
   onDragStart: (e: React.DragEvent, task: ProjectTaskItem) => void;
   loading?: boolean;
   referenceDate?: Date;
+  activityNameById?: (id: number) => string;
 }
 
 export function TasksListPanel({
@@ -64,17 +66,25 @@ export function TasksListPanel({
   onDragStart,
   loading,
   referenceDate = new Date(),
+  activityNameById,
 }: TasksListPanelProps) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = [...tasks];
     if (q) {
-      list = list.filter(
-        (t) =>
+      list = list.filter((t) => {
+        const actName = activityNameById ? activityNameById(t.activityId).toLowerCase() : "";
+        const meta = parseTaskMeta(t.remarks);
+        return (
           t.name.toLowerCase().includes(q) ||
           (t.description ?? "").toLowerCase().includes(q) ||
-          taskAssignee(t).toLowerCase().includes(q)
-      );
+          taskAssignee(t).toLowerCase().includes(q) ||
+          actName.includes(q) ||
+          meta.cleanRemarks.toLowerCase().includes(q) ||
+          t.status.toLowerCase().includes(q) ||
+          statusStyle(t.status).label.toLowerCase().includes(q)
+        );
+      });
     }
     if (priorityFilter !== "all") {
       list = list.filter((t) => taskPriority(t) === priorityFilter);
@@ -83,7 +93,7 @@ export function TasksListPanel({
       list = list.filter((t) => statusFilters.has(t.status as TaskStatus));
     }
     return list;
-  }, [tasks, search, priorityFilter, statusFilters]);
+  }, [tasks, search, priorityFilter, statusFilters, activityNameById]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-white)] shadow-[var(--shadow-sm)]">
@@ -198,6 +208,8 @@ export function TasksListPanel({
             const sStyle = statusStyle(task.status);
             const overdue = isTaskOverdue(task, referenceDate);
             const assignee = taskAssignee(task);
+            const meta = parseTaskMeta(task.remarks);
+            const actName = activityNameById ? activityNameById(task.activityId) : null;
             const isSelected = selectedId === task.id;
 
             return (
@@ -258,6 +270,19 @@ export function TasksListPanel({
                       </Button>
                     </div>
                   </div>
+                  {actName && (
+                    <div className="flex items-center gap-1.5 kanban-caption">
+                      <span className="font-medium text-[var(--text-muted)]">Activity:</span>
+                      <span className="rounded bg-[var(--bg-warm-gray)] px-2 py-0.5 font-medium text-[var(--text-primary)]">
+                        {actName}
+                      </span>
+                    </div>
+                  )}
+                  {task.description && (
+                    <p className="kanban-caption text-[var(--text-secondary)] line-clamp-2">
+                      {task.description}
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <span
                       className="rounded-full px-2 py-0.5 kanban-caption font-semibold"
@@ -265,7 +290,10 @@ export function TasksListPanel({
                     >
                       {pStyle.label}
                     </span>
-                    <span className="flex items-center gap-1.5 kanban-caption text-[var(--text-secondary)]">
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 kanban-caption font-semibold"
+                      style={{ backgroundColor: sStyle.bg, color: sStyle.color }}
+                    >
                       <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: sStyle.color }} />
                       {sStyle.label}
                     </span>
@@ -273,6 +301,11 @@ export function TasksListPanel({
                       <User className="h-3 w-3" />
                       {assignee}
                     </span>
+                    {meta.cleanRemarks && (
+                      <span className="truncate max-w-[200px] kanban-caption text-[var(--text-muted)]" title={meta.cleanRemarks}>
+                        Remarks: {meta.cleanRemarks}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

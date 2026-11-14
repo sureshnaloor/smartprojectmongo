@@ -134,16 +134,16 @@ export function priorityStyle(priority: TaskPriority): { label: string; color: s
   }
 }
 
-export function statusStyle(status: string): { label: string; color: string } {
+export function statusStyle(status: string): { label: string; color: string; bg: string } {
   switch (status) {
     case "in_progress":
-      return { label: "In Progress", color: "var(--status-info)" };
+      return { label: "In Progress", color: "var(--status-info)", bg: "rgba(59, 130, 246, 0.12)" };
     case "completed":
-      return { label: "Done", color: "var(--status-success)" };
+      return { label: "Done", color: "var(--status-success)", bg: "var(--status-success-bg)" };
     case "blocked":
-      return { label: "Blocked", color: "var(--status-danger)" };
+      return { label: "Blocked", color: "var(--status-danger)", bg: "var(--status-danger-bg)" };
     default:
-      return { label: "Pending", color: "var(--status-warning)" };
+      return { label: "Pending", color: "var(--status-warning)", bg: "var(--status-warning-bg)" };
   }
 }
 

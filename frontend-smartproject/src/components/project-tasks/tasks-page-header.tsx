@@ -115,9 +115,14 @@ export function TasksPageHeader({
           {voice && (
             <Button
               type="button"
-              variant={voice.recording ? "destructive" : "outline"}
+              variant={voice.recording ? "destructive" : "default"}
               size="sm"
-              className="gap-1.5"
+              className={cn(
+                "gap-1.5 font-semibold transition-all shadow-sm",
+                voice.recording
+                  ? "bg-red-600 hover:bg-red-700 text-white"
+                  : "bg-orange-500 hover:bg-orange-600 text-white border-0"
+              )}
               disabled={voice.busy}
               onClick={voice.onToggle}
             >
@@ -132,7 +137,7 @@ export function TasksPageHeader({
                 ? "Transcribing"
                 : voice.recording
                   ? `Stop ${voice.seconds}s`
-                  : "Speak"}
+                  : "Kyla-voice agent"}
             </Button>
           )}
           {onGenerateTasks && (

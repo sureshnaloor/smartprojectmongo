@@ -325,9 +325,20 @@ export function applyTaskSpeech(
   return { fields, rejected };
 }
 
-export type TaskCommandIntent = "create" | "show_all" | "show_day" | "edit" | "delete" | "unknown";
+export type TaskCommandIntent = "create" | "show_all" | "show_day" | "search" | "edit" | "delete" | "unknown";
 
 export type TaskNameMatch = "none" | "one" | "many" | "unspecified";
+
+export type TaskSearchParams = {
+  nameLike: string | null;
+  activity: string | null;
+  remarks: string | null;
+  status: string | null;
+  dueDate: string | null;
+  fromDate: string | null;
+  toDate: string | null;
+  query: string | null;
+};
 
 export type TaskCommand = {
   transcript: string;
@@ -336,13 +347,15 @@ export type TaskCommand = {
   taskName: string | null;
   taskId: number | null;
   taskMatch: TaskNameMatch;
+  matchingTaskNames?: string[];
   fields: TaskSpeechFields;
   rejected: RejectedTaskField[];
+  searchParams?: TaskSearchParams;
 };
 
 export type TaskCommandOption = { id: number; name: string };
 
-const COMMAND_INTENTS = new Set<TaskCommandIntent>(["create", "show_all", "show_day", "edit", "delete"]);
+const COMMAND_INTENTS = new Set<TaskCommandIntent>(["create", "show_all", "show_day", "search", "edit", "delete"]);
 
 function relativeDate(transcript: string, today: Date): string | null {
   const text = transcript.toLowerCase();
@@ -352,35 +365,213 @@ function relativeDate(transcript: string, today: Date): string | null {
   return null;
 }
 
+export function extractTaskSearchParams(
+  transcript: string,
+  raw: Record<string, unknown> | null,
+  activities: TaskActivityOption[],
+  today = new Date()
+): TaskSearchParams {
+  const text = transcript.toLowerCase();
+  let nameLike: string | null = null;
+  let activity: string | null = null;
+  let remarks: string | null = null;
+  let status: string | null = null;
+  let dueDate: string | null = null;
+  let fromDate: string | null = null;
+  let toDate: string | null = null;
+  let query: string | null = null;
+
+  // 0. Name-like matching: e.g. "which have name like 'task'", "have name like task", "name like task"
+  const nameLikeMatch = transcript.match(/(?:which\s+have\s+|that\s+have\s+|have\s+|with\s+)?(?:name|title)\s+like\s*['"“]?([^'"”.,?!]+)['"”]?/i);
+  if (nameLikeMatch) {
+    nameLike = nameLikeMatch[1].trim();
+    query = nameLike;
+  } else {
+    const namedLikeMatch = transcript.match(/named\s+like\s*['"“]?([^'"”.,?!]+)['"”]?/i);
+    if (namedLikeMatch) {
+      nameLike = namedLikeMatch[1].trim();
+      query = nameLike;
+    } else if (raw?.searchNameLike) {
+      nameLike = asText(raw?.searchNameLike);
+      if (nameLike) query = nameLike;
+    }
+  }
+
+  // 1. Activity matching: "whose activity is '3D develop'", "activity 3D develop", "activity is ..."
+  const actMatch = transcript.match(/(?:whose\s+)?activity\s+(?:is|called|named)?\s*['"“]?([^'"”.,?!]+)['"”]?/i);
+  if (actMatch) {
+    activity = actMatch[1].trim();
+  } else if (raw?.searchActivity || raw?.activity) {
+    activity = asText(raw?.searchActivity || raw?.activity);
+  }
+
+  // 2. Remarks matching: "whose remarks are ...", "remarks contain ..."
+  const remMatch = transcript.match(/(?:whose\s+)?remarks?\s+(?:are|contain|contains|is|with)?\s*['"“]?([^'"”.,?!]+)['"”]?/i);
+  if (remMatch) {
+    remarks = remMatch[1].trim();
+  } else if (raw?.searchRemarks || raw?.remarks) {
+    remarks = asText(raw?.searchRemarks || raw?.remarks);
+  }
+
+  // 3. Status matching: "whose status is pending", "status done", "status completed"
+  const statMatch = transcript.match(/(?:whose\s+)?status\s+(?:is|of)?\s*['"“]?([a-z_\s]+)['"”]?/i);
+  if (statMatch) {
+    const rawStat = statMatch[1].trim().toLowerCase();
+    if (rawStat.includes("done") || rawStat.includes("completed")) status = "completed";
+    else if (rawStat.includes("progress")) status = "in_progress";
+    else if (rawStat.includes("block")) status = "blocked";
+    else if (rawStat.includes("pending")) status = "pending";
+  } else if (raw?.searchStatus || raw?.status) {
+    const st = asText(raw?.searchStatus || raw?.status)?.toLowerCase();
+    if (st) {
+      if (st.includes("done") || st.includes("completed")) status = "completed";
+      else if (st.includes("progress")) status = "in_progress";
+      else if (st.includes("block")) status = "blocked";
+      else if (st.includes("pending")) status = "pending";
+    }
+  }
+
+  // 4. Date ranges:
+  // "between today and 3 days from now" or "between today and X days"
+  const betweenDaysMatch = transcript.match(/between\s+today\s+and\s+(\d+)\s+days?(?:\s+from\s+now)?/i);
+  if (betweenDaysMatch) {
+    const days = parseInt(betweenDaysMatch[1], 10);
+    fromDate = ymd(today);
+    toDate = ymd(addDays(today, days));
+  }
+
+  // "next X days" or "in the next X days"
+  const nextDaysMatch = transcript.match(/(?:in\s+the\s+)?next\s+(\d+)\s+days?/i);
+  if (!fromDate && nextDaysMatch) {
+    const days = parseInt(nextDaysMatch[1], 10);
+    fromDate = ymd(today);
+    toDate = ymd(addDays(today, days));
+  }
+
+  // "between <date1> and <date2>"
+  const betweenDatesMatch = transcript.match(/between\s+([a-z0-9\/\-\s]+)\s+and\s+([a-z0-9\/\-\s]+)/i);
+  if (!fromDate && betweenDatesMatch) {
+    const d1 = parseTaskDate(betweenDatesMatch[1].trim(), today);
+    const d2 = parseTaskDate(betweenDatesMatch[2].trim(), today);
+    if (d1 && d2) {
+      fromDate = d1;
+      toDate = d2;
+    }
+  }
+
+  if (!fromDate && raw?.searchFromDate) fromDate = parseTaskDate(String(raw.searchFromDate), today);
+  if (!toDate && raw?.searchToDate) toDate = parseTaskDate(String(raw.searchToDate), today);
+
+  // Single due date
+  if (!fromDate && !toDate) {
+    const singleDue = transcript.match(/(?:due\s+date|due\s+on|due)\s+(?:is\s+)?([a-z0-9\/\-\s]+)/i);
+    if (singleDue) {
+      dueDate = parseTaskDate(singleDue[1].trim(), today);
+    }
+    if (!dueDate && (raw?.searchDueDate || raw?.date)) {
+      dueDate = parseTaskDate(String(raw?.searchDueDate || raw?.date), today);
+    }
+  }
+
+  return {
+    nameLike,
+    activity,
+    remarks,
+    status,
+    dueDate,
+    fromDate,
+    toDate,
+    query,
+  };
+}
+
 /** Prefer an obvious spoken command over the model when the wording is clear. */
 export function inferTaskIntent(transcript: string, today = new Date()): TaskCommandIntent | null {
-  const text = transcript.toLowerCase();
-  const showVerb = /\b(show|list|display|filter|find)\b/.test(text);
-  const hasDay = Boolean(relativeDate(transcript, today) || dateSpokenInTranscript(transcript, today));
+  const text = transcript.toLowerCase().trim();
   if (/\b(delete|remove)\b/.test(text) && /\btask\b/.test(text)) return "delete";
-  if (showVerb && hasDay) return "show_day";
-  if (showVerb && /\ball\b/.test(text)) return "show_all";
-  if (showVerb && /\btasks?\b/.test(text)) return "show_all";
   if (/\b(create|add|make|new)\b/.test(text) && /\btask\b/.test(text)) return "create";
+
+  // Search / filter matching
+  if (/\b(?:have\s+name\s+like|name\s+like|named\s+like|title\s+like)\b/i.test(text)) {
+    return "search";
+  }
+  if (/\bwhose\b/i.test(text)) return "search";
+  if (/\b(open|show|find|list|filter|display)\s+(?:all\s+)?tasks?\s+(?:whose|where|with|for|having|that|due|between|which|named)\b/i.test(text)) {
+    return "search";
+  }
+  if (/\b(between\s+today\s+and\s+\d+\s+days|next\s+\d+\s+days)\b/i.test(text)) {
+    return "search";
+  }
+  if (/\bactivity\s+(?:is|called|named)\b/i.test(text) || /\bremarks?\s+(?:contain|are|is)\b/i.test(text)) {
+    return "search";
+  }
+
+  // Open / edit task command: "open task ...", "open for edit task ...", "edit task ...", "open task ... for edit"
+  if (/\b(open\s+(?:for\s+edit\s+)?task|open\s+task\s+for\s+edit|open\s+task|edit\s+task|open\s+for\s+edit)\b/i.test(text)) {
+    return "edit";
+  }
+  if (/^open\s+/i.test(text)) {
+    return "edit";
+  }
   if (/\b(edit|update|change|set|rename|mark)\b/.test(text)) return "edit";
   if (/\badd\b/.test(text) && /\b(description|remark|note|assignee|priority|status|duration|date)\b/.test(text)) {
     return "edit";
   }
+
+  const hasDay = Boolean(relativeDate(transcript, today) || dateSpokenInTranscript(transcript, today));
+  if (/\b(show|list|display|find)\b/.test(text) && hasDay) return "show_day";
+
+  if (
+    /\b(show|list|display)\s+all\s+tasks?\b/i.test(text) ||
+    text === "show all" ||
+    text === "all tasks" ||
+    text === "show tasks" ||
+    text === "list tasks"
+  ) {
+    return "show_all";
+  }
+
   return null;
 }
 
 export function matchTaskByName(
   spoken: string | null,
   tasks: TaskCommandOption[]
-): { taskName: string | null; taskId: number | null; taskMatch: TaskNameMatch } {
+): {
+  taskName: string | null;
+  taskId: number | null;
+  taskMatch: TaskNameMatch;
+  matchingTaskNames: string[];
+} {
   const name = spoken?.trim();
-  if (!name) return { taskName: null, taskId: null, taskMatch: "unspecified" };
+  if (!name) return { taskName: null, taskId: null, taskMatch: "unspecified", matchingTaskNames: [] };
+  const lower = name.toLowerCase();
+
+  // 1. Exact case-insensitive match
+  const exactHits = tasks.filter((t) => t.name.toLowerCase() === lower);
+  if (exactHits.length === 1) {
+    return { taskName: exactHits[0].name, taskId: exactHits[0].id, taskMatch: "one", matchingTaskNames: [exactHits[0].name] };
+  }
+  if (exactHits.length > 1) {
+    return { taskName: name, taskId: null, taskMatch: "many", matchingTaskNames: exactHits.map((t) => t.name) };
+  }
+
+  // 2. Substring match
+  const containsHits = tasks.filter((t) => t.name.toLowerCase().includes(lower));
+  if (containsHits.length === 1) {
+    return { taskName: containsHits[0].name, taskId: containsHits[0].id, taskMatch: "one", matchingTaskNames: [containsHits[0].name] };
+  }
+  if (containsHits.length > 1) {
+    return { taskName: name, taskId: null, taskMatch: "many", matchingTaskNames: containsHits.map((t) => t.name) };
+  }
+
+  // 3. Catalog fuzzy match fallback
   const matched = matchCatalogName(name, tasks.map((task) => task.name).filter(Boolean));
-  if (!matched) return { taskName: name, taskId: null, taskMatch: "none" };
-  const hits = tasks.filter((task) => task.name === matched);
-  if (hits.length === 1) return { taskName: hits[0].name, taskId: hits[0].id, taskMatch: "one" };
-  if (hits.length > 1) return { taskName: matched, taskId: null, taskMatch: "many" };
-  return { taskName: name, taskId: null, taskMatch: "none" };
+  if (!matched) return { taskName: name, taskId: null, taskMatch: "none", matchingTaskNames: [] };
+  const hits = tasks.filter((task) => task.name.toLowerCase() === matched.toLowerCase());
+  if (hits.length === 1) return { taskName: hits[0].name, taskId: hits[0].id, taskMatch: "one", matchingTaskNames: [hits[0].name] };
+  if (hits.length > 1) return { taskName: matched, taskId: null, taskMatch: "many", matchingTaskNames: hits.map((t) => t.name) };
+  return { taskName: name, taskId: null, taskMatch: "none", matchingTaskNames: [] };
 }
 
 export function interpretTaskCommand(
@@ -406,7 +597,15 @@ export function interpretTaskCommand(
     }
   }
 
-  const named = matchTaskByName(asText(raw?.taskName), tasks);
+  let spokenTaskName = asText(raw?.taskName);
+  if (!spokenTaskName) {
+    const directMatch = transcript.match(/(?:open\s+(?:for\s+edit\s+)?task|open\s+task\s+for\s+edit|open\s+task|edit\s+task|open)\s*['"“]?([^'"”.,?!]+)['"”]?/i);
+    if (directMatch) {
+      spokenTaskName = directMatch[1].trim();
+    }
+  }
+
+  const named = matchTaskByName(spokenTaskName, tasks);
   let taskId = named.taskId;
   let taskMatch = named.taskMatch;
   if ((intent === "edit" || intent === "delete") && taskMatch === "unspecified" && openTaskId != null) {
@@ -441,6 +640,11 @@ export function interpretTaskCommand(
     }
   }
 
+  let searchParams: TaskSearchParams | undefined = undefined;
+  if (intent === "search") {
+    searchParams = extractTaskSearchParams(transcript, raw, activities, today);
+  }
+
   return {
     transcript,
     intent,
@@ -448,27 +652,33 @@ export function interpretTaskCommand(
     taskName: named.taskName,
     taskId,
     taskMatch,
+    matchingTaskNames: named.matchingTaskNames,
     fields,
     rejected,
+    searchParams,
   };
 }
 
 function buildCommandPrompt(activities: TaskActivityOption[], tasks: TaskCommandOption[], today: Date): string {
-  const activityNames = [...new Set(activities.map((activity) => activity.name).filter(Boolean))];
-  const taskNames = [...new Set(tasks.map((task) => task.name).filter(Boolean))].slice(0, 80);
+  const activityNames = Array.from(new Set(activities.map((activity) => activity.name).filter(Boolean)));
+  const taskNames = Array.from(new Set(tasks.map((task) => task.name).filter(Boolean))).slice(0, 80);
   return [
     "Classify one spoken command on a project task page and extract only the details that were spoken.",
     `Today is ${ymd(today)}.`,
-    "intent must be one of: create, show_all, show_day, edit, delete.",
+    "intent must be one of: create, show_all, show_day, search, edit, delete.",
     "create: the speaker wants a new task.",
     "show_all: show every task, with no day filter.",
     "show_day: show tasks on one day, such as today, tomorrow, or 14 December 2026.",
-    "edit: change one or more fields on an existing task, or fill a field that is currently empty.",
+    "search: find, filter, or open tasks based on name like '...' (e.g. 'display tasks which have name like task'), activity name (partial or full), remarks (partial or full), status (pending, done, in progress, blocked), or due dates (single date or range of dates between today and X days, etc.).",
+    "edit: open the edit modal for a task (e.g. 'open task Foundation', 'open for edit task Inspection', 'edit task 3D Modelling'), change one or more fields on an existing task, or fill a field.",
     "delete: delete an existing task.",
     "date is the day for show_day, as YYYY-MM-DD. Numeric dates are day/month/year: 14/12/2026 is 2026-12-14. Use an empty string otherwise.",
-    "taskName is the existing task to edit or delete, copied from the task list when they name one. Use an empty string when they mean the task that is already open.",
+    "taskName is the existing task to open, edit, or delete, copied from the task list when they name one. Use an empty string when they mean the task that is already open.",
     "name is the new task title when creating, or the replacement title when they rename a task.",
-    "Return JSON with keys: intent, date, taskName, activity, name, description, plannedDate, duration, priority, status, assignee, remarks.",
+    "searchNameLike is the search text when the speaker says 'display tasks which have name like X' or 'name like X'.",
+    "searchActivity is the activity name or partial name when searching/opening tasks. searchRemarks is text in remarks. searchStatus is pending, in progress, blocked, or done.",
+    "searchFromDate and searchToDate are YYYY-MM-DD when a date range is spoken (e.g. between today and 3 days from now). searchDueDate is YYYY-MM-DD for a single date.",
+    "Return JSON with keys: intent, date, taskName, activity, name, description, plannedDate, duration, priority, status, assignee, remarks, searchNameLike, searchActivity, searchRemarks, searchStatus, searchDueDate, searchFromDate, searchToDate.",
     "Use an empty string for every field the speaker did not mention.",
     "activity must be copied exactly from this activity list, or left empty:",
     activityNames.join("\n") || "(none)",
@@ -687,6 +897,13 @@ export async function dictateTaskCommand(
               status: { type: "string" },
               assignee: { type: "string" },
               remarks: { type: "string" },
+              searchNameLike: { type: "string" },
+              searchActivity: { type: "string" },
+              searchRemarks: { type: "string" },
+              searchStatus: { type: "string" },
+              searchDueDate: { type: "string" },
+              searchFromDate: { type: "string" },
+              searchToDate: { type: "string" },
             },
             required: [
               "intent",
@@ -701,6 +918,13 @@ export async function dictateTaskCommand(
               "status",
               "assignee",
               "remarks",
+              "searchNameLike",
+              "searchActivity",
+              "searchRemarks",
+              "searchStatus",
+              "searchDueDate",
+              "searchFromDate",
+              "searchToDate",
             ],
           },
         },
